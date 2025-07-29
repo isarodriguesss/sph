@@ -1,4 +1,5 @@
 from pysph.sph.equation import Equation
+import numpy as np
 
 class BiomassGrowth(Equation):
     def __init__(self, dest, sources, r_growth, rho_max, **kw):
@@ -6,13 +7,30 @@ class BiomassGrowth(Equation):
         self.r_growth = r_growth
         self.rho_max = rho_max
 
-    def initialize(self, d_idx, d_rho, d_rho_b_grown):
-        d_rho_b_grown[d_idx] = d_rho[d_idx]
+    def loop(self, d_idx, d_rho_b_grown):
+        current_rho_b = d_rho_b_grown[d_idx]
+        rate_of_change = self.r_growth * current_rho_b * (1 - current_rho_b / self.rho_max)
 
-    def post_step(self, d_idx, d_rho, d_rho_b_grown, dt):
-        d_rho_dt = self.r_growth * d_rho_b_grown[d_idx] * (1 - d_rho_b_grown[d_idx] / self.rho_max)
-        d_rho_b_grown[d_idx] += d_rho_dt * dt
-        d_rho_b_grown[d_idx] = max(0.0, min(d_rho_b_grown[d_idx], self.rho_max))
+        if d_idx == 0:
+            print(f"DEBUG_GROWTH_LOOP: r_growth={self.r_growth:.4f}, rho_max={self.rho_max:.4f}")
+            print(f"DEBUG_GROWTH_LOOP: Partícula {d_idx}: rho_b={current_rho_b:.4f}, Taxa_de_mudanca={rate_of_change:.6e}")
+            if abs(rate_of_change) < 1e-12: # Se a taxa for muito pequena
+                print(f"DEBUG_GROWTH_LOOP: Taxa de mudança muito pequena! Termo (1 - rho_b/rho_max) = {(1 - current_rho_b / self.rho_max):.6e}")
+
+        return rate_of_change
+
+    def post_loop(self, d_idx, d_rho_b_grown, d_rho, dt):
+        current_val = d_rho_b_grown[d_idx]
+        clipped_val = max(0.0, min(current_val, self.rho_max))
+
+        if d_idx == 0:
+            # Apenas imprima se houve uma mudança significativa
+            if abs(clipped_val - current_val) > 1e-9:
+                print(f"DEBUG_POST_LOOP: Partícula {d_idx}: Valor antes da clipagem={current_val:.4f}, Valor clipado={clipped_val:.4f}")
+            else:
+                print(f"DEBUG_POST_LOOP: Partícula {d_idx}: Valor após cálculo={current_val:.4f}, Não clipado.")
+
+        d_rho_b_grown[d_idx] = clipped_val
 
 class SurfactantProductionDecay(Equation):
     def __init__(self, dest, sources, sigma, lambda_, **kw):

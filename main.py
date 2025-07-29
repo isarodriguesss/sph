@@ -60,18 +60,11 @@ class BiomassSurfactantApp(Application):
         self.imposed_vy_grid = np.cos(self.y_grid_imp * np.pi / (domain_max_y - domain_min_y)) * np.sin(self.x_grid_imp * np.pi / (domain_max_x - domain_min_x)) * 0.1
 
     def create_particles(self):
-        particles = create_biomass_surfactant_particles(
-            domain_min_x, domain_max_x, domain_min_y, domain_max_y,
-            h, (dx, dy), rho_max, x_dim, y_dim
-        )
-
-        for pa in particles:
+        for pa in self.particles:
             if pa.name == 'fluid': 
-                pa.add_property('rho_b_grown', type='double', default=0.0)
-                pa.add_property('c_s', type='double', default=0.0)
                 pa.add_output_arrays(['rho', 'm', 'x', 'y', 'u', 'v', 'h', 'rho_b_grown', 'c_s', 'ax', 'ay'])
 
-        return particles
+        return self.particles
 
     def create_scheme(self):
         return MyBiomassScheme(fluids=['fluid'], solids=[], dim=2,
@@ -85,11 +78,17 @@ class BiomassSurfactantApp(Application):
         solver = Solver(dim=2,
                         integrator=scheme.get_integrator(),
                         kernel=kernel,
-                        tf=total_sim_time,
-                        dt=dt_global,
-                        set_adaptive_timestep=False,
-                        set_print_freq=trajectory_store_interval,
+                        #tf=total_sim_time,
+                        #dt=dt_global,
+                        #set_adaptive_timestep=False,
+                        #set_print_freq=trajectory_store_interval,
                         )
+        
+        solver.tf = total_sim_time
+        solver.dt = dt_global
+        solver.set_adaptive_timestep(False)
+        solver.set_print_freq(trajectory_store_interval)
+
         return solver
 
     def create_tools(self):
@@ -136,22 +135,7 @@ class BiomassSurfactantApp(Application):
             for i_bact in range(self.bact_positions.shape[0]):
                 self.all_bact_trajectories[i_bact].append(self.bact_positions[i_bact, :].copy())
 
-        rho_b_from_particles_grid = np.zeros((y_dim, x_dim), dtype=float)
-        bact_y_indices = np.clip(np.floor((self.bact_positions[:, 0] - domain_min_y) / dy).astype(int), 0, y_dim - 1)
-        bact_x_indices = np.clip(np.floor((self.bact_positions[:, 1] - domain_min_x) / dx).astype(int), 0, x_dim - 1)
-
-        particle_mass_contribution_factor = 0.6
-        particle_mass_contribution = rho_max * particle_mass_contribution_factor / (dx*dy)
-
-        for i in range(len(self.bact_positions)):
-            rho_b_from_particles_grid[bact_y_indices[i], bact_x_indices[i]] += particle_mass_contribution
-
-        fluid_array.rho_b_grown[:] = np.clip(rho_b_from_particles_grid.ravel()[
-            np.clip(np.floor((fluid_array.y - domain_min_y) / dy).astype(int), 0, y_dim - 1) * x_dim +
-            np.clip(np.floor((fluid_array.x - domain_min_x) / dx).astype(int), 0, x_dim - 1)
-        ], 0, rho_max)
-
-        if solver.count % solver.set_print_freq == 0 or solver.count == int(total_sim_time / dt_global) - 1:
+        if solver.count % solver.pfreq == 0 or solver.count == int(total_sim_time / dt_global) - 1:
             print(f"  Progresso: {((solver.count + 1) / (total_sim_time / dt_global)) * 100:.1f}% completo. "
                     f"Max c_s: {np.max(fluid_array.c_s):.2e}, Max rho_b (partículas): {np.max(fluid_array.rho_b_grown):.2f}, "
                     f"Max u: {np.max(np.abs(fluid_array.u)):.2e}, Max v: {np.max(np.abs(fluid_array.v)):.2e}")

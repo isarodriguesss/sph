@@ -4,6 +4,7 @@ from pysph.sph.integrator_step import EulerStep
 from pysph.sph.basic_equations import SummationDensity
 from .equations import BiomassGrowth, SurfactantProductionDecay, SurfactantForceAndDrag
 from pysph.sph.equation import Group
+import numpy as np
 
 class MyBiomassScheme(Scheme):
     def __init__(self, fluids, solids, dim, rho_max, r_growth, sigma, lambda_, beta, gamma, D, mu, periodic_domain=None, **kw):
@@ -36,5 +37,4 @@ class MyBiomassScheme(Scheme):
         return equations
 
     def get_integrator(self):
-        euler_step = EulerStep()
-        return EulerIntegrator(fluid=euler_step)
+        return EulerIntegrator(fluid=EulerStep())

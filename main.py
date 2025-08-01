@@ -42,6 +42,18 @@ class BiomassSurfactantApp(Application):
             domain_min_x, domain_max_x, domain_min_y, domain_max_y,
             h, (dx, dy), rho_max, x_dim, y_dim,
         )
+        
+        # ***************************************************************
+        # PASSO 3: ADICIONE AS PROPRIEDADES DE DERIVADA AQUI.
+        # Isso garante que elas estejam presentes no ParticleArray
+        # ANTES que o solver as verifique e as passe para o integrador/equações.
+        fluid_pa = self.particles[0] # Assumindo 'fluid' é sempre o primeiro
+        if not hasattr(fluid_pa, 'd_rho_b_grown'):
+            fluid_pa.add_property('d_rho_b_grown', default=0.0)
+        if not hasattr(fluid_pa, 'd_c_s'):
+            fluid_pa.add_property('d_c_s', default=0.0)
+        # ***************************************************************
+
         center_x = (domain_min_x + domain_max_x) / 2.0
         center_y = (domain_min_y + domain_max_y) / 2.0
         angles = np.linspace(0, 2 * np.pi, n_bact, endpoint=False)
@@ -62,15 +74,16 @@ class BiomassSurfactantApp(Application):
     def create_particles(self):
         for pa in self.particles:
             if pa.name == 'fluid': 
-                pa.add_output_arrays(['rho', 'm', 'x', 'y', 'u', 'v', 'h', 'rho_b_grown', 'c_s', 'ax', 'ay'])
+                # Adicione as propriedades de saída, incluindo as derivadas para salvar
+                pa.add_output_arrays(['rho', 'm', 'x', 'y', 'u', 'v', 'h', 'rho_b_grown', 'c_s', 'ax', 'ay', 'd_rho_b_grown', 'd_c_s'])
 
         return self.particles
 
     def create_scheme(self):
         return MyBiomassScheme(fluids=['fluid'], solids=[], dim=2,
-                                rho_max=rho_max, r_growth=r_growth,
-                                sigma=sigma, lambda_=lambda_, beta=beta, gamma=gamma, D=D, mu=mu,
-                                periodic_domain=(self.periodic_domain_min, self.periodic_domain_max))
+                                 rho_max=rho_max, r_growth=r_growth,
+                                 sigma=sigma, lambda_=lambda_, beta=beta, gamma=gamma, D=D, mu=mu,
+                                 periodic_domain=(self.periodic_domain_min, self.periodic_domain_max))
     
     def create_solver(self):
         kernel = CubicSpline(dim=2)
@@ -78,16 +91,15 @@ class BiomassSurfactantApp(Application):
         solver = Solver(dim=2,
                         integrator=scheme.get_integrator(),
                         kernel=kernel,
-                        #tf=total_sim_time,
-                        #dt=dt_global,
-                        #set_adaptive_timestep=False,
-                        #set_print_freq=trajectory_store_interval,
                         )
         
         solver.tf = total_sim_time
         solver.dt = dt_global
         solver.set_adaptive_timestep(False)
-        solver.set_print_freq(trajectory_store_interval)
+        # *************************************************************
+        # REMOVER A CONDIÇÃO IF DO PRINT DE post_step PARA VÊ-LO SEMPRE:
+        solver.set_print_freq(1) # Imprime a cada 1 passo de tempo para depuração
+        # *************************************************************
 
         return solver
 
@@ -135,10 +147,12 @@ class BiomassSurfactantApp(Application):
             for i_bact in range(self.bact_positions.shape[0]):
                 self.all_bact_trajectories[i_bact].append(self.bact_positions[i_bact, :].copy())
 
-        if solver.count % solver.pfreq == 0 or solver.count == int(total_sim_time / dt_global) - 1:
-            print(f"  Progresso: {((solver.count + 1) / (total_sim_time / dt_global)) * 100:.1f}% completo. "
-                    f"Max c_s: {np.max(fluid_array.c_s):.2e}, Max rho_b (partículas): {np.max(fluid_array.rho_b_grown):.2f}, "
-                    f"Max u: {np.max(np.abs(fluid_array.u)):.2e}, Max v: {np.max(np.abs(fluid_array.v)):.2e}")
+        # *************************************************************
+        # MOVA ESTE PRINT PARA FORA DA CONDIÇÃO IF para vê-lo sempre:
+        print(f"  Progresso: {((solver.count + 1) / (total_sim_time / dt_global)) * 100:.1f}% completo. "
+                      f"Max c_s: {np.max(fluid_array.c_s):.2e}, Max rho_b (partículas): {np.max(fluid_array.rho_b_grown):.2f}, "
+                      f"Max u: {np.max(np.abs(fluid_array.u)):.2e}, Max v: {np.max(np.abs(fluid_array.v)):.2e}")
+        # *************************************************************
 
     def post_process(self, info):
         print("Simulação concluída. Gerando plot final...")
@@ -201,4 +215,13 @@ class BiomassSurfactantApp(Application):
 
 if __name__ == '__main__':
     app = BiomassSurfactantApp()
+    
+    # Adicione este print para verificar se os valores de rho_b_grown estão corretos após initialize()
+    # e se as derivadas existem no ParticleArray neste ponto.
+    fluid_pa = app.particles[0] # Pegue a referência ao particle array de novo
+    print(f"DEBUG MAIN: Max rho_b_grown APÓS INICIALIZAÇÃO E ADIÇÃO DE DERIVADAS: {np.max(fluid_pa.rho_b_grown):.4f}")
+    print(f"DEBUG MAIN FINAL: 'd_rho_b_grown' exists on fluid_array: {'d_rho_b_grown' in fluid_pa.properties}")
+    print(f"DEBUG MAIN FINAL: 'd_c_s' exists on fluid_array: {'d_c_s' in fluid_pa.properties}")
+
+
     app.run()

@@ -14,7 +14,7 @@ class BiomassGrowth(Equation):
         if d_idx == 0:
             print(f"DEBUG_GROWTH_LOOP: r_growth={self.r_growth:.4f}, rho_max={self.rho_max:.4f}")
             print(f"DEBUG_GROWTH_LOOP: Partícula {d_idx}: rho_b={current_rho_b:.4f}, Taxa_de_mudanca={rate_of_change:.6e}")
-            if abs(rate_of_change) < 1e-12: # Se a taxa for muito pequena
+            if abs(rate_of_change) < 1e-12:
                 print(f"DEBUG_GROWTH_LOOP: Taxa de mudança muito pequena! Termo (1 - rho_b/rho_max) = {(1 - current_rho_b / self.rho_max):.6e}")
 
         return rate_of_change
@@ -24,7 +24,6 @@ class BiomassGrowth(Equation):
         clipped_val = max(0.0, min(current_val, self.rho_max))
 
         if d_idx == 0:
-            # Apenas imprima se houve uma mudança significativa
             if abs(clipped_val - current_val) > 1e-9:
                 print(f"DEBUG_POST_LOOP: Partícula {d_idx}: Valor antes da clipagem={current_val:.4f}, Valor clipado={clipped_val:.4f}")
             else:

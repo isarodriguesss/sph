@@ -8,11 +8,12 @@ from pysph.solver.application import Application
 from pysph.base.kernels import CubicSpline
 from pysph.solver.solver import Solver
 
-from scipy.interpolate import RegularGridInterpolator
+from scipy.interpolate import RegularGridInterpolator, griddata
 
 from src.particles import create_biomass_surfactant_particles
 from src.scheme import MyBiomassScheme
 
+# Parâmetros da Simulação
 x_dim, y_dim = 128, 128
 domain_min_x, domain_max_x = -1.0, 5.0
 domain_min_y, domain_max_y = -1.0, 5.0
@@ -31,115 +32,113 @@ rho_max = 1.0
 
 dt_global = 0.001
 total_sim_time = 40.0
-trajectory_store_interval = max(1, int(0.02 / dt_global))
+# Ajuste a frequência de print e armazenamento para algo razoável
+print_freq = 500
+trajectory_store_interval = 10
 
 n_bact = 300
 r0_bact_initial = dx * 2
 
+
 class BiomassSurfactantApp(Application):
+
     def initialize(self):
+        # 1. Criação das partículas (inalterado)
         self.particles = create_biomass_surfactant_particles(
             domain_min_x, domain_max_x, domain_min_y, domain_max_y,
             h, (dx, dy), rho_max, x_dim, y_dim,
         )
         
-        # ***************************************************************
-        # PASSO 3: ADICIONE AS PROPRIEDADES DE DERIVADA AQUI.
-        # Isso garante que elas estejam presentes no ParticleArray
-        # ANTES que o solver as verifique e as passe para o integrador/equações.
-        fluid_pa = self.particles[0] # Assumindo 'fluid' é sempre o primeiro
-        if not hasattr(fluid_pa, 'd_rho_b_grown'):
-            fluid_pa.add_property('d_rho_b_grown', default=0.0)
-        if not hasattr(fluid_pa, 'd_c_s'):
-            fluid_pa.add_property('d_c_s', default=0.0)
-        # ***************************************************************
+        fluid_pa = self.particles[0]
+        
+        # 2. Adicionar propriedades de TAXA com a convenção 'a_propriedade'
+        if not hasattr(fluid_pa, 'a_rho_b_grown'):
+            fluid_pa.add_property('a_rho_b_grown', default=0.0)
+        if not hasattr(fluid_pa, 'a_c_s'):
+            fluid_pa.add_property('a_c_s', default=0.0)
 
+        # 3. Setup de bactérias e domínio (inalterado)
         center_x = (domain_min_x + domain_max_x) / 2.0
         center_y = (domain_min_y + domain_max_y) / 2.0
         angles = np.linspace(0, 2 * np.pi, n_bact, endpoint=False)
         self.bact_positions = np.array([[center_y + r0_bact_initial * np.sin(a), center_x + r0_bact_initial * np.cos(a)] for a in angles])
         self.all_bact_trajectories = [[] for _ in range(n_bact)]
-
         self.periodic_domain_min = np.array([domain_min_x, domain_min_y, -h])
         self.periodic_domain_max = np.array([domain_max_x, domain_max_y, h])
 
+        # 4. Setup do campo de fluxo imposto (inalterado)
         self.x_grid_imp, self.y_grid_imp = np.meshgrid(
             np.linspace(domain_min_x, domain_max_x, x_dim),
             np.linspace(domain_min_y, domain_max_y, y_dim)
         )
-
         self.imposed_vx_grid = -np.sin(self.y_grid_imp * np.pi / (domain_max_y - domain_min_y)) * np.cos(self.x_grid_imp * np.pi / (domain_max_x - domain_min_x)) * 0.1
         self.imposed_vy_grid = np.cos(self.y_grid_imp * np.pi / (domain_max_y - domain_min_y)) * np.sin(self.x_grid_imp * np.pi / (domain_max_x - domain_min_x)) * 0.1
+
+        # 5. **** MUDANÇA CRÍTICA PARA PERFORMANCE ****
+        # Crie os interpoladores AQUI, UMA SÓ VEZ, e armazene-os em 'self'.
+        print("Criando interpoladores de grade uma única vez...")
+        y_coords = np.linspace(domain_min_y, domain_max_y, y_dim)
+        x_coords = np.linspace(domain_min_x, domain_max_x, x_dim)
+        
+        self.vx_interp_func_imposed = RegularGridInterpolator(
+            (y_coords, x_coords), self.imposed_vx_grid, 
+            bounds_error=False, fill_value=0
+        )
+        self.vy_interp_func_imposed = RegularGridInterpolator(
+            (y_coords, x_coords), self.imposed_vy_grid, 
+            bounds_error=False, fill_value=0
+        )
+        print("Interpoladores criados com sucesso. Iniciando a simulação...")
+
 
     def create_particles(self):
         for pa in self.particles:
             if pa.name == 'fluid': 
-                # Adicione as propriedades de saída, incluindo as derivadas para salvar
-                pa.add_output_arrays(['rho', 'm', 'x', 'y', 'u', 'v', 'h', 'rho_b_grown', 'c_s', 'ax', 'ay', 'd_rho_b_grown', 'd_c_s'])
-
+                pa.add_output_arrays(['rho', 'm', 'x', 'y', 'u', 'v', 'h', 'rho_b_grown', 'c_s', 'ax', 'ay', 'a_rho_b_grown', 'a_c_s'])
         return self.particles
+
 
     def create_scheme(self):
         return MyBiomassScheme(fluids=['fluid'], solids=[], dim=2,
                                  rho_max=rho_max, r_growth=r_growth,
-                                 sigma=sigma, lambda_=lambda_, beta=beta, gamma=gamma, D=D, mu=mu,
-                                 periodic_domain=(self.periodic_domain_min, self.periodic_domain_max))
+                                 sigma=sigma, lambda_=lambda_, beta=beta, gamma=gamma, D=D, mu=mu)
     
+
     def create_solver(self):
         kernel = CubicSpline(dim=2)
         scheme = self.create_scheme()
-        solver = Solver(dim=2,
-                        integrator=scheme.get_integrator(),
-                        kernel=kernel,
-                        )
+        solver = Solver(dim=2, integrator=scheme.get_integrator(), kernel=kernel)
         
         solver.tf = total_sim_time
         solver.dt = dt_global
         solver.set_adaptive_timestep(False)
-        # *************************************************************
-        # REMOVER A CONDIÇÃO IF DO PRINT DE post_step PARA VÊ-LO SEMPRE:
-        solver.set_print_freq(1) # Imprime a cada 1 passo de tempo para depuração
-        # *************************************************************
-
+        solver.set_print_freq(print_freq)
         return solver
+
 
     def create_tools(self):
         return []
     
+
     def post_step(self, solver):
         fluid_array = self.particles[0]
 
-        vx_interp_func_imposed = RegularGridInterpolator(
-            (np.linspace(domain_min_y, domain_max_y, y_dim), np.linspace(domain_min_x, domain_max_x, x_dim)),
-            self.imposed_vx_grid, bounds_error=False, fill_value=0
-        )
-        vy_interp_func_imposed = RegularGridInterpolator(
-            (np.linspace(domain_min_y, domain_max_y, y_dim), np.linspace(domain_min_x, domain_max_x, x_dim)),
-            self.imposed_vy_grid, bounds_error=False, fill_value=0
-        )
-
+        # **** MUDANÇA CRÍTICA PARA PERFORMANCE ****
+        # Obtenha as coordenadas e REUTILIZE os interpoladores pré-construídos.
+        # Esta operação agora é extremamente rápida.
         particle_coords = np.column_stack((fluid_array.y, fluid_array.x))
-        fluid_array.u[:] = vx_interp_func_imposed(particle_coords)
-        fluid_array.v[:] = vy_interp_func_imposed(particle_coords)
-
-        vx_interp_func_bact = RegularGridInterpolator(
-            (np.linspace(domain_min_y, domain_max_y, y_dim), np.linspace(domain_min_x, domain_max_x, x_dim)),
-            fluid_array.u.reshape(y_dim, x_dim),
-            bounds_error=False, fill_value=0
-        )
-        vy_interp_func_bact = RegularGridInterpolator(
-            (np.linspace(domain_min_y, domain_max_y, y_dim), np.linspace(domain_min_x, domain_max_x, x_dim)),
-            fluid_array.v.reshape(y_dim, x_dim),
-            bounds_error=False, fill_value=0
-        )
-
-        v_particles_y = vy_interp_func_bact(self.bact_positions)
-        v_particles_x = vx_interp_func_bact(self.bact_positions)
+        fluid_array.u[:] = self.vx_interp_func_imposed(particle_coords)
+        fluid_array.v[:] = self.vy_interp_func_imposed(particle_coords)
+        
+        # Mova as bactérias usando o mesmo campo de fluxo imposto de forma eficiente.
+        v_particles_y = self.vy_interp_func_imposed(self.bact_positions)
+        v_particles_x = self.vx_interp_func_imposed(self.bact_positions)
 
         dt = solver.dt
         self.bact_positions[:, 0] += v_particles_y * dt
         self.bact_positions[:, 1] += v_particles_x * dt
 
+        # Aplica condições de contorno periódicas às bactérias.
         self.bact_positions[:, 0] = (self.bact_positions[:, 0] - domain_min_y) % (domain_max_y - domain_min_y) + domain_min_y
         self.bact_positions[:, 1] = (self.bact_positions[:, 1] - domain_min_x) % (domain_max_x - domain_min_x) + domain_min_x
 
@@ -147,41 +146,26 @@ class BiomassSurfactantApp(Application):
             for i_bact in range(self.bact_positions.shape[0]):
                 self.all_bact_trajectories[i_bact].append(self.bact_positions[i_bact, :].copy())
 
-        # *************************************************************
-        # MOVA ESTE PRINT PARA FORA DA CONDIÇÃO IF para vê-lo sempre:
-        print(f"  Progresso: {((solver.count + 1) / (total_sim_time / dt_global)) * 100:.1f}% completo. "
-                      f"Max c_s: {np.max(fluid_array.c_s):.2e}, Max rho_b (partículas): {np.max(fluid_array.rho_b_grown):.2f}, "
-                      f"Max u: {np.max(np.abs(fluid_array.u)):.2e}, Max v: {np.max(np.abs(fluid_array.v)):.2e}")
-        # *************************************************************
+        # O print de progresso agora aparecerá em intervalos regulares.
+        if solver.count % print_freq == 0:
+            print(f"  Progresso: {((solver.count) / (total_sim_time / dt_global)) * 100:.1f}% completo. "
+                  f"Max c_s: {np.max(fluid_array.c_s):.2e}, Max rho_b: {np.max(fluid_array.rho_b_grown):.2f}")
+
 
     def post_process(self, info):
         print("Simulação concluída. Gerando plot final...")
 
         final_trajectories_for_plot = [np.array(traj_list) for traj_list in self.all_bact_trajectories if traj_list]
-
         fig, ax = plt.subplots(figsize=(8, 8))
-
         fluid_array = self.particles[0]
-        x_fluid = fluid_array.x
-        y_fluid = fluid_array.y
-        c_s_fluid = fluid_array.c_s
+        x_fluid, y_fluid, c_s_fluid = fluid_array.x, fluid_array.y, fluid_array.c_s
 
         x_grid_plot = np.linspace(domain_min_x, domain_max_x, x_dim)
         y_grid_plot = np.linspace(domain_min_y, domain_max_y, y_dim)
         _X_plot, _Y_plot = np.meshgrid(x_grid_plot, y_grid_plot)
 
-        cs_grid = np.zeros((y_dim, x_dim))
-        count_cs_grid = np.zeros((y_dim, x_dim))
-
-        for i in range(len(x_fluid)):
-            gx = int((x_fluid[i] - domain_min_x) / dx)
-            gy = int((y_fluid[i] - domain_min_y) / dy)
-            if 0 <= gx < x_dim and 0 <= gy < y_dim:
-                cs_grid[gy, gx] += c_s_fluid[i]
-                count_cs_grid[gy, gx] += 1
-
-        cs_grid[count_cs_grid > 0] /= count_cs_grid[count_cs_grid > 0]
-        cs_grid = np.ma.masked_where(count_cs_grid == 0, cs_grid)
+        # Interpolação para o plot (pode ser simplificada, mas funcional)
+        cs_grid = griddata((x_fluid, y_fluid), c_s_fluid, (_X_plot, _Y_plot), method='cubic', fill_value=1e-9)
 
         cs_min_plot = np.percentile(c_s_fluid[c_s_fluid > 1e-9], 1) if np.any(c_s_fluid > 1e-9) else 1e-7
         cs_max_plot = np.max(c_s_fluid)
@@ -191,7 +175,7 @@ class BiomassSurfactantApp(Application):
         norm_cs = LogNorm(vmin=cs_min_plot, vmax=cs_max_plot)
 
         cont_f = ax.contourf(_X_plot, _Y_plot, cs_grid, levels=levels_cs_contourf, cmap='viridis', alpha=0.6, norm=norm_cs, zorder=1)
-        cbar = fig.colorbar(cont_f, ax=ax, label='Concentração de Surfactante (c_s)', fraction=0.046, pad=0.04)
+        fig.colorbar(cont_f, ax=ax, label='Concentração de Surfactante (c_s)', fraction=0.046, pad=0.04)
 
         for traj_array in final_trajectories_for_plot:
             if traj_array.shape[0] > 1:
@@ -206,22 +190,14 @@ class BiomassSurfactantApp(Application):
         ax.set_ylim(domain_min_y, domain_max_y)
         plt.tight_layout()
 
-        output_plot_dir = os.path.join(info.output_directory, 'plots')
+        output_plot_dir = os.path.join(self.output_dir, 'plots')
         os.makedirs(output_plot_dir, exist_ok=True)
         output_path = os.path.join(output_plot_dir, 'simulacao_final.png')
         plt.savefig(output_path, dpi=300, bbox_inches='tight')
-
+        print(f"Plot final salvo em: {output_path}")
         plt.show()
+
 
 if __name__ == '__main__':
     app = BiomassSurfactantApp()
-    
-    # Adicione este print para verificar se os valores de rho_b_grown estão corretos após initialize()
-    # e se as derivadas existem no ParticleArray neste ponto.
-    fluid_pa = app.particles[0] # Pegue a referência ao particle array de novo
-    print(f"DEBUG MAIN: Max rho_b_grown APÓS INICIALIZAÇÃO E ADIÇÃO DE DERIVADAS: {np.max(fluid_pa.rho_b_grown):.4f}")
-    print(f"DEBUG MAIN FINAL: 'd_rho_b_grown' exists on fluid_array: {'d_rho_b_grown' in fluid_pa.properties}")
-    print(f"DEBUG MAIN FINAL: 'd_c_s' exists on fluid_array: {'d_c_s' in fluid_pa.properties}")
-
-
     app.run()

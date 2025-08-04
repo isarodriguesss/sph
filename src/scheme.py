@@ -1,64 +1,110 @@
 from pysph.sph.scheme import Scheme
 from pysph.sph.integrator import EulerIntegrator
 from pysph.sph.integrator_step import EulerStep
-from pysph.sph.basic_equations import SummationDensity
-from .equations import BiomassGrowth, SurfactantProductionDecay, SurfactantForceAndDrag
 from pysph.sph.equation import Group
 
-# O integrador customizado agora integra TODAS as propriedades (padrão e customizadas)
+from pysph.sph.basic_equations import SummationDensity
+from pysph.sph.wc.basic import MomentumEquation
+
+from .equations import (
+    BiomassGrowth,
+    SurfactantProductionDecay,
+    SurfactantDiffusion,
+    MarangoniForce,
+    LinearDrag,
+)
+
+
 class CustomEulerStep(EulerStep):
-    def stage1(self, d_idx,
-               d_u, d_v, d_w, d_au, d_av, d_aw,
-               d_x, d_y, d_z, d_rho, d_arho,
-               dt,
-               # Adicione aqui o estado e a taxa de suas propriedades
-               d_rho_b_grown, d_a_rho_b_grown,
-               d_c_s, d_a_c_s):
-        
-        # Integração padrão de Euler
+    def stage1(
+        self,
+        d_idx,
+        d_u,
+        d_v,
+        d_au,
+        d_av,
+        d_x,
+        d_y,
+        d_rho,
+        d_rho_b_grown,
+        d_a_rho_b_grown,
+        d_cs,
+        d_a_c_s,
+        dt,
+    ):
         d_u[d_idx] += dt * d_au[d_idx]
         d_v[d_idx] += dt * d_av[d_idx]
-        d_w[d_idx] += dt * d_aw[d_idx]
-
         d_x[d_idx] += dt * d_u[d_idx]
         d_y[d_idx] += dt * d_v[d_idx]
-        d_z[d_idx] += dt * d_w[d_idx]
 
-        d_rho[d_idx] += dt * d_arho[d_idx]
-
-        # Integração das suas propriedades: ESTADO += dt * TAXA
         d_rho_b_grown[d_idx] += dt * d_a_rho_b_grown[d_idx]
-        d_c_s[d_idx] += dt * d_a_c_s[d_idx]
+        d_cs[d_idx] += dt * d_a_c_s[d_idx]
 
-        # É uma boa prática aplicar limites/clipagem aqui, após a atualização
-        d_rho_b_grown[d_idx] = max(0.0, min(d_rho_b_grown[d_idx], 1.0)) # rho_max é 1.0
-        d_c_s[d_idx] = max(1e-9, d_c_s[d_idx])
+        d_rho_b_grown[d_idx] = max(0.0, min(d_rho_b_grown[d_idx], 1.0))
+        d_cs[d_idx] = max(1e-9, d_cs[d_idx])
+
 
 class MyBiomassScheme(Scheme):
-    def __init__(self, fluids, solids, dim, rho_max, r_growth, sigma, lambda_, beta, gamma, D, mu):
-        super(MyBiomassScheme, self).__init__(fluids, solids, dim)
-        self.rho_max = rho_max
-        self.r_growth = r_growth
-        self.sigma = sigma
-        self.lambda_ = lambda_
-        self.beta = beta
-        self.gamma = gamma
-        self.D = D
+    def __init__(
+        self, fluids, solids, dim, mu, gamma, beta, sigma, D, lambda_, r_growth, rho_max
+    ):
         self.mu = mu
+        self.gamma = gamma
+        self.beta = beta
+        self.sigma = sigma
+        self.D = D
+        self.lambda_ = lambda_
+        self.r_growth = r_growth
+        self.rho_max = rho_max
+        super(MyBiomassScheme, self).__init__(fluids, solids, dim=dim)
 
     def get_equations(self):
-        equations_interaction = Group(equations=[
-            SummationDensity(dest='fluid', sources=['fluid']),
-        ])
+        equations_pre = Group(
+            equations=[
+                SummationDensity(dest="fluid", sources=["fluid", "solid"]),
+            ]
+        )
 
-        equations_pointwise = Group(equations=[
-            BiomassGrowth(dest='fluid', sources=None, r_growth=self.r_growth, rho_max=self.rho_max),
-            SurfactantProductionDecay(dest='fluid', sources=None, sigma=self.sigma, lambda_=self.lambda_),
-            SurfactantForceAndDrag(dest='fluid', sources=None, beta=self.beta, gamma=self.gamma),
-        ])
+        equations_fluid_solid = Group(
+            equations=[
+                MomentumEquation(
+                    dest="fluid",
+                    sources=["fluid", "solid"],
+                    c0=10.0,
+                    alpha=self.mu,
+                    beta=0.0,
+                )
+            ]
+        )
 
-        return [equations_interaction, equations_pointwise]
+        equation_fluid_fluid = Group(
+            equations=[
+                MarangoniForce(dest="fluid", sources=["fluid"], beta=self.beta),
+                SurfactantDiffusion(dest="fluid", sources=["fluid"], D=self.D),
+            ]
+        )
+
+        equations_pointwise = Group(
+            equations=[
+                BiomassGrowth(
+                    dest="fluid",
+                    sources=None,
+                    r_growth=self.r_growth,
+                    rho_max=self.rho_max,
+                ),
+                SurfactantProductionDecay(
+                    dest="fluid", sources=None, sigma=self.sigma, lambda_=self.lambda_
+                ),
+                LinearDrag(dest="fluid", sources=None, gamma=self.gamma),
+            ]
+        )
+
+        return [
+            equations_pre,
+            equations_fluid_solid,
+            equation_fluid_fluid,
+            equations_pointwise,
+        ]
 
     def get_integrator(self):
-        # O integrador usa o nosso stepper customizado
         return EulerIntegrator(fluid=CustomEulerStep())

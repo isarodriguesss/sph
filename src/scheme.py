@@ -12,6 +12,7 @@ from .equations import (
     SurfactantDiffusion,
     MarangoniForce,
     LinearDrag,
+    InterpolateVelocity,
 )
 
 
@@ -46,7 +47,7 @@ class CustomEulerStep(EulerStep):
 
 class MyBiomassScheme(Scheme):
     def __init__(
-        self, fluids, solids, dim, mu, gamma, beta, sigma, D, lambda_, r_growth, rho_max
+        self, fluids, solids, others, dim, mu, gamma, beta, sigma, D, lambda_, r_growth, rho_max
     ):
         self.mu = mu
         self.gamma = gamma
@@ -56,6 +57,7 @@ class MyBiomassScheme(Scheme):
         self.lambda_ = lambda_
         self.r_growth = r_growth
         self.rho_max = rho_max
+        self.others = others
         super(MyBiomassScheme, self).__init__(fluids, solids, dim=dim)
 
     def get_equations(self):
@@ -99,11 +101,16 @@ class MyBiomassScheme(Scheme):
             ]
         )
 
+        equations_interp = Group(equations=[
+            InterpolateVelocity(dest="bact", sources=["fluid"]),
+        ])
+
         return [
             equations_pre,
             equations_fluid_solid,
             equation_fluid_fluid,
             equations_pointwise,
+            equations_interp,
         ]
 
     def get_integrator(self):

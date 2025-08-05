@@ -47,7 +47,19 @@ class CustomEulerStep(EulerStep):
 
 class MyBiomassScheme(Scheme):
     def __init__(
-        self, fluids, solids, others, dim, mu, gamma, beta, sigma, D, lambda_, r_growth, rho_max
+        self,
+        fluids,
+        solids,
+        others,
+        dim,
+        mu,
+        gamma,
+        beta,
+        sigma,
+        D,
+        lambda_,
+        r_growth,
+        rho_max,
     ):
         self.mu = mu
         self.gamma = gamma
@@ -101,9 +113,11 @@ class MyBiomassScheme(Scheme):
             ]
         )
 
-        equations_interp = Group(equations=[
-            InterpolateVelocity(dest="bact", sources=["fluid"]),
-        ])
+        equations_interp = Group(
+            equations=[
+                InterpolateVelocity(dest="bact", sources=["fluid"]),
+            ]
+        )
 
         return [
             equations_pre,

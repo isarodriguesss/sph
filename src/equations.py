@@ -31,8 +31,6 @@ class SurfactantProductionDecay(Equation):
 
 
 class SurfactantDiffusion(Equation):
-    """Difusão do surfactante com uma fórmula SPH estável para o Laplaciano."""
-
     def __init__(self, dest, sources, D):
         self.D = D
         super(SurfactantDiffusion, self).__init__(dest, sources)
@@ -50,20 +48,16 @@ class SurfactantDiffusion(Equation):
 
 
 class MarangoniForce(Equation):
-    """Força de Marangoni com uma fórmula SPH estável para o gradiente."""
-
     def __init__(self, dest, sources, beta):
         self.beta = -beta
         super(MarangoniForce, self).__init__(dest, sources)
 
     def loop(self, d_idx, s_idx, s_m, d_rho, s_rho, d_cs, s_cs, d_au, d_av, DWIJ):
-        # Fórmula de gradiente simétrica e estável
         cs_i = d_cs[d_idx]
         cs_j = s_cs[s_idx]
         rho_i = d_rho[d_idx]
         rho_j = s_rho[s_idx]
 
-        # Fator de pressão/densidade
         factor = (cs_i / (rho_i**2)) + (cs_j / (rho_j**2))
 
         d_au[d_idx] += self.beta * s_m[s_idx] * factor * DWIJ[0]

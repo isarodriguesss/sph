@@ -1,58 +1,88 @@
 from pysph.sph.equation import Equation
-import numpy as np
+
 
 class BiomassGrowth(Equation):
-    def __init__(self, dest, sources, r_growth, rho_max, **kw):
-        super(BiomassGrowth, self).__init__(dest, sources, **kw)
+    def __init__(self, dest, sources, r_growth, rho_max):
         self.r_growth = r_growth
         self.rho_max = rho_max
+        super(BiomassGrowth, self).__init__(dest, sources)
 
-    def loop(self, d_idx, d_rho_b_grown):
-        current_rho_b = d_rho_b_grown[d_idx]
-        rate_of_change = self.r_growth * current_rho_b * (1 - current_rho_b / self.rho_max)
+    def loop(self, d_idx, d_rho_b_grown, d_a_rho_b_grown):
+        if d_rho_b_grown[d_idx] > 1e-12:
+            rate = (
+                self.r_growth
+                * d_rho_b_grown[d_idx]
+                * (1.0 - d_rho_b_grown[d_idx] / self.rho_max)
+            )
+            d_a_rho_b_grown[d_idx] = rate
+        else:
+            d_a_rho_b_grown[d_idx] = 0.0
 
-        if d_idx == 0:
-            print(f"DEBUG_GROWTH_LOOP: r_growth={self.r_growth:.4f}, rho_max={self.rho_max:.4f}")
-            print(f"DEBUG_GROWTH_LOOP: Partícula {d_idx}: rho_b={current_rho_b:.4f}, Taxa_de_mudanca={rate_of_change:.6e}")
-            if abs(rate_of_change) < 1e-12: # Se a taxa for muito pequena
-                print(f"DEBUG_GROWTH_LOOP: Taxa de mudança muito pequena! Termo (1 - rho_b/rho_max) = {(1 - current_rho_b / self.rho_max):.6e}")
-
-        return rate_of_change
-
-    def post_loop(self, d_idx, d_rho_b_grown, d_rho, dt):
-        current_val = d_rho_b_grown[d_idx]
-        clipped_val = max(0.0, min(current_val, self.rho_max))
-
-        if d_idx == 0:
-            # Apenas imprima se houve uma mudança significativa
-            if abs(clipped_val - current_val) > 1e-9:
-                print(f"DEBUG_POST_LOOP: Partícula {d_idx}: Valor antes da clipagem={current_val:.4f}, Valor clipado={clipped_val:.4f}")
-            else:
-                print(f"DEBUG_POST_LOOP: Partícula {d_idx}: Valor após cálculo={current_val:.4f}, Não clipado.")
-
-        d_rho_b_grown[d_idx] = clipped_val
 
 class SurfactantProductionDecay(Equation):
-    def __init__(self, dest, sources, sigma, lambda_, **kw):
-        super(SurfactantProductionDecay, self).__init__(dest, sources, **kw)
+    def __init__(self, dest, sources, sigma, lambda_):
         self.sigma = sigma
         self.lambda_ = lambda_
+        super(SurfactantProductionDecay, self).__init__(dest, sources)
 
-    def initialize(self, d_idx, d_cs):
-        if d_cs[d_idx] <= 1e-9:
-            d_cs[d_idx] = 1e-9
+    def loop(self, d_idx, d_rho_b_grown, d_cs, d_a_c_s):
+        rate = self.sigma * d_rho_b_grown[d_idx] - self.lambda_ * d_cs[d_idx]
+        d_a_c_s[d_idx] += rate
 
-    def post_step(self, d_idx, d_cs, d_rho_b_grown, dt):
-        dcs_dt = self.sigma * d_rho_b_grown[d_idx] - self.lambda_ * d_cs[d_idx]
-        d_cs[d_idx] += dcs_dt * dt
-        d_cs[d_idx] = max(d_cs[d_idx], 1e-9)
 
-class SurfactantForceAndDrag(Equation):
-    def __init__(self, dest, sources, beta, gamma, **kw):
-        super(SurfactantForceAndDrag, self).__init__(dest, sources, **kw)
-        self.beta = beta
-        self.gamma = gamma
+class SurfactantDiffusion(Equation):
+    def __init__(self, dest, sources, D):
+        self.D = D
+        super(SurfactantDiffusion, self).__init__(dest, sources)
 
-    def post_step(self, d_idx, d_u, d_v, d_ax, d_ay, dt):
-        d_ax[d_idx] += -self.gamma * d_u[d_idx]
-        d_ay[d_idx] += -self.gamma * d_v[d_idx]
+    def loop(self, d_idx, s_idx, s_m, s_rho, d_cs, d_rho, s_cs, d_a_c_s, RIJ, DWIJ):
+        cs_ij = d_cs[d_idx] - s_cs[s_idx]
+        rho_ij = (d_rho[d_idx] + s_rho[s_idx]) * 0.5  
+
+        dw_x = DWIJ[0]
+        dw_y = DWIJ[1]
+
+        term = (s_m[s_idx] / s_rho[s_idx]) * (cs_ij / RIJ) * (dw_x + dw_y)
+
+        d_a_c_s[d_idx] += 2.0 * self.D * term
+
+
+class MarangoniForce(Equation):
+    def __init__(self, dest, sources, beta):
+        self.beta = -beta
+        super(MarangoniForce, self).__init__(dest, sources)
+
+    def loop(self, d_idx, s_idx, s_m, d_rho, s_rho, d_cs, s_cs, d_au, d_av, DWIJ):
+        cs_i = d_cs[d_idx]
+        cs_j = s_cs[s_idx]
+        rho_i = d_rho[d_idx]
+        rho_j = s_rho[s_idx]
+
+        factor = (cs_i / (rho_i**2)) + (cs_j / (rho_j**2))
+
+        d_au[d_idx] += self.beta * s_m[s_idx] * factor * DWIJ[0]
+        d_av[d_idx] += self.beta * s_m[s_idx] * factor * DWIJ[1]
+
+
+class LinearDrag(Equation):
+    def __init__(self, dest, sources, gamma):
+        self.gamma = -gamma
+        super(LinearDrag, self).__init__(dest, sources)
+
+    def loop(self, d_idx, d_u, d_v, d_au, d_av):
+        d_au[d_idx] += self.gamma * d_u[d_idx]
+        d_av[d_idx] += self.gamma * d_v[d_idx]
+
+
+class InterpolateVelocity(Equation):
+    def initialize(self, d_idx, d_u, d_v):
+        d_u[d_idx] = 0.0
+        d_v[d_idx] = 0.0
+
+    def loop(self, d_idx, s_idx, d_u, d_v, s_u, s_v, s_m, s_rho, WIJ):
+        vol_j = s_m[s_idx] / s_rho[s_idx]
+
+        wij = WIJ
+
+        d_u[d_idx] += s_u[s_idx] * vol_j * wij
+        d_v[d_idx] += s_v[s_idx] * vol_j * wij

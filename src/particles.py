@@ -1,65 +1,90 @@
 import numpy as np
-from pysph.base.utils import get_particle_array_wcsph
+from pysph.base.utils import get_particle_array
 
-def create_biomass_surfactant_particles(domain_min_x, domain_max_x, domain_min_y, domain_max_y, h, initial_dx_dy, rho_max, x_dim, y_dim):
 
-    #* Cria uma grade de pontos no domínio 3D definido
-    _x = np.linspace(domain_min_x + h/2, domain_max_x - h/2, int((domain_max_x - domain_min_x)/initial_dx_dy[0]))
-    _y = np.linspace(domain_min_y + h/2, domain_max_y - h/2, int((domain_max_y - domain_min_y)/initial_dx_dy[1]))
-    _X, _Y = np.meshgrid(_x, _y)
+def create_initial_state(x_dim=128, y_dim=128, rho_max=1.0, dt=0.001):
+    x = np.linspace(-1, 5, x_dim)
+    y = np.linspace(-1, 5, y_dim)
+    X_grid, Y_grid = np.meshgrid(x, y)
+    dx = x[1] - x[0]
+    dy = y[1] - y[0]
 
-    #* Coordenadas das partículas
-    x = _X.ravel()
-    y = _Y.ravel()
-    z = np.zeros_like(x)
+    x_part = X_grid.ravel()
+    y_part = Y_grid.ravel()
+    z_part = np.zeros_like(x_part)
+    m_part = np.ones_like(x_part) * dx * dx
+    h_part = np.ones_like(x_part) * 1.2 * dx
+    rho_part = np.ones_like(x_part) * 1.0
 
-    #* Velocidades iniciais das partículas
-    u, v, w = np.zeros_like(x), np.zeros_like(x), np.zeros_like(x)
+    center_x = (x.min() + x.max()) / 2.0
+    center_y = (y.min() + y.max()) / 2.0
+    rho_b = np.exp(-((X_grid - center_x) ** 2 + (Y_grid - center_y) ** 2) / 0.05)
+    perturb_offset_x = dx * 5
+    perturb_offset_y = dy * 5
+    perturb = 0.5 * np.exp(
+        -(
+            (X_grid - (center_x + perturb_offset_x)) ** 2
+            + (Y_grid - (center_y + perturb_offset_y)) ** 2
+        )
+        / 0.01
+    )
+    rho_b += perturb
+    rho_b += 0.15 * np.random.randn(*X_grid.shape)
+    rho_b_grown_part = np.clip(rho_b.ravel(), 0, rho_max)
 
-    #* Densidade inicial das partículas
-    rho = np.ones_like(x) * 1.0
-    #* Massa das partículas
-    m = rho * (initial_dx_dy[0] * initial_dx_dy[1])
-    #* Concentração inicial de surfactante
-    cs = np.zeros_like(x) + 1e-9
+    cs_part = np.ones_like(x_part) * 1e-9
 
-    center_x = (domain_min_x + domain_max_x) / 2.0
-    center_y = (domain_min_y + domain_max_y) / 2.0
+    fluid = get_particle_array(
+        name="fluid",
+        x=x_part,
+        y=y_part,
+        z=z_part,
+        m=m_part,
+        h=h_part,
+        rho=rho_part,
+        rho_b_grown=rho_b_grown_part,
+        cs=cs_part,
+        a_rho_b_grown=np.zeros_like(x_part),
+        a_c_s=np.zeros_like(x_part),
+        dt_cfl=np.ones_like(x_part) * dt,
+        dt_force=np.ones_like(x_part) * dt,
+        arho=np.zeros_like(x_part),
+    )
 
-    _X_grid, _Y_grid = np.meshgrid(np.linspace(domain_min_x, domain_max_x, x_dim), np.linspace(domain_min_y, domain_max_y, y_dim))
+    num_layers = 4
+    spacing = dx
 
-    #* Perturbação inicial da densidade de biomassa
-    gaussian1 = np.exp(-((_X_grid - center_x)**2 + (_Y_grid - center_y)**2) / 0.05)
-    perturb_offset_x = initial_dx_dy[0] * 5
-    perturb_offset_y = initial_dx_dy[1] * 5
-    gaussian2 = np.exp(-((_X_grid - (center_x + perturb_offset_x))**2 + (_Y_grid - (center_y + perturb_offset_y))**2) / 0.01)
+    x_left = np.arange(x.min() - num_layers * spacing, x.min(), spacing)
+    x_right = np.arange(
+        x.max() + spacing, x.max() + (num_layers + 1) * spacing, spacing
+    )
+    y_walls = np.arange(
+        y.min() - num_layers * spacing, y.max() + (num_layers + 1) * spacing, spacing
+    )
 
-    # DEBUG PRINTS PARA ACOMPANHAR OS VALORES
-    print(f"DEBUG particles.py: Max da 1a gaussiana (sem fator): {np.max(gaussian1):.4f}")
-    print(f"DEBUG particles.py: Max da 2a gaussiana (sem fator): {np.max(gaussian2):.4f}")
+    x_lr, y_lr = np.meshgrid(np.concatenate([x_left, x_right]), y_walls)
 
-    # Ajustando os fatores. Ex: 0.6 para o primeiro pico e 0.2 para a perturbação
-    rho_b_grid = 0.6 * gaussian1 # Reduzir o pico inicial para 0.6
-    print(f"DEBUG particles.py: Max rho_b_grid após 1a gaussiana (fator 0.6): {np.max(rho_b_grid):.4f}")
+    y_top = np.arange(y.max() + spacing, y.max() + (num_layers + 1) * spacing, spacing)
+    y_bottom = np.arange(y.min() - num_layers * spacing, y.min(), spacing)
+    x_walls = x
 
-    perturb = 0.2 * gaussian2 # Reduzir o pico da perturbação para 0.2
-    print(f"DEBUG particles.py: Max da perturbação (fator 0.2): {np.max(perturb):.4f}")
+    x_tb, y_tb = np.meshgrid(x_walls, np.concatenate([y_bottom, y_top]))
 
-    rho_b_grid += perturb
-    print(f"DEBUG particles.py: Max rho_b_grid após somar perturbação (soma de 0.6 e 0.2, esperada 0.8 ou menos): {np.max(rho_b_grid):.4f}")
+    x_solid = np.concatenate([x_lr.ravel(), x_tb.ravel()])
+    y_solid = np.concatenate([y_lr.ravel(), y_tb.ravel()])
 
-    # Remova ou comente esta linha para eliminar a contribuição do ruído aleatório
-    # rho_b_grid += 0.15 * np.random.randn(*_X.shape)
-    # Se você quiser ruído, adicione-o com um fator muito pequeno para não saturar.
-    # Ex: rho_b_grid += 0.01 * np.random.randn(*_X.shape)
+    m_solid = np.ones_like(x_solid) * dx * dy
+    h_solid = np.ones_like(x_solid) * 1.2 * dx
+    rho_solid = np.ones_like(x_solid) * 1.0
 
-    rho_b_grid = np.clip(rho_b_grid, 0, rho_max)
-    print(f"DEBUG particles.py: Max rho_b_grid após clipagem: {np.max(rho_b_grid):.4f}")
-    # --- FIM DA CORREÇÃO ---
+    solid = get_particle_array(
+        name="solid",
+        x=x_solid,
+        y=y_solid,
+        m=m_solid,
+        h=h_solid,
+        rho=rho_solid,
+        cs=np.zeros_like(x_solid),
+    )
 
-    rho_b_grown = rho_b_grid.ravel()
-
-    #* Cria o objeto ParticleArray com as propriedades definidas
-    fluid = get_particle_array_wcsph(name='fluid', x=x, y=y, z=z, u=u, v=v, w=w, rho=rho, m=m, h=h, c_s=cs, rho_b_grown=rho_b_grown)
-
-    return [fluid]
+    return [fluid, solid]

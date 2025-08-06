@@ -29,7 +29,8 @@ def create_initial_state(x_dim=128, y_dim=128, rho_max=1.0, dt=0.001):
         / 0.01
     )
     rho_b += perturb
-    rho_b += 0.15 * np.random.randn(*X_grid.shape)
+    noise = 0.15 * np.random.randn(*X_grid.shape)
+    rho_b += rho_b * noise
     rho_b_grown_part = np.clip(rho_b.ravel(), 0, rho_max)
 
     cs_part = np.ones_like(x_part) * 1e-9

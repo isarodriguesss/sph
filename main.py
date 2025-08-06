@@ -7,17 +7,17 @@ from pysph.base.utils import get_particle_array
 from src.particles import create_initial_state
 from src.scheme import MyBiomassScheme
 
-# x_dim, y_dim = 48, 48
-x_dim, y_dim = 128, 128  # Dimensões originais
+x_dim, y_dim = 64, 64
+#x_dim, y_dim = 128, 128  # Dimensões originais
 
 x_min_domain, x_max_domain = -1.0, 5.0
 y_min_domain, y_max_domain = -1.0, 5.0
 
 mu = 0.05
 # mu = 0.07 # Valor para evitar instabilidade
-gamma = 10.0
+gamma = 40.0
 # gamma = 13.0 # Valor para evitar instabilidade
-beta = 0.5
+beta = 2.0
 # beta = 0.5 # Valor para evitar instabilidade
 sigma = 1.0
 D = 0.01
@@ -26,7 +26,7 @@ r_growth = 0.2
 rho_max = 1.0
 
 dt_global = 0.001
-total_sim_time = 5.0
+total_sim_time = 20.0
 print_freq = 200
 
 trajectory_store_interval = 20

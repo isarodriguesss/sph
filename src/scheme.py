@@ -1,11 +1,13 @@
+# src/scheme.py
+
 from pysph.sph.scheme import Scheme
 from pysph.sph.integrator import EulerIntegrator
 from pysph.sph.integrator_step import EulerStep
 from pysph.sph.equation import Group
 
+# Importações
 from pysph.sph.basic_equations import SummationDensity
-from pysph.sph.wc.basic import MomentumEquation
-
+from pysph.sph.wc.basic import TaitEOS, MomentumEquation
 from .equations import (
     BiomassGrowth,
     SurfactantProductionDecay,
@@ -60,6 +62,8 @@ class MyBiomassScheme(Scheme):
         lambda_,
         r_growth,
         rho_max,
+        rho0,
+        c0,
     ):
         self.mu = mu
         self.gamma = gamma
@@ -69,63 +73,59 @@ class MyBiomassScheme(Scheme):
         self.lambda_ = lambda_
         self.r_growth = r_growth
         self.rho_max = rho_max
-        self.others = others
+        self.rho0 = rho0
+        self.c0 = c0
         super(MyBiomassScheme, self).__init__(fluids, solids, dim=dim)
 
     def get_equations(self):
+        # Grupo 1: Pré-cálculos para densidade e pressão.
+        # A opção `real=False` informa ao PySPH que este grupo não calcula
+        # as acelerações finais, então ele não deve zerar as propriedades de taxa.
         equations_pre = Group(
             equations=[
                 SummationDensity(dest="fluid", sources=["fluid", "solid"]),
-            ]
+                TaitEOS(
+                    dest="fluid", sources=None, rho0=self.rho0, c0=self.c0, gamma=7.0
+                ),
+            ],
+            real=False,
         )
 
-        equations_fluid_solid = Group(
+        # Grupo 2: O grupo principal. TODAS as equações que calculam
+        # forças e taxas de mudança de escalares vão aqui.
+        equations_main = Group(
             equations=[
+                # Equações de Força (contribuem para au, av)
                 MomentumEquation(
                     dest="fluid",
                     sources=["fluid", "solid"],
-                    c0=10.0,
+                    c0=self.c0,
                     alpha=self.mu,
                     beta=0.0,
-                )
-            ]
-        )
-
-        equation_fluid_fluid = Group(
-            equations=[
+                ),
                 MarangoniForce(dest="fluid", sources=["fluid"], beta=self.beta),
+                LinearDrag(dest="fluid", sources=None, gamma=self.gamma),
+                # Equações de Taxa de Escalares (contribuem para a_cs, a_rho_b_grown)
                 SurfactantDiffusion(dest="fluid", sources=["fluid"], D=self.D),
-            ]
-        )
-
-        equations_pointwise = Group(
-            equations=[
+                SurfactantProductionDecay(
+                    dest="fluid", sources=None, sigma=self.sigma, lambda_=self.lambda_
+                ),
                 BiomassGrowth(
                     dest="fluid",
                     sources=None,
                     r_growth=self.r_growth,
                     rho_max=self.rho_max,
                 ),
-                SurfactantProductionDecay(
-                    dest="fluid", sources=None, sigma=self.sigma, lambda_=self.lambda_
-                ),
-                LinearDrag(dest="fluid", sources=None, gamma=self.gamma),
             ]
         )
 
+        # Grupo 3: Interpolação para as bactérias (separado, pois tem um destino diferente)
         equations_interp = Group(
-            equations=[
-                InterpolateVelocity(dest="bact", sources=["fluid"]),
-            ]
+            equations=[InterpolateVelocity(dest="bact", sources=["fluid"])]
         )
 
-        return [
-            equations_pre,
-            equations_fluid_solid,
-            equation_fluid_fluid,
-            equations_pointwise,
-            equations_interp,
-        ]
+        return [equations_pre, equations_main, equations_interp]
 
     def get_integrator(self):
+        # Seu integrador customizado está correto e é necessário.
         return EulerIntegrator(fluid=CustomEulerStep())

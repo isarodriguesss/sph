@@ -31,20 +31,46 @@ class SurfactantProductionDecay(Equation):
 
 
 class SurfactantDiffusion(Equation):
+    """
+    Difusão do surfactante com uma fórmula SPH estável para o Laplaciano.
+    Esta forma é robusta e evita a explosão numérica quando as partículas
+    se aproximam.
+    """
+
     def __init__(self, dest, sources, D):
         self.D = D
         super(SurfactantDiffusion, self).__init__(dest, sources)
 
-    def loop(self, d_idx, s_idx, s_m, s_rho, d_cs, d_rho, s_cs, d_a_c_s, RIJ, DWIJ):
-        cs_ij = d_cs[d_idx] - s_cs[s_idx]
-        rho_ij = (d_rho[d_idx] + s_rho[s_idx]) * 0.5  
+    def loop(
+        self, d_idx, s_idx, d_rho, s_rho, d_cs, s_cs, s_m, RIJ, XIJ, DWIJ, d_a_c_s, d_h
+    ):
+        # Propriedades das partículas i (destino) e j (fonte)
+        cs_i = d_cs[d_idx]
+        cs_j = s_cs[s_idx]
+        rho_j = s_rho[s_idx]
 
-        dw_x = DWIJ[0]
-        dw_y = DWIJ[1]
+        # Diferença de concentração
+        cs_ij = cs_i - cs_j
 
-        term = (s_m[s_idx] / s_rho[s_idx]) * (cs_ij / RIJ) * (dw_x + dw_y)
+        # A chave é o termo de suavização (0.01 * h²) no denominador,
+        # que impede a divisão por zero quando as partículas se aproximam.
+        rij_sq = RIJ**2 + 0.01 * d_h[d_idx] ** 2
 
+        # Produto escalar correto: (∇W ⋅ r)
+        # XIJ = (x_i - x_j, y_i - y_j)
+        # DWIJ = (dW/dx, dW/dy)
+        dot_product = DWIJ[0] * XIJ[0] + DWIJ[1] * XIJ[1]
+
+        # Aceleração da concentração devido à difusão
+        # Esta é a implementação padrão do Laplaciano de Morris (1996)
+        term = (s_m[s_idx] / rho_j) * (cs_ij / rij_sq) * dot_product
+
+        # A contribuição total é 2 * D * termo
         d_a_c_s[d_idx] += 2.0 * self.D * term
+
+    def get_timestep(self, d_h):
+        # Retorna o passo de tempo estável para a difusão
+        return 0.125 * d_h[0] * d_h[0] / self.D
 
 
 class MarangoniForce(Equation):

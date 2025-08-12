@@ -8,26 +8,29 @@ from src.particles import create_initial_state
 from src.scheme import MyBiomassScheme
 
 x_dim, y_dim = 64, 64
-#x_dim, y_dim = 128, 128  # Dimensões originais
+# x_dim, y_dim = 128, 128  # Dimensões originais
 
 x_min_domain, x_max_domain = -1.0, 5.0
 y_min_domain, y_max_domain = -1.0, 5.0
 
-mu = 0.05
+mu = 0.02
 # mu = 0.07 # Valor para evitar instabilidade
-gamma = 40.0
+gamma = 30.0
 # gamma = 13.0 # Valor para evitar instabilidade
-beta = 2.0
+beta = 1.5
 # beta = 0.5 # Valor para evitar instabilidade
 sigma = 1.0
-D = 0.01
+D = 0.001
 lambda_ = 0.1
 r_growth = 0.2
 rho_max = 1.0
 
+rho0 = 1.0
+c0 = 10.0
+
 dt_global = 0.001
 total_sim_time = 20.0
-print_freq = 200
+print_freq = 500
 
 trajectory_store_interval = 20
 
@@ -88,6 +91,8 @@ class SwarmApp(Application):
             lambda_=lambda_,
             r_growth=r_growth,
             rho_max=rho_max,
+            rho0=rho0,
+            c0=c0,
         )
 
     def create_solver(self):

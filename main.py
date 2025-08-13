@@ -13,12 +13,12 @@ x_dim, y_dim = 64, 64
 x_min_domain, x_max_domain = -1.0, 5.0
 y_min_domain, y_max_domain = -1.0, 5.0
 
-mu = 0.02
-# mu = 0.07 # Valor para evitar instabilidade
-gamma = 30.0
-# gamma = 13.0 # Valor para evitar instabilidade
-beta = 1.5
-# beta = 0.5 # Valor para evitar instabilidade
+#mu = 0.02
+mu = 0.07 # Valor para evitar instabilidade
+#gamma = 30.0
+gamma = 13.0 # Valor para evitar instabilidade
+#beta = 1.5
+beta = 0.5 # Valor para evitar instabilidade
 sigma = 1.0
 D = 0.001
 lambda_ = 0.1
@@ -99,7 +99,7 @@ class SwarmApp(Application):
         kernel = CubicSpline(dim=2)
         solver = Solver(dim=2, integrator=self.scheme.get_integrator(), kernel=kernel)
         solver.set_adaptive_timestep(True)
-        solver.cfl = 0.3
+        solver.cfl = 0.1
         solver.tf = total_sim_time
         solver.set_print_freq(print_freq)
         return solver

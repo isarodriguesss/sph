@@ -52,7 +52,7 @@ def create_initial_state(x_dim=128, y_dim=128, rho_max=1.0, dt=0.001):
         arho=np.zeros_like(x_part),
     )
 
-    num_layers = 4
+    num_layers = 2
     spacing = dx
 
     x_left = np.arange(x.min() - num_layers * spacing, x.min(), spacing)

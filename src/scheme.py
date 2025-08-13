@@ -4,13 +4,13 @@ from pysph.sph.integrator_step import EulerStep
 from pysph.sph.equation import Group
 
 from pysph.sph.basic_equations import SummationDensity
-from pysph.sph.wc.basic import TaitEOS, MomentumEquation
 from .equations import (
     BiomassGrowth,
     SurfactantEquation,
     MarangoniForce,
     LinearDrag,
     InterpolateVelocity,
+    ViscousForce,
 )
 
 
@@ -77,26 +77,21 @@ class MyBiomassScheme(Scheme):
         equations_pre = Group(
             equations=[
                 SummationDensity(dest="fluid", sources=["fluid", "solid"]),
-                TaitEOS(
-                    dest="fluid", sources=None, rho0=self.rho0, c0=self.c0, gamma=7.0
-                ),
             ],
             real=False,
         )
 
         equations_main = Group(
             equations=[
-                MomentumEquation(
-                    dest="fluid",
-                    sources=["fluid", "solid"],
-                    c0=self.c0,
-                    alpha=self.mu,
-                    beta=0.0,
-                ), # está causando lentidão
+                ViscousForce(dest="fluid", sources=["fluid", "solid"], mu=self.mu),
                 MarangoniForce(dest="fluid", sources=["fluid"], beta=self.beta),
                 LinearDrag(dest="fluid", sources=None, gamma=self.gamma),
                 SurfactantEquation(
-                    dest="fluid", sources=['fluid'], D=self.D, sigma=self.sigma, lambda_=self.lambda_
+                    dest="fluid",
+                    sources=["fluid"],
+                    D=self.D,
+                    sigma=self.sigma,
+                    lambda_=self.lambda_,
                 ),
                 BiomassGrowth(
                     dest="fluid",

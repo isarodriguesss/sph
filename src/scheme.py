@@ -7,7 +7,6 @@ from pysph.sph.basic_equations import SummationDensity
 from .equations import (
     BiomassGrowth,
     SurfactantEquation,
-    MarangoniForce,
     LinearDrag,
     InterpolateVelocity,
     ViscousForce,
@@ -24,7 +23,6 @@ class CustomEulerStep(EulerStep):
         d_av,
         d_x,
         d_y,
-        d_rho,
         d_rho_b_grown,
         d_a_rho_b_grown,
         d_cs,
@@ -83,8 +81,8 @@ class MyBiomassScheme(Scheme):
 
         equations_main = Group(
             equations=[
-                ViscousForce(dest="fluid", sources=["fluid", "solid"], mu=self.mu),
-                MarangoniForce(dest="fluid", sources=["fluid"], beta=self.beta),
+                # MarangoniForce(dest="fluid", sources=["fluid"], beta=self.beta),
+                ViscousForce(dest="fluid", sources=["fluid"], mu=self.mu),
                 LinearDrag(dest="fluid", sources=None, gamma=self.gamma),
                 SurfactantEquation(
                     dest="fluid",
@@ -99,7 +97,7 @@ class MyBiomassScheme(Scheme):
                     r_growth=self.r_growth,
                     rho_max=self.rho_max,
                 ),
-            ]
+            ],
         )
 
         equations_interp = Group(

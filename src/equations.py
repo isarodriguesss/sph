@@ -30,27 +30,17 @@ class SurfactantEquation(Equation):
         d_a_c_s[d_idx] = 0.0
 
     def loop(self, d_idx, s_idx, s_rho, d_cs, s_cs, s_m, RIJ, XIJ, DWIJ, d_a_c_s, d_h):
-        cs_i = d_cs[d_idx]
-        cs_j = s_cs[s_idx]
-        rho_j = s_rho[s_idx]
-
-        cs_ij = cs_i - cs_j
-
+        cs_ij = d_cs[d_idx] - s_cs[s_idx]
         rij_sq = RIJ**2 + 0.01 * d_h[d_idx] ** 2
+        dot_product = XIJ[0] * DWIJ[0] + XIJ[1] * DWIJ[1]
 
-        xij_dot_dwij = XIJ[0] * DWIJ[0] + XIJ[1] * DWIJ[1]
-
-        term = (s_m[s_idx] / rho_j) * (cs_ij / rij_sq) * xij_dot_dwij
-
+        term = (s_m[s_idx] / s_rho[s_idx]) * (cs_ij / rij_sq) * dot_product
         d_a_c_s[d_idx] += 2.0 * self.D * term
 
     def post_loop(self, d_idx, d_rho_b_grown, d_a_c_s, d_cs):
-        diffusion_rate = d_a_c_s[d_idx]
+        reaction_rate = self.sigma * d_rho_b_grown[d_idx] - self.lambda_ * d_cs[d_idx]
 
-        prodution_rate = self.sigma * d_rho_b_grown[d_idx]
-        decay_rate = self.lambda_ * d_cs[d_idx]
-
-        d_a_c_s[d_idx] = diffusion_rate + prodution_rate - decay_rate
+        d_a_c_s[d_idx] += reaction_rate
 
 
 class MarangoniForce(Equation):
@@ -58,16 +48,27 @@ class MarangoniForce(Equation):
         self.beta = -beta
         super(MarangoniForce, self).__init__(dest, sources)
 
+    def initialize(self, d_idx, d_au, d_av):
+        d_au[d_idx] = 0.0
+        d_av[d_idx] = 0.0
+
     def loop(self, d_idx, s_idx, s_m, d_rho, s_rho, d_cs, s_cs, d_au, d_av, DWIJ):
-        cs_i = d_cs[d_idx]
-        cs_j = s_cs[s_idx]
-        rho_i = d_rho[d_idx]
-        rho_j = s_rho[s_idx]
+        vol_j = s_m[s_idx] / s_rho[s_idx]
+        cs_ij = s_cs[s_idx] - d_cs[d_idx]
 
-        factor = (cs_i / (rho_i**2)) + (cs_j / (rho_j**2))
+        acc_x = self.beta * vol_j * cs_ij * DWIJ[0]
+        acc_y = self.beta * vol_j * cs_ij * DWIJ[1]
 
-        d_au[d_idx] += self.beta * s_m[s_idx] * factor * DWIJ[0]
-        d_av[d_idx] += self.beta * s_m[s_idx] * factor * DWIJ[1]
+        d_au[d_idx] += acc_x
+        d_av[d_idx] += acc_y
+
+    def post_loop(self, d_idx, d_au, d_av):
+        acc_sq = d_au[d_idx] ** 2 + d_av[d_idx] ** 2
+
+        if acc_sq > self.acc_limit_sq:
+            scale = self.acc_limit / (acc_sq**0.5)
+            d_au[d_idx] *= scale
+            d_av[d_idx] *= scale
 
 
 class LinearDrag(Equation):
@@ -95,11 +96,6 @@ class InterpolateVelocity(Equation):
 
 
 class ViscousForce(Equation):
-    """
-    Calcula a força de viscosidade como mu * Laplaciano(v).
-    Usa a mesma forma estável do Laplaciano para evitar instabilidades.
-    """
-
     def __init__(self, dest, sources, mu):
         self.mu = mu
         super(ViscousForce, self).__init__(dest, sources)
@@ -124,23 +120,15 @@ class ViscousForce(Equation):
     ):
         rho_j = s_rho[s_idx]
 
-        # Diferença de velocidade
         u_ij = d_u[d_idx] - s_u[s_idx]
         v_ij = d_v[d_idx] - s_v[s_idx]
 
-        # Termo de suavização para estabilidade
         rij_sq = RIJ**2 + 0.01 * d_h[d_idx] ** 2
 
-        # Produto escalar (∇W ⋅ r)
         dot_product = XIJ[0] * DWIJ[0] + XIJ[1] * DWIJ[1]
 
-        # Aceleração devido à viscosidade
-        # O termo completo é (2 * mu / rho_i) * sum(...)
-        # O PySPH já divide pela densidade no integrador, então aqui calculamos a força por unidade de volume.
-        # Mas para ser consistente, adicionamos à aceleração. A densidade rho_i será considerada.
         common_term = (s_m[s_idx] / rho_j) * (dot_product / rij_sq)
 
-        # Fator 2*mu vem da formulação do Laplaciano para vetores
         acc_x = 2.0 * self.mu * common_term * u_ij
         acc_y = 2.0 * self.mu * common_term * v_ij
 

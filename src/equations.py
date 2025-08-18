@@ -44,8 +44,10 @@ class SurfactantEquation(Equation):
 
 
 class MarangoniForce(Equation):
-    def __init__(self, dest, sources, beta):
+    def __init__(self, dest, sources, beta, acc_limit=10.0):
         self.beta = -beta
+        self.acc_limit = acc_limit
+        self.acc_limit_sq = acc_limit * acc_limit
         super(MarangoniForce, self).__init__(dest, sources)
 
     def initialize(self, d_idx, d_au, d_av):
@@ -131,6 +133,24 @@ class ViscousForce(Equation):
 
         acc_x = 2.0 * self.mu * common_term * u_ij
         acc_y = 2.0 * self.mu * common_term * v_ij
+
+        d_au[d_idx] += acc_x
+        d_av[d_idx] += acc_y
+
+
+class ActiveSpreadingForce(Equation):
+    def __init__(self, dest, sources, P_active=0.1):
+        self.P_active = -P_active
+        super(ActiveSpreadingForce, self).__init__(dest, sources)
+
+    def loop(
+        self, d_idx, s_idx, d_rho_b_grown, s_rho_b_grown, s_m, s_rho, d_au, d_av, DWIJ
+    ):
+        rho_b_ij = s_rho_b_grown[s_idx] - d_rho_b_grown[d_idx]
+        vol_j = s_m[s_idx] / s_rho[s_idx]
+
+        acc_x = self.P_active * vol_j * rho_b_ij * DWIJ[0]
+        acc_y = self.P_active * vol_j * rho_b_ij * DWIJ[1]
 
         d_au[d_idx] += acc_x
         d_av[d_idx] += acc_y

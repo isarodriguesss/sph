@@ -10,6 +10,8 @@ from .equations import (
     LinearDrag,
     InterpolateVelocity,
     ViscousForce,
+    MarangoniForce,
+    ActiveSpreadingForce,
 )
 
 
@@ -58,6 +60,7 @@ class MyBiomassScheme(Scheme):
         rho_max,
         rho0,
         c0,
+        P_active
     ):
         self.mu = mu
         self.gamma = gamma
@@ -69,6 +72,7 @@ class MyBiomassScheme(Scheme):
         self.rho_max = rho_max
         self.rho0 = rho0
         self.c0 = c0
+        self.P_active = P_active
         super(MyBiomassScheme, self).__init__(fluids, solids, dim=dim)
 
     def get_equations(self):
@@ -81,9 +85,10 @@ class MyBiomassScheme(Scheme):
 
         equations_main = Group(
             equations=[
-                # MarangoniForce(dest="fluid", sources=["fluid"], beta=self.beta),
+                MarangoniForce(dest="fluid", sources=["fluid"], beta=self.beta),
                 ViscousForce(dest="fluid", sources=["fluid"], mu=self.mu),
                 LinearDrag(dest="fluid", sources=None, gamma=self.gamma),
+                ActiveSpreadingForce(dest="fluid", sources=["fluid"], P_active=self.P_active),
                 SurfactantEquation(
                     dest="fluid",
                     sources=["fluid"],

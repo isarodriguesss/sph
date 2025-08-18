@@ -33,12 +33,14 @@ rho0 = 1.0
 c0 = 10.0
 
 dt_global = 0.001
-total_sim_time = 40.0
+total_sim_time = 20.0
 # total_sim_time = 100.0 # expensões maiores
 print_freq = 500
 # print_freq = 2500 # expensões maiores
 
 trajectory_store_interval = 20
+
+P_active = 0.05
 
 
 class SwarmApp(Application):
@@ -99,6 +101,7 @@ class SwarmApp(Application):
             rho_max=rho_max,
             rho0=rho0,
             c0=c0,
+            P_active=P_active,
         )
 
     def create_solver(self):

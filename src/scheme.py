@@ -4,15 +4,14 @@ from pysph.sph.integrator_step import EulerStep
 from pysph.sph.equation import Group
 
 from pysph.sph.basic_equations import SummationDensity
-from pysph.sph.wc.basic import MomentumEquation
-
 from .equations import (
     BiomassGrowth,
-    SurfactantProductionDecay,
-    SurfactantDiffusion,
-    MarangoniForce,
+    SurfactantEquation,
     LinearDrag,
     InterpolateVelocity,
+    ViscousForce,
+    MarangoniForce,
+    ActiveSpreadingForce,
 )
 
 
@@ -26,7 +25,6 @@ class CustomEulerStep(EulerStep):
         d_av,
         d_x,
         d_y,
-        d_rho,
         d_rho_b_grown,
         d_a_rho_b_grown,
         d_cs,
@@ -60,6 +58,9 @@ class MyBiomassScheme(Scheme):
         lambda_,
         r_growth,
         rho_max,
+        rho0,
+        c0,
+        P_active,
     ):
         self.mu = mu
         self.gamma = gamma
@@ -69,63 +70,48 @@ class MyBiomassScheme(Scheme):
         self.lambda_ = lambda_
         self.r_growth = r_growth
         self.rho_max = rho_max
-        self.others = others
+        self.rho0 = rho0
+        self.c0 = c0
+        self.P_active = P_active
         super(MyBiomassScheme, self).__init__(fluids, solids, dim=dim)
 
     def get_equations(self):
         equations_pre = Group(
             equations=[
                 SummationDensity(dest="fluid", sources=["fluid", "solid"]),
-            ]
+            ],
+            real=False,
         )
 
-        equations_fluid_solid = Group(
-            equations=[
-                MomentumEquation(
-                    dest="fluid",
-                    sources=["fluid", "solid"],
-                    c0=10.0,
-                    alpha=self.mu,
-                    beta=0.0,
-                )
-            ]
-        )
-
-        equation_fluid_fluid = Group(
+        equations_main = Group(
             equations=[
                 MarangoniForce(dest="fluid", sources=["fluid"], beta=self.beta),
-                SurfactantDiffusion(dest="fluid", sources=["fluid"], D=self.D),
-            ]
-        )
-
-        equations_pointwise = Group(
-            equations=[
+                ViscousForce(dest="fluid", sources=["fluid"], mu=self.mu),
+                LinearDrag(dest="fluid", sources=None, gamma=self.gamma),
+                ActiveSpreadingForce(
+                    dest="fluid", sources=["fluid"], P_active=self.P_active
+                ),
+                SurfactantEquation(
+                    dest="fluid",
+                    sources=["fluid"],
+                    D=self.D,
+                    sigma=self.sigma,
+                    lambda_=self.lambda_,
+                ),
                 BiomassGrowth(
                     dest="fluid",
                     sources=None,
                     r_growth=self.r_growth,
                     rho_max=self.rho_max,
                 ),
-                SurfactantProductionDecay(
-                    dest="fluid", sources=None, sigma=self.sigma, lambda_=self.lambda_
-                ),
-                LinearDrag(dest="fluid", sources=None, gamma=self.gamma),
-            ]
+            ],
         )
 
         equations_interp = Group(
-            equations=[
-                InterpolateVelocity(dest="bact", sources=["fluid"]),
-            ]
+            equations=[InterpolateVelocity(dest="bact", sources=["fluid"])]
         )
 
-        return [
-            equations_pre,
-            equations_fluid_solid,
-            equation_fluid_fluid,
-            equations_pointwise,
-            equations_interp,
-        ]
+        return [equations_pre, equations_main, equations_interp]
 
     def get_integrator(self):
         return EulerIntegrator(fluid=CustomEulerStep())

@@ -3,8 +3,8 @@ format:
 	ruff format .
 
 run:
-	rm -rf /home/isadorarodrigues/sph/main_output
+	rm -rf main_output
 	python main.py
 
 view:
-	pysph view /home/isadorarodrigues/sph/main_output
+	pysph view main_output

@@ -60,7 +60,7 @@ class MyBiomassScheme(Scheme):
         rho_max,
         rho0,
         c0,
-        P_active
+        P_active,
     ):
         self.mu = mu
         self.gamma = gamma
@@ -88,7 +88,9 @@ class MyBiomassScheme(Scheme):
                 MarangoniForce(dest="fluid", sources=["fluid"], beta=self.beta),
                 ViscousForce(dest="fluid", sources=["fluid"], mu=self.mu),
                 LinearDrag(dest="fluid", sources=None, gamma=self.gamma),
-                ActiveSpreadingForce(dest="fluid", sources=["fluid"], P_active=self.P_active),
+                ActiveSpreadingForce(
+                    dest="fluid", sources=["fluid"], P_active=self.P_active
+                ),
                 SurfactantEquation(
                     dest="fluid",
                     sources=["fluid"],

@@ -42,6 +42,7 @@ def create_initial_state(x_dim=128, y_dim=128, rho_max=1.0, dt=0.001):
         z=z_part,
         m=m_part,
         h=h_part,
+        ah=np.zeros_like(x_part),
         rho=rho_part,
         rho_b_grown=rho_b_grown_part,
         cs=cs_part,

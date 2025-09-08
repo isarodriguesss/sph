@@ -7,21 +7,27 @@ from pysph.base.utils import get_particle_array
 from src.particles import create_initial_state
 from src.scheme import MyBiomassScheme
 
-# x_dim, y_dim = 64, 64
-x_dim, y_dim = 128, 128  # Dimensões originais
+x_dim, y_dim = 64, 64
+# x_dim, y_dim = 128, 128  # Dimensões originais
 
 x_min_domain, x_max_domain = -1.0, 5.0
 y_min_domain, y_max_domain = -1.0, 5.0
+
+dx = (x_max_domain - x_min_domain) / (x_dim - 1)
+
+h_min = 1.2 * dx
+h_max = 2.5 * h_min
+C_swell = 0.1
 
 # expansões maiores
 # x_min_domain, x_max_domain = -6.0, 6.0
 # y_min_domain, y_max_domain = -6.0, 6.0
 
-mu = 0.02
+mu = 0.07
 # mu = 0.07  # Valor para evitar instabilidade
-gamma = 30.0
+gamma = 50.0
 # gamma = 13.0  # Valor para evitar instabilidade
-beta = 1.5
+beta = 1.0
 # beta = 0.5  # Valor para evitar instabilidade
 sigma = 1.0
 D = 0.001
@@ -40,7 +46,7 @@ print_freq = 500
 
 trajectory_store_interval = 20
 
-P_active = 0.05
+P_active = 0.01
 
 
 class SwarmApp(Application):
@@ -102,6 +108,9 @@ class SwarmApp(Application):
             rho0=rho0,
             c0=c0,
             P_active=P_active,
+            h_max=h_max,
+            h_min=h_min,
+            C_swell=C_swell,
         )
 
     def create_solver(self):

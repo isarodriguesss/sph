@@ -11,7 +11,7 @@ from .equations import (
     InterpolateVelocity,
     ViscousForce,
     MarangoniForce,
-    ActiveSpreadingForce,
+    ParticleSwelling
 )
 
 
@@ -61,6 +61,9 @@ class MyBiomassScheme(Scheme):
         rho0,
         c0,
         P_active,
+        h_max,
+        h_min,
+        C_swell,
     ):
         self.mu = mu
         self.gamma = gamma
@@ -73,36 +76,43 @@ class MyBiomassScheme(Scheme):
         self.rho0 = rho0
         self.c0 = c0
         self.P_active = P_active
+        self.h_max = h_max
+        self.h_min = h_min
+        self.C_swell = C_swell
         super(MyBiomassScheme, self).__init__(fluids, solids, dim=dim)
 
     def get_equations(self):
         equations_pre = Group(
             equations=[
                 SummationDensity(dest="fluid", sources=["fluid", "solid"]),
+                BiomassGrowth(
+                    dest="fluid",
+                    sources=None,
+                    r_growth=self.r_growth,
+                    rho_max=self.rho_max,
+                ),
             ],
             real=False,
         )
 
         equations_main = Group(
             equations=[
+                ParticleSwelling(
+                    dest="fluid",
+                    sources=None,
+                    h_max=self.h_max,
+                    h_min=self.h_min,
+                    C_swell=self.C_swell,
+                ),
                 MarangoniForce(dest="fluid", sources=["fluid"], beta=self.beta),
                 ViscousForce(dest="fluid", sources=["fluid"], mu=self.mu),
                 LinearDrag(dest="fluid", sources=None, gamma=self.gamma),
-                ActiveSpreadingForce(
-                    dest="fluid", sources=["fluid"], P_active=self.P_active
-                ),
                 SurfactantEquation(
                     dest="fluid",
                     sources=["fluid"],
                     D=self.D,
                     sigma=self.sigma,
                     lambda_=self.lambda_,
-                ),
-                BiomassGrowth(
-                    dest="fluid",
-                    sources=None,
-                    r_growth=self.r_growth,
-                    rho_max=self.rho_max,
                 ),
             ],
         )

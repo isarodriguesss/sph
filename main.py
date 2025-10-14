@@ -15,10 +15,6 @@ y_min_domain, y_max_domain = -1.0, 5.0
 
 dx = (x_max_domain - x_min_domain) / (x_dim - 1)
 
-h_min = 1.2 * dx
-h_max = 2.5 * h_min
-C_swell = 0.1
-
 # expansões maiores
 # x_min_domain, x_max_domain = -6.0, 6.0
 # y_min_domain, y_max_domain = -6.0, 6.0
@@ -35,9 +31,6 @@ lambda_ = 0.1
 r_growth = 0.2
 rho_max = 1.0
 
-rho0 = 1.0
-c0 = 10.0
-
 dt_global = 0.001
 total_sim_time = 20.0
 # total_sim_time = 100.0 # expensões maiores
@@ -46,13 +39,17 @@ print_freq = 500
 
 trajectory_store_interval = 20
 
-P_active = 0.01
-
 
 class SwarmApp(Application):
     def initialize(self):
         self.n_bact = 300
         self.all_bact_trajectories = [[] for _ in range(self.n_bact)]
+
+    def pre_step(self, solver):
+        fluid = self.particles[0]
+        num_particles = fluid.get_number_of_particles()
+        random_numbers = np.random.rand(num_particles)
+        fluid.rand_num[:] = random_numbers
 
     def create_particles(self):
         fluid_solid = create_initial_state(x_dim=x_dim, y_dim=y_dim, rho_max=rho_max)
@@ -95,7 +92,6 @@ class SwarmApp(Application):
         return MyBiomassScheme(
             fluids=["fluid"],
             solids=["solid"],
-            others=["bact"],
             dim=2,
             mu=mu,
             gamma=gamma,
@@ -105,12 +101,6 @@ class SwarmApp(Application):
             lambda_=lambda_,
             r_growth=r_growth,
             rho_max=rho_max,
-            rho0=rho0,
-            c0=c0,
-            P_active=P_active,
-            h_max=h_max,
-            h_min=h_min,
-            C_swell=C_swell,
         )
 
     def create_solver(self):
@@ -152,6 +142,65 @@ class SwarmApp(Application):
                 f"dt={solver.dt:.2e}s, Max c_s: {np.max(fluid.cs):.2e}, "
                 f"Max rho_b: {np.max(fluid.rho_b_grown):.2f}, Max |v|: {max_vel:.2e}"
             )
+
+        if solver.count > 0 and solver.count % 100 == 0:
+            fluid = self.particles[0]
+            indices_to_split = np.where(fluid.m > 1.99 * fluid.m0)[0]
+            if len(indices_to_split) > 0:
+                print(
+                    f"\n--- Divisão Celular em t={solver.t:.2f}: {len(indices_to_split)} partículas se dividindo. ---"
+                )
+
+                daughters = fluid.empty_clone()
+
+                props_to_copy = [
+                    "x",
+                    "y",
+                    "m",
+                    "h",
+                    "rho",
+                    "rho_b_grown",
+                    "cs",
+                    "u",
+                    "v",
+                    "au",
+                    "av",
+                    "a_rho_b_grown",
+                    "a_c_s",
+                    "ready_to_split",
+                    "m0",
+                ]
+
+                for parent_idx in indices_to_split:
+                    parent_props = {
+                        prop: getattr(fluid, prop)[parent_idx] for prop in props_to_copy
+                    }
+
+                    for i in range(2):
+                        daughter_data = parent_props.copy()
+                        daughter_data["m"] = parent_props["m"] / 2.0
+                        daughter_data["m0"] = parent_props["m0"]
+                        daughter_data["rho_b_grown"] = parent_props["rho_b_grown"] / 2.0
+                        dx_local = parent_props["h"] / 4.0
+                        offset_x = dx_local * (np.random.rand() - 0.5)
+                        offset_y = dx_local * (np.random.rand() - 0.5)
+
+                        daughter_data = parent_props.copy()
+                        daughter_data["x"] = parent_props["x"] + offset_x
+                        daughter_data["y"] = parent_props["y"] + offset_y
+                        daughter_data["ready_to_split"] = 0.0
+
+                        data_to_add = {
+                            key: [value] for key, value in daughter_data.items()
+                        }
+
+                        daughters.add_particles(**data_to_add)
+
+                fluid.append_parray(daughters)
+
+                fluid.remove_particles(indices_to_split)
+
+                solver.nnps.update()
 
 
 if __name__ == "__main__":

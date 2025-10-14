@@ -5,9 +5,11 @@ class BiomassGrowth(Equation):
     def __init__(self, dest, sources, r_growth, rho_max):
         self.r_growth = r_growth
         self.rho_max = rho_max
+
         super(BiomassGrowth, self).__init__(dest, sources)
 
-    def loop(self, d_idx, d_rho_b_grown, d_a_rho_b_grown):
+    def loop(self, d_idx, d_rho_b_grown, d_a_rho_b_grown, d_m, d_am):
+        rate = 0.0
         if d_rho_b_grown[d_idx] > 1e-12:
             rate = (
                 self.r_growth
@@ -15,8 +17,23 @@ class BiomassGrowth(Equation):
                 * (1.0 - d_rho_b_grown[d_idx] / self.rho_max)
             )
             d_a_rho_b_grown[d_idx] = rate
-        else:
-            d_a_rho_b_grown[d_idx] = 0.0
+
+        d_am[d_idx] = rate * d_m[d_idx]
+
+
+class MassGrowth(Equation):
+    def __init__(self, dest, sources, r_growth, rho_max):
+        self.r_growth = r_growth
+        self.rho_max = rho_max
+        super(MassGrowth, self).__init__(dest, sources)
+
+    def loop(self, d_idx, d_m, d_rho_b_grown, d_am):
+        if d_rho_b_grown[d_idx] > 1e-12:
+            growth_rate_factor = self.r_growth * (
+                1.0 - d_rho_b_grown[d_idx] / self.rho_max
+            )
+            dm_dt = growth_rate_factor * d_m[d_idx]
+            d_am[d_idx] = dm_dt
 
 
 class SurfactantEquation(Equation):
@@ -106,7 +123,6 @@ class ViscousForce(Equation):
         self,
         d_idx,
         s_idx,
-        d_rho,
         s_rho,
         d_u,
         d_v,
@@ -136,27 +152,3 @@ class ViscousForce(Equation):
 
         d_au[d_idx] += acc_x
         d_av[d_idx] += acc_y
-
-
-class ParticleSwelling(Equation):
-    """
-    Modela o aumento de volume devido ao crescimento da biomassa.
-    O raio de suavização 'h' da partícula aumenta com a taxa de crescimento.
-    dh/dt = C_swell * (d(rho_b)/dt)
-    """
-    def __init__(self, dest, sources, h_min, h_max, C_swell=0.1):
-        self.h_min = h_min  # O 'h' de uma partícula sem biomassa
-        self.h_max = h_max  # O 'h' de uma partícula saturada
-        self.C_swell = C_swell
-        super(ParticleSwelling, self).__init__(dest, sources)
-
-    def loop(self, d_idx, d_ah, d_a_rho_b_grown, d_h):
-        # A taxa de inchaço (dh/dt) é proporcional à taxa de crescimento da biomassa.
-        # d_a_rho_b_grown já é a taxa de crescimento (d(rho_b)/dt).
-        dh_dt = self.C_swell * d_a_rho_b_grown[d_idx]
-        
-        # O integrador espera 'ah' (d²h/dt²), mas aqui vamos simplificar
-        # e definir a taxa diretamente. Para isso, usaremos uma abordagem
-        # no post_loop ou diretamente no integrador.
-        # Por enquanto, vamos salvar a taxa em 'ah'.
-        d_ah[d_idx] = dh_dt

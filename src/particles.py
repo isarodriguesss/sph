@@ -15,10 +15,16 @@ def create_initial_state(x_dim=128, y_dim=128, rho_max=1.0, dt=0.001):
     m_part = np.ones_like(x_part) * dx * dx
     h_part = np.ones_like(x_part) * 1.2 * dx
     rho_part = np.ones_like(x_part) * 1.0
+    rho_b = np.zeros_like(X_grid)
 
     center_x = (x.min() + x.max()) / 2.0
     center_y = (y.min() + y.max()) / 2.0
-    rho_b = np.exp(-((X_grid - center_x) ** 2 + (Y_grid - center_y) ** 2) / 0.05)
+    dist_from_center = np.sqrt((X_grid - center_x) ** 2 + (Y_grid - center_y) ** 2)
+    initial_rho_b_radius = 0.5
+    seed_mask = dist_from_center < initial_rho_b_radius
+    perturb_rho_b = np.exp(
+        -((X_grid - center_x) ** 2 + (Y_grid - center_y) ** 2) / 0.05
+    )
     perturb_offset_x = dx * 5
     perturb_offset_y = dy * 5
     perturb = 0.5 * np.exp(
@@ -28,9 +34,12 @@ def create_initial_state(x_dim=128, y_dim=128, rho_max=1.0, dt=0.001):
         )
         / 0.01
     )
-    rho_b += perturb
+    perturb_rho_b += perturb
     noise = 0.15 * np.random.randn(*X_grid.shape)
     rho_b += rho_b * noise
+
+    rho_b[seed_mask] = perturb_rho_b[seed_mask]
+    rho_b[seed_mask] = np.maximum(rho_b[seed_mask], 0.1 * rho_max)
     rho_b_grown_part = np.clip(rho_b.ravel(), 0, rho_max)
 
     cs_part = np.ones_like(x_part) * 1e-9
@@ -48,9 +57,8 @@ def create_initial_state(x_dim=128, y_dim=128, rho_max=1.0, dt=0.001):
         cs=cs_part,
         a_rho_b_grown=np.zeros_like(x_part),
         a_c_s=np.zeros_like(x_part),
-        dt_cfl=np.ones_like(x_part) * dt,
-        dt_force=np.ones_like(x_part) * dt,
-        arho=np.zeros_like(x_part),
+        m0=m_part.copy(),
+        am=np.zeros_like(x_part),
     )
 
     num_layers = 2

@@ -28,7 +28,7 @@ beta = 1.0
 sigma = 1.0
 D = 0.001
 lambda_ = 0.1
-r_growth = 0.2
+r_growth = 0.5
 rho_max = 1.0
 
 dt_global = 0.001
@@ -39,22 +39,16 @@ print_freq = 500
 
 trajectory_store_interval = 20
 
+prob_of_splitting = 0.05
+
 
 class SwarmApp(Application):
     def initialize(self):
         self.n_bact = 300
         self.all_bact_trajectories = [[] for _ in range(self.n_bact)]
 
-    def pre_step(self, solver):
-        fluid = self.particles[0]
-        num_particles = fluid.get_number_of_particles()
-        random_numbers = np.random.rand(num_particles)
-        fluid.rand_num[:] = random_numbers
-
     def create_particles(self):
         fluid_solid = create_initial_state(x_dim=x_dim, y_dim=y_dim, rho_max=rho_max)
-
-        self.n_bact = 300
         x = np.linspace(x_min_domain, x_max_domain, x_dim)
         y = np.linspace(y_min_domain, y_max_domain, y_dim)
         center_x = (x.min() + x.max()) / 2.0
@@ -145,7 +139,12 @@ class SwarmApp(Application):
 
         if solver.count > 0 and solver.count % 100 == 0:
             fluid = self.particles[0]
-            indices_to_split = np.where(fluid.m > 1.99 * fluid.m0)[0]
+            mature_indices = np.where(fluid.m > 1.99 * fluid.m0)[0]
+            indices_to_split = []
+            for idx in mature_indices:
+                if np.random.rand() < prob_of_splitting:
+                    indices_to_split.append(idx)
+
             if len(indices_to_split) > 0:
                 print(
                     f"\n--- Divisão Celular em t={solver.t:.2f}: {len(indices_to_split)} partículas se dividindo. ---"
@@ -167,7 +166,6 @@ class SwarmApp(Application):
                     "av",
                     "a_rho_b_grown",
                     "a_c_s",
-                    "ready_to_split",
                     "m0",
                 ]
 
@@ -188,7 +186,6 @@ class SwarmApp(Application):
                         daughter_data = parent_props.copy()
                         daughter_data["x"] = parent_props["x"] + offset_x
                         daughter_data["y"] = parent_props["y"] + offset_y
-                        daughter_data["ready_to_split"] = 0.0
 
                         data_to_add = {
                             key: [value] for key, value in daughter_data.items()

@@ -2,38 +2,27 @@ from pysph.sph.equation import Equation
 
 
 class BiomassGrowth(Equation):
-    def __init__(self, dest, sources, r_growth, rho_max):
+    def __init__(self, dest, sources, r_growth, rho_max, density_limit=1.1):
         self.r_growth = r_growth
         self.rho_max = rho_max
+        self.density_limit = density_limit
 
         super(BiomassGrowth, self).__init__(dest, sources)
 
-    def loop(self, d_idx, d_rho_b_grown, d_a_rho_b_grown, d_m, d_am):
-        rate = 0.0
-        if d_rho_b_grown[d_idx] > 1e-12:
-            rate = (
-                self.r_growth
-                * d_rho_b_grown[d_idx]
-                * (1.0 - d_rho_b_grown[d_idx] / self.rho_max)
-            )
+    def loop(self, d_idx, d_rho_b_grown, d_a_rho_b_grown, d_m, d_am, d_rho):
+        if d_rho[d_idx] < self.density_limit:
+            rate = 0.0
+            if d_rho_b_grown[d_idx] > 1e-12:
+                rate = (
+                    self.r_growth
+                    * d_rho_b_grown[d_idx]
+                    * (1.0 - d_rho_b_grown[d_idx] / self.rho_max)
+                )
             d_a_rho_b_grown[d_idx] = rate
-
-        d_am[d_idx] = rate * d_m[d_idx]
-
-
-class MassGrowth(Equation):
-    def __init__(self, dest, sources, r_growth, rho_max):
-        self.r_growth = r_growth
-        self.rho_max = rho_max
-        super(MassGrowth, self).__init__(dest, sources)
-
-    def loop(self, d_idx, d_m, d_rho_b_grown, d_am):
-        if d_rho_b_grown[d_idx] > 1e-12:
-            growth_rate_factor = self.r_growth * (
-                1.0 - d_rho_b_grown[d_idx] / self.rho_max
-            )
-            dm_dt = growth_rate_factor * d_m[d_idx]
-            d_am[d_idx] = dm_dt
+            d_am[d_idx] = rate * d_m[d_idx]
+        else:
+            d_a_rho_b_grown[d_idx] = 0.0
+            d_am[d_idx] = 0.0
 
 
 class SurfactantEquation(Equation):

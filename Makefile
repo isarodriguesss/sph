@@ -8,3 +8,6 @@ run:
 
 view:
 	pysph view main_output
+
+paraview:
+	pysph dump_vtk main_output

@@ -11,7 +11,6 @@ from .equations import (
     InterpolateVelocity,
     ViscousForce,
     MarangoniForce,
-    ActiveSpreadingForce,
 )
 
 
@@ -19,6 +18,8 @@ class CustomEulerStep(EulerStep):
     def stage1(
         self,
         d_idx,
+        d_m,
+        d_am,
         d_u,
         d_v,
         d_au,
@@ -35,6 +36,7 @@ class CustomEulerStep(EulerStep):
         d_v[d_idx] += dt * d_av[d_idx]
         d_x[d_idx] += dt * d_u[d_idx]
         d_y[d_idx] += dt * d_v[d_idx]
+        d_m[d_idx] += dt * d_am[d_idx]
 
         d_rho_b_grown[d_idx] += dt * d_a_rho_b_grown[d_idx]
         d_cs[d_idx] += dt * d_a_c_s[d_idx]
@@ -48,7 +50,6 @@ class MyBiomassScheme(Scheme):
         self,
         fluids,
         solids,
-        others,
         dim,
         mu,
         gamma,
@@ -58,9 +59,6 @@ class MyBiomassScheme(Scheme):
         lambda_,
         r_growth,
         rho_max,
-        rho0,
-        c0,
-        P_active,
     ):
         self.mu = mu
         self.gamma = gamma
@@ -70,15 +68,18 @@ class MyBiomassScheme(Scheme):
         self.lambda_ = lambda_
         self.r_growth = r_growth
         self.rho_max = rho_max
-        self.rho0 = rho0
-        self.c0 = c0
-        self.P_active = P_active
         super(MyBiomassScheme, self).__init__(fluids, solids, dim=dim)
 
     def get_equations(self):
         equations_pre = Group(
             equations=[
                 SummationDensity(dest="fluid", sources=["fluid", "solid"]),
+                BiomassGrowth(
+                    dest="fluid",
+                    sources=None,
+                    r_growth=self.r_growth,
+                    rho_max=self.rho_max,
+                ),
             ],
             real=False,
         )
@@ -88,21 +89,12 @@ class MyBiomassScheme(Scheme):
                 MarangoniForce(dest="fluid", sources=["fluid"], beta=self.beta),
                 ViscousForce(dest="fluid", sources=["fluid"], mu=self.mu),
                 LinearDrag(dest="fluid", sources=None, gamma=self.gamma),
-                ActiveSpreadingForce(
-                    dest="fluid", sources=["fluid"], P_active=self.P_active
-                ),
                 SurfactantEquation(
                     dest="fluid",
                     sources=["fluid"],
                     D=self.D,
                     sigma=self.sigma,
                     lambda_=self.lambda_,
-                ),
-                BiomassGrowth(
-                    dest="fluid",
-                    sources=None,
-                    r_growth=self.r_growth,
-                    rho_max=self.rho_max,
                 ),
             ],
         )

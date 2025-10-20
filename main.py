@@ -7,30 +7,29 @@ from pysph.base.utils import get_particle_array
 from src.particles import create_initial_state
 from src.scheme import MyBiomassScheme
 
-# x_dim, y_dim = 64, 64
-x_dim, y_dim = 128, 128  # Dimensões originais
+x_dim, y_dim = 64, 64
+# x_dim, y_dim = 128, 128  # Dimensões originais
 
 x_min_domain, x_max_domain = -1.0, 5.0
 y_min_domain, y_max_domain = -1.0, 5.0
+
+dx = (x_max_domain - x_min_domain) / (x_dim - 1)
 
 # expansões maiores
 # x_min_domain, x_max_domain = -6.0, 6.0
 # y_min_domain, y_max_domain = -6.0, 6.0
 
-mu = 0.02
+mu = 0.07
 # mu = 0.07  # Valor para evitar instabilidade
-gamma = 30.0
+gamma = 50.0
 # gamma = 13.0  # Valor para evitar instabilidade
-beta = 1.5
+beta = 1.0
 # beta = 0.5  # Valor para evitar instabilidade
 sigma = 1.0
 D = 0.001
 lambda_ = 0.1
-r_growth = 0.2
+r_growth = 0.5
 rho_max = 1.0
-
-rho0 = 1.0
-c0 = 10.0
 
 dt_global = 0.001
 total_sim_time = 20.0
@@ -40,7 +39,7 @@ print_freq = 500
 
 trajectory_store_interval = 20
 
-P_active = 0.05
+prob_of_splitting = 0.05
 
 
 class SwarmApp(Application):
@@ -50,8 +49,6 @@ class SwarmApp(Application):
 
     def create_particles(self):
         fluid_solid = create_initial_state(x_dim=x_dim, y_dim=y_dim, rho_max=rho_max)
-
-        self.n_bact = 300
         x = np.linspace(x_min_domain, x_max_domain, x_dim)
         y = np.linspace(y_min_domain, y_max_domain, y_dim)
         center_x = (x.min() + x.max()) / 2.0
@@ -89,7 +86,6 @@ class SwarmApp(Application):
         return MyBiomassScheme(
             fluids=["fluid"],
             solids=["solid"],
-            others=["bact"],
             dim=2,
             mu=mu,
             gamma=gamma,
@@ -99,9 +95,6 @@ class SwarmApp(Application):
             lambda_=lambda_,
             r_growth=r_growth,
             rho_max=rho_max,
-            rho0=rho0,
-            c0=c0,
-            P_active=P_active,
         )
 
     def create_solver(self):
@@ -143,6 +136,68 @@ class SwarmApp(Application):
                 f"dt={solver.dt:.2e}s, Max c_s: {np.max(fluid.cs):.2e}, "
                 f"Max rho_b: {np.max(fluid.rho_b_grown):.2f}, Max |v|: {max_vel:.2e}"
             )
+
+        if solver.count > 0 and solver.count % 100 == 0:
+            fluid = self.particles[0]
+            mature_indices = np.where(fluid.m > 1.99 * fluid.m0)[0]
+            indices_to_split = []
+            for idx in mature_indices:
+                if np.random.rand() < prob_of_splitting:
+                    indices_to_split.append(idx)
+
+            if len(indices_to_split) > 0:
+                print(
+                    f"\n--- Divisão Celular em t={solver.t:.2f}: {len(indices_to_split)} partículas se dividindo. ---"
+                )
+
+                daughters = fluid.empty_clone()
+
+                props_to_copy = [
+                    "x",
+                    "y",
+                    "m",
+                    "h",
+                    "rho",
+                    "rho_b_grown",
+                    "cs",
+                    "u",
+                    "v",
+                    "au",
+                    "av",
+                    "a_rho_b_grown",
+                    "a_c_s",
+                    "m0",
+                ]
+
+                for parent_idx in indices_to_split:
+                    parent_props = {
+                        prop: getattr(fluid, prop)[parent_idx] for prop in props_to_copy
+                    }
+
+                    for i in range(2):
+                        daughter_data = parent_props.copy()
+                        daughter_data["m"] = parent_props["m"] / 2.0
+                        daughter_data["m0"] = parent_props["m0"]
+                        daughter_data["rho_b_grown"] = parent_props["rho_b_grown"] / 2.0
+                        dx_local = parent_props["h"] / 4.0
+                        offset_x = dx_local * (np.random.rand() - 0.5)
+                        offset_y = dx_local * (np.random.rand() - 0.5)
+
+                        daughter_data = parent_props.copy()
+                        daughter_data["x"] = parent_props["x"] + offset_x
+                        daughter_data["y"] = parent_props["y"] + offset_y
+
+                        data_to_add = {
+                            key: [value] for key, value in daughter_data.items()
+                        }
+
+                        daughters.add_particles(**data_to_add)
+
+                fluid.append_parray(daughters)
+
+                fluid.remove_particles(indices_to_split)
+
+                solver.nnps.update()
 
 
 if __name__ == "__main__":

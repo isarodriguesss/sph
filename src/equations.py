@@ -13,10 +13,7 @@ class BiomassGrowth(Equation):
         d_a_rho_b_grown[d_idx] = 0.0
         d_am[d_idx] = 0.0
         if d_rho_b_grown[d_idx] > 1e-12:
-            rate = (
-                self.r_growth *
-                (1.0 - d_rho_b_grown[d_idx] / self.rho_max)
-            )
+            rate = self.r_growth * (1.0 - d_rho_b_grown[d_idx] / self.rho_max)
             d_a_rho_b_grown[d_idx] = rate * d_rho_b_grown[d_idx]
             d_am[d_idx] = rate * d_m[d_idx]
 

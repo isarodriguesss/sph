@@ -10,7 +10,6 @@ from .equations import (
     LinearDrag,
     InterpolateVelocity,
     ViscousForce,
-    MarangoniForce,
 )
 
 
@@ -86,7 +85,7 @@ class MyBiomassScheme(Scheme):
                     r_growth=self.r_growth,
                     rho_max=self.rho_max,
                 ),
-                #MarangoniForce(dest="fluid", sources=["fluid"], beta=self.beta),
+                # MarangoniForce(dest="fluid", sources=["fluid"], beta=self.beta),
                 ViscousForce(dest="fluid", sources=["fluid"], mu=self.mu),
                 LinearDrag(dest="fluid", sources=None, gamma=self.gamma),
                 SurfactantEquation(

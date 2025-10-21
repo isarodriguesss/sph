@@ -21,9 +21,7 @@ def create_initial_state(x_dim=128, y_dim=128, rho_max=1.0, dt=0.001):
     """ dist_from_center = np.sqrt((X_grid - center_x) ** 2 + (Y_grid - center_y) ** 2)
     initial_rho_b_radius = 0.25
     seed_mask = dist_from_center < initial_rho_b_radius """
-    rho_b = np.exp(
-        -((X_grid - center_x) ** 2 + (Y_grid - center_y) ** 2) / 0.05
-    )
+    rho_b = np.exp(-((X_grid - center_x) ** 2 + (Y_grid - center_y) ** 2) / 0.05)
     perturb_offset_x = dx * 5
     perturb_offset_y = dy * 5
     perturb = 0.5 * np.exp(

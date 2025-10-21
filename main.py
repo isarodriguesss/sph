@@ -28,7 +28,7 @@ beta = 1.0
 sigma = 1.0
 D = 0.001
 lambda_ = 0.1
-r_growth = 0.5
+r_growth = 0.2
 rho_max = 1.0
 
 dt_global = 0.001

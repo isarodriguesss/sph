@@ -10,19 +10,15 @@ class BiomassGrowth(Equation):
         super(BiomassGrowth, self).__init__(dest, sources)
 
     def loop(self, d_idx, d_rho_b_grown, d_a_rho_b_grown, d_m, d_am, d_rho):
-        if d_rho[d_idx] < self.density_limit:
-            rate = 0.0
-            if d_rho_b_grown[d_idx] > 1e-12:
-                rate = (
-                    self.r_growth
-                    * d_rho_b_grown[d_idx]
-                    * (1.0 - d_rho_b_grown[d_idx] / self.rho_max)
-                )
-            d_a_rho_b_grown[d_idx] = rate
+        d_a_rho_b_grown[d_idx] = 0.0
+        d_am[d_idx] = 0.0
+        if d_rho_b_grown[d_idx] > 1e-12:
+            rate = (
+                self.r_growth *
+                (1.0 - d_rho_b_grown[d_idx] / self.rho_max)
+            )
+            d_a_rho_b_grown[d_idx] = rate * d_rho_b_grown[d_idx]
             d_am[d_idx] = rate * d_m[d_idx]
-        else:
-            d_a_rho_b_grown[d_idx] = 0.0
-            d_am[d_idx] = 0.0
 
 
 class SurfactantEquation(Equation):

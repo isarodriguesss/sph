@@ -15,14 +15,13 @@ def create_initial_state(x_dim=128, y_dim=128, rho_max=1.0, dt=0.001):
     m_part = np.ones_like(x_part) * dx * dx
     h_part = np.ones_like(x_part) * 1.2 * dx
     rho_part = np.ones_like(x_part) * 1.0
-    rho_b = np.zeros_like(X_grid)
 
     center_x = (x.min() + x.max()) / 2.0
     center_y = (y.min() + y.max()) / 2.0
-    dist_from_center = np.sqrt((X_grid - center_x) ** 2 + (Y_grid - center_y) ** 2)
-    initial_rho_b_radius = 0.5
-    seed_mask = dist_from_center < initial_rho_b_radius
-    perturb_rho_b = np.exp(
+    """ dist_from_center = np.sqrt((X_grid - center_x) ** 2 + (Y_grid - center_y) ** 2)
+    initial_rho_b_radius = 0.25
+    seed_mask = dist_from_center < initial_rho_b_radius """
+    rho_b = np.exp(
         -((X_grid - center_x) ** 2 + (Y_grid - center_y) ** 2) / 0.05
     )
     perturb_offset_x = dx * 5
@@ -34,12 +33,16 @@ def create_initial_state(x_dim=128, y_dim=128, rho_max=1.0, dt=0.001):
         )
         / 0.01
     )
-    perturb_rho_b += perturb
+    rho_b += perturb
     noise = 0.15 * np.random.randn(*X_grid.shape)
     rho_b += rho_b * noise
 
-    rho_b[seed_mask] = perturb_rho_b[seed_mask]
-    rho_b[seed_mask] = np.maximum(rho_b[seed_mask], 0.1 * rho_max)
+    rho_b = np.clip(rho_b, 0, None)
+
+    """ max_initial_rho_b = np.max(rho_b)
+    if max_initial_rho_b > 0:
+        rho_b = (rho_b / max_initial_rho_b) * 0.2 * rho_max """
+
     rho_b_grown_part = np.clip(rho_b.ravel(), 0, rho_max)
 
     cs_part = np.ones_like(x_part) * 1e-9

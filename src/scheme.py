@@ -74,19 +74,19 @@ class MyBiomassScheme(Scheme):
         equations_pre = Group(
             equations=[
                 SummationDensity(dest="fluid", sources=["fluid", "solid"]),
-                BiomassGrowth(
-                    dest="fluid",
-                    sources=None,
-                    r_growth=self.r_growth,
-                    rho_max=self.rho_max,
-                ),
             ],
             real=False,
         )
 
         equations_main = Group(
             equations=[
-                MarangoniForce(dest="fluid", sources=["fluid"], beta=self.beta),
+                BiomassGrowth(
+                    dest="fluid",
+                    sources=None,
+                    r_growth=self.r_growth,
+                    rho_max=self.rho_max,
+                ),
+                #MarangoniForce(dest="fluid", sources=["fluid"], beta=self.beta),
                 ViscousForce(dest="fluid", sources=["fluid"], mu=self.mu),
                 LinearDrag(dest="fluid", sources=None, gamma=self.gamma),
                 SurfactantEquation(

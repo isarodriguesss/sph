@@ -86,15 +86,8 @@ class MyBiomassScheme(Scheme):
                     rho_max=self.rho_max,
                 ),
                 # MarangoniForce(dest="fluid", sources=["fluid"], beta=self.beta),
-                ViscousForce(dest="fluid", sources=["fluid"], mu=self.mu),
-                LinearDrag(dest="fluid", sources=None, gamma=self.gamma),
-                SurfactantEquation(
-                    dest="fluid",
-                    sources=["fluid"],
-                    D=self.D,
-                    sigma=self.sigma,
-                    lambda_=self.lambda_,
-                ),
+                #ViscousForce(dest="fluid", sources=["fluid"], mu=self.mu),
+                #LinearDrag(dest="fluid", sources=None, gamma=self.gamma),
             ],
         )
 

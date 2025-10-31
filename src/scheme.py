@@ -6,6 +6,7 @@ from pysph.sph.equation import Group
 from pysph.sph.basic_equations import SummationDensity
 from .equations import (
     BiomassGrowth,
+    MarangoniForce,
     SurfactantEquation,
     LinearDrag,
     InterpolateVelocity,
@@ -85,9 +86,16 @@ class MyBiomassScheme(Scheme):
                     r_growth=self.r_growth,
                     rho_max=self.rho_max,
                 ),
-                # MarangoniForce(dest="fluid", sources=["fluid"], beta=self.beta),
-                #ViscousForce(dest="fluid", sources=["fluid"], mu=self.mu),
-                #LinearDrag(dest="fluid", sources=None, gamma=self.gamma),
+                MarangoniForce(dest="fluid", sources=["fluid"], beta=self.beta),
+                ViscousForce(dest="fluid", sources=["fluid"], mu=self.mu),
+                LinearDrag(dest="fluid", sources=None, gamma=self.gamma),
+                SurfactantEquation(
+                    dest="fluid",
+                    sources=["fluid"],
+                    D=self.D,
+                    sigma=self.sigma,
+                    lambda_=self.lambda_,
+                ),
             ],
         )
 

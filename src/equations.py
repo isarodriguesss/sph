@@ -36,8 +36,10 @@ class SurfactantEquation(Equation):
         term = (s_m[s_idx] / s_rho[s_idx]) * (cs_ij / rij_sq) * dot_product
         d_a_c_s[d_idx] += 2.0 * self.D * term
 
-    def post_loop(self, d_idx, d_rho_b_grown, d_a_c_s, d_cs):
-        reaction_rate = self.sigma * d_rho_b_grown[d_idx] - self.lambda_ * d_cs[d_idx]
+    def post_loop(self, d_idx, d_rho_b_grown, d_a_c_s, d_cs, d_noise):
+        reaction_rate = (
+            self.sigma * d_rho_b_grown[d_idx] * d_noise[d_idx]
+        ) - self.lambda_ * d_cs[d_idx]
 
         d_a_c_s[d_idx] += reaction_rate
 
@@ -134,3 +136,21 @@ class ViscousForce(Equation):
 
         d_au[d_idx] += acc_x
         d_av[d_idx] += acc_y
+
+
+class BiomassEOS(Equation):
+    def __init__(self, dest, sources, rho0, c0, gamma):
+        self.rho0 = rho0
+        self.c0 = c0
+        self.gamma = gamma
+        self.B = self.rho0 * (self.c0 * self.c0) / self.gamma
+        super(BiomassEOS, self).__init__(dest, sources)
+
+    def loop(self, d_idx, d_rho, d_p):
+        # rho_ref_effective = self.rho0 * 0.95
+        ratio = d_rho[d_idx] / self.rho0
+
+        if ratio < 1.0:
+            d_p[d_idx] = 0.0
+        else:
+            d_p[d_idx] = self.B * (ratio**self.gamma - 1.0)

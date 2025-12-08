@@ -19,16 +19,16 @@ dx = (x_max_domain - x_min_domain) / (x_dim - 1)
 # x_min_domain, x_max_domain = -6.0, 6.0
 # y_min_domain, y_max_domain = -6.0, 6.0
 
-mu = 1.0
+mu = 0.02
 # mu = 0.07  # Valor para evitar instabilidade
-gamma = 50.0
+gamma = 40.0
 # gamma = 13.0  # Valor para evitar instabilidade
-beta = 0.1
+beta = 2.0
 # beta = 0.5  # Valor para evitar instabilidade
-sigma = 1.0
-D = 0.001
-lambda_ = 0.1
-r_growth = 1.0
+sigma = 2.0
+D = 0.00005
+lambda_ = 0.05
+r_growth = 1.5
 rho_max = 1.0
 
 dt_global = 0.001
@@ -39,7 +39,8 @@ print_freq = 500
 
 trajectory_store_interval = 20
 
-prob_of_splitting = 0.007
+prob_of_splitting = 0.03
+c0 = 1.0
 
 
 class SwarmApp(Application):
@@ -76,7 +77,13 @@ class SwarmApp(Application):
 
         for pa in self.particles:
             if pa.name == "fluid":
-                pa.add_output_arrays(["rho_b_grown", "cs", "u", "v", "p"])
+                pa.add_property("noise")
+                pa.noise[:] = 1.0 + 0.1 * (np.random.rand(len(pa.x)))
+                pa.add_property("dt_force")
+                pa.add_property("dt_cfl")
+                pa.add_output_arrays(["rho_b_grown", "cs", "u", "v", "p", "noise"])
+            elif pa.name == "solid":
+                pa.add_property("p")
             elif pa.name == "bact":
                 pa.add_output_arrays(["u", "v"])
 
@@ -95,6 +102,7 @@ class SwarmApp(Application):
             lambda_=lambda_,
             r_growth=r_growth,
             rho_max=rho_max,
+            c0=c0,
         )
 
     def create_solver(self):
@@ -134,14 +142,17 @@ class SwarmApp(Application):
             print(
                 f"  t={solver.t:.2e}s ({((solver.t) / total_sim_time) * 100:.1f}%), "
                 f"dt={solver.dt:.2e}s, Max c_s: {np.max(fluid.cs):.2e}, "
-                f"Max rho_b: {np.max(fluid.rho_b_grown):.2f}, Max |v|: {max_vel:.2e}"
+                f"Max rho_b: {np.max(fluid.rho_b_grown):.2f}, Max |v|: {max_vel:.2e}, "
+                f"Max pressure: {np.max(fluid.p):.2e}"
             )
 
         if solver.count > 0 and solver.count % 100 == 0:
             fluid = self.particles[0]
             min_rho_b_for_division = 0.05
             mature_by_mass_indices = np.where(fluid.m > 1.99 * fluid.m0)[0]
-            mature_by_rho_b_indices = np.where(fluid.rho_b_grown[mature_by_mass_indices] > min_rho_b_for_division)[0]
+            mature_by_rho_b_indices = np.where(
+                fluid.rho_b_grown[mature_by_mass_indices] > min_rho_b_for_division
+            )[0]
             indices_to_split = []
             for idx in mature_by_rho_b_indices:
                 original_idx = mature_by_mass_indices[idx]
@@ -182,7 +193,7 @@ class SwarmApp(Application):
                         daughter_data["m"] = parent_props["m"] / 2.0
                         daughter_data["m0"] = parent_props["m0"]
                         daughter_data["rho_b_grown"] = parent_props["rho_b_grown"] / 2.0
-                        dx_local = parent_props["h"] / 4.0
+                        dx_local = parent_props["h"] * 0.5
                         offset_x = dx_local * (np.random.rand() - 0.5)
                         offset_y = dx_local * (np.random.rand() - 0.5)
 

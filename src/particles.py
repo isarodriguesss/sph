@@ -38,7 +38,7 @@ def create_initial_state(x_dim=128, y_dim=128, rho_max=1.0, dt=0.001):
     """ max_initial_rho_b = np.max(rho_b)
     if max_initial_rho_b > 0:
         rho_b = (rho_b / max_initial_rho_b) * 0.2 * rho_max """
-    
+
     rho_b = np.clip(rho_b, 0, None)
     rho_b_grown_part = np.clip(rho_b.ravel(), 0, rho_max)
     cs_part = np.ones_like(x_part) * 1e-9

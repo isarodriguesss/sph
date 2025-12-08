@@ -4,7 +4,9 @@ from pysph.sph.integrator_step import EulerStep
 from pysph.sph.equation import Group
 
 from pysph.sph.basic_equations import SummationDensity
+from pysph.sph.wc.basic import MomentumEquation
 from .equations import (
+    BiomassEOS,
     BiomassGrowth,
     MarangoniForce,
     SurfactantEquation,
@@ -59,6 +61,8 @@ class MyBiomassScheme(Scheme):
         lambda_,
         r_growth,
         rho_max,
+        c0=10.0,
+        p0=0.0,
     ):
         self.mu = mu
         self.gamma = gamma
@@ -68,18 +72,28 @@ class MyBiomassScheme(Scheme):
         self.lambda_ = lambda_
         self.r_growth = r_growth
         self.rho_max = rho_max
+        self.c0 = c0
+        self.p0 = p0
         super(MyBiomassScheme, self).__init__(fluids, solids, dim=dim)
 
     def get_equations(self):
         equations_pre = Group(
             equations=[
                 SummationDensity(dest="fluid", sources=["fluid", "solid"]),
+                BiomassEOS(dest="fluid", sources=None, rho0=1.0, c0=self.c0, gamma=7.0),
             ],
             real=False,
         )
 
         equations_main = Group(
             equations=[
+                MomentumEquation(
+                    dest="fluid",
+                    sources=["fluid", "solid"],
+                    c0=self.c0,
+                    alpha=0.5,
+                    beta=0.0,
+                ),
                 BiomassGrowth(
                     dest="fluid",
                     sources=None,

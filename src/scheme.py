@@ -11,7 +11,6 @@ from .equations import (
     MarangoniForce,
     SurfactantEquation,
     LinearDrag,
-    InterpolateVelocity,
     ViscousForce,
 )
 
@@ -79,7 +78,8 @@ class MyBiomassScheme(Scheme):
     def get_equations(self):
         equations_pre = Group(
             equations=[
-                SummationDensity(dest="fluid", sources=["fluid", "solid"]),
+                # SummationDensity(dest="fluid", sources=["fluid", "solid"]),
+                SummationDensity(dest="fluid", sources=["fluid"]),
                 BiomassEOS(dest="fluid", sources=None, rho0=1.0, c0=self.c0, gamma=7.0),
             ],
             real=False,
@@ -89,7 +89,8 @@ class MyBiomassScheme(Scheme):
             equations=[
                 MomentumEquation(
                     dest="fluid",
-                    sources=["fluid", "solid"],
+                    # sources=["fluid", "solid"],
+                    sources=["fluid"],
                     c0=self.c0,
                     alpha=0.5,
                     beta=0.0,
@@ -113,11 +114,11 @@ class MyBiomassScheme(Scheme):
             ],
         )
 
-        equations_interp = Group(
-            equations=[InterpolateVelocity(dest="bact", sources=["fluid"])]
-        )
+        # equations_interp = Group(
+        #     equations=[InterpolateVelocity(dest="bact", sources=["fluid"])]
+        # )
 
-        return [equations_pre, equations_main, equations_interp]
+        return [equations_pre, equations_main]
 
     def get_integrator(self):
         return EulerIntegrator(fluid=CustomEulerStep())

@@ -55,7 +55,7 @@ class MarangoniForce(Equation):
         d_au[d_idx] = 0.0
         d_av[d_idx] = 0.0
 
-    def loop(self, d_idx, s_idx, s_m, d_rho, s_rho, d_cs, s_cs, d_au, d_av, DWIJ):
+    def loop(self, d_idx, s_idx, s_m, d_rho, s_rho, d_cs, s_cs, d_au, d_av, d_au_mar, DWIJ):
         vol_j = s_m[s_idx] / s_rho[s_idx]
         cs_ij = s_cs[s_idx] - d_cs[d_idx]
 
@@ -64,14 +64,16 @@ class MarangoniForce(Equation):
 
         d_au[d_idx] += acc_x
         d_av[d_idx] += acc_y
+        # debug aceleração
+        d_au_mar[d_idx] += (acc_x**2 + acc_y**2)**0.5
 
-    def post_loop(self, d_idx, d_au, d_av):
-        acc_sq = d_au[d_idx] ** 2 + d_av[d_idx] ** 2
+    # def post_loop(self, d_idx, d_au, d_av):
+    #     acc_sq = d_au[d_idx] ** 2 + d_av[d_idx] ** 2
 
-        if acc_sq > self.acc_limit_sq:
-            scale = self.acc_limit / (acc_sq**0.5)
-            d_au[d_idx] *= scale
-            d_av[d_idx] *= scale
+    #     if acc_sq > self.acc_limit_sq:
+    #         scale = self.acc_limit / (acc_sq**0.5)
+    #         d_au[d_idx] *= scale
+    #         d_av[d_idx] *= scale
 
 
 class LinearDrag(Equation):
@@ -79,9 +81,12 @@ class LinearDrag(Equation):
         self.gamma = -gamma
         super(LinearDrag, self).__init__(dest, sources)
 
-    def loop(self, d_idx, d_u, d_v, d_au, d_av):
-        d_au[d_idx] += self.gamma * d_u[d_idx]
-        d_av[d_idx] += self.gamma * d_v[d_idx]
+    def loop(self, d_idx, d_u, d_v, d_au, d_av, d_au_drag):
+        acc_x = self.gamma * d_u[d_idx]
+        acc_y = self.gamma * d_v[d_idx]
+        d_au[d_idx] += acc_x
+        d_av[d_idx] += acc_y
+        d_au_drag[d_idx] = (acc_x**2 + acc_y**2)**0.5
 
 
 class InterpolateVelocity(Equation):

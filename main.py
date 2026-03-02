@@ -62,6 +62,11 @@ class SwarmApp(Application):
                 pa.add_property("dt_force")
                 pa.add_property("dt_cfl")
                 pa.add_output_arrays(["rho_b_grown", "cs", "u", "v", "p", "noise"])
+                # debug da aceleração
+                pa.add_property("au_mar")  # aceleração x Marangoni
+                pa.add_property("au_osm")  # aceleração x Osmótica
+                pa.add_property("au_pres")  # aceleração x Pressão (estimada)
+                pa.add_property("au_drag")  # aceleração x Drag
             elif pa.name == "solid":
                 pa.add_property("p")
 
@@ -114,16 +119,30 @@ class SwarmApp(Application):
         #     for i in range(self.n_bact):
         #         self.all_bact_trajectories[i].append([bact.y[i], bact.x[i]])
 
-        # if solver.count % print_freq == 0:
-        #     fluid = self.particles[0]
-        #     max_vel = np.max(np.sqrt(fluid.u**2 + fluid.v**2))
+        if solver.count % print_freq == 0:
+            fluid = self.particles[0]
+            max_v = np.max(np.sqrt(fluid.u**2 + fluid.v**2))
 
-        #     print(
-        #         f"  t={solver.t:.2e}s ({((solver.t) / total_sim_time) * 100:.1f}%), "
-        #         f"dt={solver.dt:.2e}s, Max c_s: {np.max(fluid.cs):.2e}, "
-        #         f"Max rho_b: {np.max(fluid.rho_b_grown):.2f}, Max |v|: {max_vel:.2e}, "
-        #         f"Max pressure: {np.max(fluid.p):.2e}"
-        #     )
+            # Pegamos o valor absoluto máximo de cada componente de aceleração
+            a_mar = np.max(np.abs(fluid.au_mar))
+            a_osm = np.max(np.abs(fluid.au_osm))
+            a_drag = np.max(np.abs(fluid.au_drag))
+            # O resto da aceleração au vem da MomentumEquation (pressão)
+            a_total = np.max(np.abs(fluid.au))
+
+            print("-" * 50)
+            print(f"Tempo: {solver.t:.2f}s | Iteração: {solver.count}")
+            print(f"Velocidade Máx: {max_v:.4f}")
+            print("Acelerações (au):")
+            print(f"  > Marangoni: {a_mar:.2f}")
+            print(f"  > Osmótica:  {a_osm:.2f}")
+            print(f"  > Drag:      {a_drag:.2f} (Freio)")
+            print(f"  > Total au:  {a_total:.2f}")
+
+            # Resetamos os acumuladores de print para o próximo passo
+            fluid.au_mar[:] = 0.0
+            fluid.au_osm[:] = 0.0
+            fluid.au_drag[:] = 0.0
 
         if use_splitting:
             print("Iniciando processo de divisão celular...")

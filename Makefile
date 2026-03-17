@@ -10,7 +10,7 @@ view:
 	pysph view main_output
 
 paraview:
-	pysph dump_vtk main_output -d /Users/isa/Documents/sph_results
+	pysph dump_vtk main_output -d /Users/isa/Developer/sph_results
 
 run_view:
 	make run

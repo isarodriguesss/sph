@@ -9,24 +9,25 @@ from src.scheme import MyBiomassScheme
 x_dim, y_dim = 100, 100
 # x_dim, y_dim = 128, 128  # Dimensões originais
 
-x_min_domain, x_max_domain = -1.0, 5.0
-y_min_domain, y_max_domain = -1.0, 5.0
+# x_min_domain, x_max_domain = -1.0, 5.0
+# y_min_domain, y_max_domain = -1.0, 5.0
+
+# expansões maiores
+x_min_domain, x_max_domain = -6.0, 6.0
+y_min_domain, y_max_domain = -6.0, 6.0
 
 dx = (x_max_domain - x_min_domain) / (x_dim - 1)
 
-# expansões maiores
-# x_min_domain, x_max_domain = -6.0, 6.0
-# y_min_domain, y_max_domain = -6.0, 6.0
 
-mu = 0.001
+mu = 0.05
 # mu = 0.02  # Valor anterior
-gamma = 7.0
+gamma = 60.0
 # gamma = 40.0  # Valor anterior
-beta = 10.0
+beta = 0.15
 # beta = 0.5  # Valor para evitar instabilidade
-sigma = 4.0
+sigma = 2.0
 # sigma = 2.0  # Valor anterior
-D = 1e-5
+D = 5e-4
 lambda_ = 0.01
 # lambda_ = 0.05 # Valor anterior
 r_growth = 2.0
@@ -34,7 +35,7 @@ r_growth = 2.0
 rho_max = 1.0
 
 dt_global = 0.001
-total_sim_time = 20.0
+total_sim_time = 100.0
 # total_sim_time = 100.0 # expensões maiores
 print_freq = 200
 # print_freq = 2500 # expensões maiores
@@ -42,7 +43,7 @@ print_freq = 200
 trajectory_store_interval = 20
 
 prob_of_splitting = 0.03
-c0 = 10.0
+c0 = 20.0
 # c0 = 1.0  # Valor anterior
 
 use_splitting = False
@@ -67,6 +68,10 @@ class SwarmApp(Application):
                 pa.add_property("au_osm")  # aceleração x Osmótica
                 pa.add_property("au_pres")  # aceleração x Pressão (estimada)
                 pa.add_property("au_drag")  # aceleração x Drag
+                # gradiente da densidade
+                pa.add_property("grad_rho_b_x")
+                pa.add_property("grad_rho_b_y")
+                pa.add_property("grad_rho_b_mag")
             elif pa.name == "solid":
                 pa.add_property("p")
 
@@ -94,7 +99,7 @@ class SwarmApp(Application):
             dim=2,
             integrator=self.scheme.get_integrator(),
             kernel=kernel,
-            dt=1e-4,
+            dt=5e-5,
             adaptive_timestep=True,
             cfl=0.4,
         )

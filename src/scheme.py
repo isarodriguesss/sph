@@ -12,6 +12,7 @@ from .equations import (
     SurfactantEquation,
     LinearDrag,
     ViscousForce,
+    BiomassGradient,
 )
 
 
@@ -44,6 +45,14 @@ class CustomEulerStep(EulerStep):
 
         d_rho_b_grown[d_idx] = max(0.0, min(d_rho_b_grown[d_idx], 1.0))
         d_cs[d_idx] = max(1e-9, d_cs[d_idx])
+
+        # vmax = 5.0
+
+        # v = np.sqrt(d_u[d_idx]**2 + d_v[d_idx]**2)
+        # if v > vmax:
+        #     scale = vmax / v
+        #     d_u[d_idx] *= scale
+        #     d_v[d_idx] *= scale
 
 
 class MyBiomassScheme(Scheme):
@@ -101,6 +110,7 @@ class MyBiomassScheme(Scheme):
                     r_growth=self.r_growth,
                     rho_max=self.rho_max,
                 ),
+                BiomassGradient(dest="fluid", sources=["fluid"]),
                 MarangoniForce(dest="fluid", sources=["fluid"], beta=self.beta),
                 ViscousForce(dest="fluid", sources=["fluid"], mu=self.mu),
                 LinearDrag(dest="fluid", sources=None, gamma=self.gamma),

@@ -18,6 +18,37 @@ class BiomassGrowth(Equation):
             d_am[d_idx] = rate * d_m[d_idx]
 
 
+class BiomassGradient(Equation):
+    def initialize(self, d_idx, d_grad_rho_b_x, d_grad_rho_b_y):
+        d_grad_rho_b_x[d_idx] = 0.0
+        d_grad_rho_b_y[d_idx] = 0.0
+
+    def loop(
+        self,
+        d_idx,
+        s_idx,
+        s_m,
+        s_rho,
+        d_rho_b_grown,
+        s_rho_b_grown,
+        DWIJ,
+        d_grad_rho_b_x,
+        d_grad_rho_b_y,
+    ):
+        vol_j = s_m[s_idx] / s_rho[s_idx]
+
+        diff = s_rho_b_grown[s_idx] - d_rho_b_grown[d_idx]
+
+        d_grad_rho_b_x[d_idx] += vol_j * diff * DWIJ[0]
+        d_grad_rho_b_y[d_idx] += vol_j * diff * DWIJ[1]
+
+    def post_loop(self, d_idx, d_grad_rho_b_x, d_grad_rho_b_y, d_grad_rho_b_mag):
+        gx = d_grad_rho_b_x[d_idx]
+        gy = d_grad_rho_b_y[d_idx]
+
+        d_grad_rho_b_mag[d_idx] = (gx * gx + gy * gy) ** 0.5
+
+
 class SurfactantEquation(Equation):
     def __init__(self, dest, sources, sigma, lambda_, D):
         self.D = D
@@ -36,9 +67,10 @@ class SurfactantEquation(Equation):
         term = (s_m[s_idx] / s_rho[s_idx]) * (cs_ij / rij_sq) * dot_product
         d_a_c_s[d_idx] += 2.0 * self.D * term
 
-    def post_loop(self, d_idx, d_rho_b_grown, d_a_c_s, d_cs, d_noise):
+    def post_loop(self, d_idx, d_rho_b_grown, d_a_c_s, d_cs, d_noise, d_grad_rho_b_mag):
+        grad = min(d_grad_rho_b_mag[d_idx], 5.0)
         reaction_rate = (
-            self.sigma * d_rho_b_grown[d_idx] * d_noise[d_idx]
+            self.sigma * d_rho_b_grown[d_idx] * (0.3 + grad) * d_noise[d_idx]
         ) - self.lambda_ * d_cs[d_idx]
 
         d_a_c_s[d_idx] += reaction_rate
@@ -55,7 +87,9 @@ class MarangoniForce(Equation):
         d_au[d_idx] = 0.0
         d_av[d_idx] = 0.0
 
-    def loop(self, d_idx, s_idx, s_m, d_rho, s_rho, d_cs, s_cs, d_au, d_av, d_au_mar, DWIJ):
+    def loop(
+        self, d_idx, s_idx, s_m, d_rho, s_rho, d_cs, s_cs, d_au, d_av, d_au_mar, DWIJ
+    ):
         vol_j = s_m[s_idx] / s_rho[s_idx]
         cs_ij = s_cs[s_idx] - d_cs[d_idx]
 
@@ -65,7 +99,7 @@ class MarangoniForce(Equation):
         d_au[d_idx] += acc_x
         d_av[d_idx] += acc_y
         # debug aceleração
-        d_au_mar[d_idx] += (acc_x**2 + acc_y**2)**0.5
+        d_au_mar[d_idx] += (acc_x**2 + acc_y**2) ** 0.5
 
     # def post_loop(self, d_idx, d_au, d_av):
     #     acc_sq = d_au[d_idx] ** 2 + d_av[d_idx] ** 2
@@ -86,7 +120,7 @@ class LinearDrag(Equation):
         acc_y = self.gamma * d_v[d_idx]
         d_au[d_idx] += acc_x
         d_av[d_idx] += acc_y
-        d_au_drag[d_idx] = (acc_x**2 + acc_y**2)**0.5
+        d_au_drag[d_idx] = (acc_x**2 + acc_y**2) ** 0.5
 
 
 class InterpolateVelocity(Equation):

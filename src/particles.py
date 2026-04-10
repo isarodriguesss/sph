@@ -2,9 +2,18 @@ import numpy as np
 from pysph.base.utils import get_particle_array
 
 
-def create_initial_state(x_dim=128, y_dim=128, rho_max=1.0, dt=0.001):
-    x = np.linspace(-1, 5, x_dim)
-    y = np.linspace(-1, 5, y_dim)
+def create_initial_state(
+    x_dim=128,
+    y_dim=128,
+    rho_max=1.0,
+    dt=0.001,
+    x_min=-3.0,
+    x_max=3.0,
+    y_min=-3.0,
+    y_max=3.0,
+):
+    x = np.linspace(x_min, x_max, x_dim)
+    y = np.linspace(y_min, y_max, y_dim)
     X_grid, Y_grid = np.meshgrid(x, y)
     dx = x[1] - x[0]
     dy = y[1] - y[0]
@@ -12,21 +21,16 @@ def create_initial_state(x_dim=128, y_dim=128, rho_max=1.0, dt=0.001):
     y_part = Y_grid.ravel()
     z_part = np.zeros_like(x_part)
     m_part = np.ones_like(x_part) * dx * dx
-    h_part = np.ones_like(x_part) * 1.2 * dx
+    h_part = np.ones_like(x_part) * 1.8 * dx
     rho_part = np.ones_like(x_part) * 1.0
     center_x = (x.min() + x.max()) / 2.0
     center_y = (y.min() + y.max()) / 2.0
     rho_b = np.exp(-((X_grid - center_x) ** 2 + (Y_grid - center_y) ** 2) / 0.05)
-    perturb_offset_x = dx * 5
-    perturb_offset_y = dy * 5
-    perturb = 0.5 * np.exp(
-        -(
-            (X_grid - (center_x + perturb_offset_x)) ** 2
-            + (Y_grid - (center_y + perturb_offset_y)) ** 2
-        )
-        / 0.01
-    )
-    rho_b += perturb
+    dist = np.sqrt((X_grid - center_x) ** 2 + (Y_grid - center_y) ** 2)
+    theta = np.arctan2(Y_grid - center_y, X_grid - center_x)
+    # Inject 16-mode azimuthal symmetry-breaking perturbation
+    azimuthal_perturb = 0.3 * np.cos(16 * theta) * np.exp(-((dist - 0.15) ** 2) / 0.01)
+    rho_b += azimuthal_perturb
     noise = 0.15 * np.random.randn(*X_grid.shape)
     rho_b += rho_b * noise
 
@@ -79,7 +83,7 @@ def create_initial_state(x_dim=128, y_dim=128, rho_max=1.0, dt=0.001):
     x_solid = np.concatenate([x_lr.ravel(), x_tb.ravel()])
     y_solid = np.concatenate([y_lr.ravel(), y_tb.ravel()])
     m_solid = np.ones_like(x_solid) * dx * dy
-    h_solid = np.ones_like(x_solid) * 1.2 * dx
+    h_solid = np.ones_like(x_solid) * 1.8 * dx
     rho_solid = np.ones_like(x_solid) * 1.0
 
     solid = get_particle_array(

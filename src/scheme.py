@@ -70,6 +70,7 @@ class MyBiomassScheme(Scheme):
         r_growth,
         rho_max,
         c0=10.0,
+        alpha_mon=0.5,
         p0=0.0,
     ):
         self.mu = mu
@@ -81,27 +82,29 @@ class MyBiomassScheme(Scheme):
         self.r_growth = r_growth
         self.rho_max = rho_max
         self.c0 = c0
+        self.alpha_mon = alpha_mon
         self.p0 = p0
         super(MyBiomassScheme, self).__init__(fluids, solids, dim=dim)
 
     def get_equations(self):
         equations_pre = Group(
             equations=[
-                # SummationDensity(dest="fluid", sources=["fluid", "solid"]),
                 SummationDensity(dest="fluid", sources=["fluid"]),
-                BiomassEOS(dest="fluid", sources=None, rho0=1.0, c0=self.c0, gamma=7.0),
+                BiomassEOS(dest="fluid", sources=None, rho0=1.0, c0=self.c0),
             ],
             real=False,
         )
 
         equations_main = Group(
             equations=[
+                # MomentumEquation com Monaghan artificial viscosity forte
+                # (alpha=0.5) para manter continuidade no braço dendrítico.
+                # Pressão do EOS já faz repulsão E coesão (p<0 → atração).
                 MomentumEquation(
                     dest="fluid",
-                    # sources=["fluid", "solid"],
                     sources=["fluid"],
                     c0=self.c0,
-                    alpha=0.5,
+                    alpha=self.alpha_mon,
                     beta=0.0,
                 ),
                 BiomassGrowth(
@@ -110,10 +113,17 @@ class MyBiomassScheme(Scheme):
                     r_growth=self.r_growth,
                     rho_max=self.rho_max,
                 ),
+                # BiomassGradient DEVE vir antes de MarangoniForce
+                # (Marangoni usa grad_rho_b_mag como gate de interface)
                 BiomassGradient(dest="fluid", sources=["fluid"]),
                 MarangoniForce(dest="fluid", sources=["fluid"], beta=self.beta),
                 ViscousForce(dest="fluid", sources=["fluid"], mu=self.mu),
-                LinearDrag(dest="fluid", sources=None, gamma=self.gamma),
+                LinearDrag(
+                    dest="fluid",
+                    sources=None,
+                    gamma_base=self.gamma,
+                    gamma_mature=self.gamma * 2.0,
+                ),
                 SurfactantEquation(
                     dest="fluid",
                     sources=["fluid"],
@@ -123,10 +133,6 @@ class MyBiomassScheme(Scheme):
                 ),
             ],
         )
-
-        # equations_interp = Group(
-        #     equations=[InterpolateVelocity(dest="bact", sources=["fluid"])]
-        # )
 
         return [equations_pre, equations_main]
 

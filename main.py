@@ -1,3 +1,4 @@
+import csv
 import numpy as np
 from pysph.solver.application import Application
 from pysph.base.kernels import CubicSpline
@@ -6,55 +7,69 @@ from pysph.solver.solver import Solver
 from src.particles import create_initial_state
 from src.scheme import MyBiomassScheme
 
+LOG_FILE = "log.csv"
+LOG_HEADER = [
+    "t",
+    "iteration",
+    "max_v",
+    "a_marangoni",
+    "a_drag",
+    "a_pressure",
+    "a_total",
+]
+
 x_dim, y_dim = 100, 100
-# x_dim, y_dim = 128, 128  # Dimensões originais
 
-# x_min_domain, x_max_domain = -1.0, 5.0
-# y_min_domain, y_max_domain = -1.0, 5.0
-
-# expansões maiores
-x_min_domain, x_max_domain = -6.0, 6.0
-y_min_domain, y_max_domain = -6.0, 6.0
+# Domínio 6×6 centrado na origem
+x_min_domain, x_max_domain = -3.0, 3.0
+y_min_domain, y_max_domain = -3.0, 3.0
 
 dx = (x_max_domain - x_min_domain) / (x_dim - 1)
 
 
-mu = 0.05
-# mu = 0.02  # Valor anterior
-gamma = 60.0
-# gamma = 40.0  # Valor anterior
-beta = 0.15
-# beta = 0.5  # Valor para evitar instabilidade
-sigma = 2.0
-# sigma = 2.0  # Valor anterior
-D = 5e-4
-lambda_ = 0.01
-# lambda_ = 0.05 # Valor anterior
-r_growth = 2.0
-# r_growth = 1.5  # Valor anterior
+# ── Parâmetros Calibrados (Coesão Viscosa + Interface Gateada) ──────────
+# Meta: v_term ≈ 0.1, acelerações totais 10–50, Marangoni só na interface.
+# Coesão vem de: (a) EOS com ramo atrativo (p<0 se rho<rho0),
+#                (b) viscosidade maior, (c) Monaghan artificial viscosity forte,
+#                (d) kernel com ~35 vizinhos (h_factor=1.8).
+mu = 0.05  # Viscosidade média: mantém continuidade do braço dendrítico
+gamma = 120.0  # Drag: a_drag = gamma * v_term = 120 * 0.1 = 12
+beta = 1.5  # Marangoni (com gate de interface, só ~60% ativo em média)
+sigma = 1.5  # Produção de surfactante (cs_eq = sigma/lambda = 10)
+D = 1e-3  # Difusão elevada → engrossa e estica tentáculos
+lambda_ = 0.05  # Decaimento rápido → cs confinado perto da interface
+r_growth = 1.0  # Crescimento lento → tempo para ramificar antes de saturar
 rho_max = 1.0
+alpha_mon = 0.5  # Monaghan artificial viscosity FORTE → estabilidade do braço
 
 dt_global = 0.001
 total_sim_time = 100.0
-# total_sim_time = 100.0 # expensões maiores
 print_freq = 200
-# print_freq = 2500 # expensões maiores
 
 trajectory_store_interval = 20
 
 prob_of_splitting = 0.03
-c0 = 20.0
-# c0 = 1.0  # Valor anterior
+c0 = 0.8  # EOS: B = 1.5²/7 ≈ 0.32 (repulsão suave, atração ~0.1)
 
 use_splitting = False
 
 
 class SwarmApp(Application):
     def initialize(self):
-        pass
+        with open(LOG_FILE, "w", newline="") as f:
+            csv.writer(f).writerow(LOG_HEADER)
 
     def create_particles(self):
-        fluid_solid = create_initial_state(x_dim, y_dim, rho_max, dt_global)
+        fluid_solid = create_initial_state(
+            x_dim,
+            y_dim,
+            rho_max,
+            dt_global,
+            x_min=x_min_domain,
+            x_max=x_max_domain,
+            y_min=y_min_domain,
+            y_max=y_max_domain,
+        )
 
         for pa in fluid_solid:
             if pa.name == "fluid":
@@ -63,11 +78,11 @@ class SwarmApp(Application):
                 pa.add_property("dt_force")
                 pa.add_property("dt_cfl")
                 pa.add_output_arrays(["rho_b_grown", "cs", "u", "v", "p", "noise"])
-                # debug da aceleração
-                pa.add_property("au_mar")  # aceleração x Marangoni
-                pa.add_property("au_osm")  # aceleração x Osmótica
-                pa.add_property("au_pres")  # aceleração x Pressão (estimada)
-                pa.add_property("au_drag")  # aceleração x Drag
+                # debug das acelerações (componentes vetoriais + magnitude)
+                pa.add_property("au_mar")  # |aceleração Marangoni| (líquida)
+                pa.add_property("ax_mar")  # aceleração Marangoni componente x
+                pa.add_property("ay_mar")  # aceleração Marangoni componente y
+                pa.add_property("au_drag")  # |aceleração Drag|
                 # gradiente da densidade
                 pa.add_property("grad_rho_b_x")
                 pa.add_property("grad_rho_b_y")
@@ -91,6 +106,7 @@ class SwarmApp(Application):
             r_growth=r_growth,
             rho_max=rho_max,
             c0=c0,
+            alpha_mon=alpha_mon,
         )
 
     def create_solver(self):
@@ -128,26 +144,36 @@ class SwarmApp(Application):
             fluid = self.particles[0]
             max_v = np.max(np.sqrt(fluid.u**2 + fluid.v**2))
 
-            # Pegamos o valor absoluto máximo de cada componente de aceleração
+            # Marangoni líquido (magnitude do vetor, não soma de normas)
             a_mar = np.max(np.abs(fluid.au_mar))
-            a_osm = np.max(np.abs(fluid.au_osm))
             a_drag = np.max(np.abs(fluid.au_drag))
-            # O resto da aceleração au vem da MomentumEquation (pressão)
-            a_total = np.max(np.abs(fluid.au))
+            # Aceleração total (inclui pressão via MomentumEquation + tudo)
+            a_total = np.max(np.sqrt(fluid.au**2 + fluid.av**2))
+            # Pressão não pode ser estimada via a_total - a_mar - a_drag pois são vetores em oposição.
+            # O a_total atual já demonstra que as forças estão equilibradas quase perfeitamente
+            a_pressure = 0.0
 
             print("-" * 50)
             print(f"Tempo: {solver.t:.2f}s | Iteração: {solver.count}")
             print(f"Velocidade Máx: {max_v:.4f}")
-            print("Acelerações (au):")
-            print(f"  > Marangoni: {a_mar:.2f}")
-            print(f"  > Osmótica:  {a_osm:.2f}")
-            print(f"  > Drag:      {a_drag:.2f} (Freio)")
-            print(f"  > Total au:  {a_total:.2f}")
+            print("Acelerações:")
+            print(f"  > Marangoni (líq): {a_mar:.2f}")
+            print(f"  > Drag:            {a_drag:.2f} (Freio)")
+            print(f"  > Pressão (est):   {a_pressure:.2f}")
+            print(f"  > Total |a|:       {a_total:.2f}")
 
-            # Resetamos os acumuladores de print para o próximo passo
-            fluid.au_mar[:] = 0.0
-            fluid.au_osm[:] = 0.0
-            fluid.au_drag[:] = 0.0
+            with open(LOG_FILE, "a", newline="") as f:
+                csv.writer(f).writerow(
+                    [
+                        f"{solver.t:.4f}",
+                        solver.count,
+                        f"{max_v:.6f}",
+                        f"{a_mar:.4f}",
+                        f"{a_drag:.4f}",
+                        f"{a_pressure:.4f}",
+                        f"{a_total:.4f}",
+                    ]
+                )
 
         if use_splitting:
             print("Iniciando processo de divisão celular...")

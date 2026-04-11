@@ -122,7 +122,7 @@ class MyBiomassScheme(Scheme):
                     dest="fluid",
                     sources=None,
                     gamma_base=self.gamma,
-                    gamma_mature=self.gamma * 2.0,
+                    gamma_mature=self.gamma * 0.3,
                 ),
                 SurfactantEquation(
                     dest="fluid",

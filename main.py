@@ -12,10 +12,16 @@ LOG_HEADER = [
     "t",
     "iteration",
     "max_v",
+    "mean_v",
+    "n_fast",
     "a_marangoni",
     "a_drag",
     "a_pressure",
     "a_total",
+    "min_cs",
+    "max_cs",
+    "mean_cs",
+    "constrast_cs",
 ]
 
 x_dim, y_dim = 100, 100
@@ -32,15 +38,15 @@ dx = (x_max_domain - x_min_domain) / (x_dim - 1)
 # Coesão vem de: (a) EOS com ramo atrativo (p<0 se rho<rho0),
 #                (b) viscosidade maior, (c) Monaghan artificial viscosity forte,
 #                (d) kernel com ~35 vizinhos (h_factor=1.8).
-mu = 0.05  # Viscosidade média: mantém continuidade do braço dendrítico
-gamma = 120.0  # Drag: a_drag = gamma * v_term = 120 * 0.1 = 12
-beta = 1.5  # Marangoni (com gate de interface, só ~60% ativo em média)
-sigma = 1.5  # Produção de surfactante (cs_eq = sigma/lambda = 10)
-D = 1e-3  # Difusão elevada → engrossa e estica tentáculos
-lambda_ = 0.05  # Decaimento rápido → cs confinado perto da interface
-r_growth = 1.0  # Crescimento lento → tempo para ramificar antes de saturar
+mu = 0.025  # Viscosidade média: mantém continuidade do braço dendrítico
+gamma = 60.0  # Drag: a_drag = gamma * v_term = 60 * 0.1 = 6
+beta = 4.0  # Marangoni (com gate de interface, só ~60% ativo em média)
+sigma = 1.2  # Produção de surfactante (cs_eq = sigma/lambda = 10)
+D = 4.0e-3  # Difusão elevada → engrossa e estica tentáculos
+lambda_ = 0.15  # Decaimento rápido → cs confinado perto da interface
+r_growth = 0.8  # Crescimento lento → tempo para ramificar antes de saturar
 rho_max = 1.0
-alpha_mon = 0.5  # Monaghan artificial viscosity FORTE → estabilidade do braço
+alpha_mon = 0.15  # Monaghan artificial viscosity FORTE → estabilidade do braço
 
 dt_global = 0.001
 total_sim_time = 100.0
@@ -74,7 +80,11 @@ class SwarmApp(Application):
         for pa in fluid_solid:
             if pa.name == "fluid":
                 pa.add_property("noise")
-                pa.noise[:] = 1.0 + 0.1 * (np.random.rand(len(pa.x)))
+                pa.noise[:] = (
+                    1.0
+                    + 0.25 * np.sin(12 * np.arctan2(pa.y, pa.x))
+                    + 0.1 * np.random.rand(len(pa.x))
+                )
                 pa.add_property("dt_force")
                 pa.add_property("dt_cfl")
                 pa.add_output_arrays(["rho_b_grown", "cs", "u", "v", "p", "noise"])
@@ -87,6 +97,8 @@ class SwarmApp(Application):
                 pa.add_property("grad_rho_b_x")
                 pa.add_property("grad_rho_b_y")
                 pa.add_property("grad_rho_b_mag")
+                pa.add_property("ax_drag")
+                pa.add_property("ay_drag")
             elif pa.name == "solid":
                 pa.add_property("p")
 
@@ -142,20 +154,31 @@ class SwarmApp(Application):
 
         if solver.count % print_freq == 0:
             fluid = self.particles[0]
-            max_v = np.max(np.sqrt(fluid.u**2 + fluid.v**2))
+            v_mag = np.sqrt(fluid.u**2 + fluid.v**2)
+            max_v = np.max(v_mag)
+            mean_v = np.mean(v_mag)
+            n_fast = int(np.sum(v_mag > 0.1))
 
             # Marangoni líquido (magnitude do vetor, não soma de normas)
             a_mar = np.max(np.abs(fluid.au_mar))
             a_drag = np.max(np.abs(fluid.au_drag))
             # Aceleração total (inclui pressão via MomentumEquation + tudo)
             a_total = np.max(np.sqrt(fluid.au**2 + fluid.av**2))
-            # Pressão não pode ser estimada via a_total - a_mar - a_drag pois são vetores em oposição.
-            # O a_total atual já demonstra que as forças estão equilibradas quase perfeitamente
-            a_pressure = 0.0
+            # ax_pressure = au_total - ax_mar - ax_drag
+            ax_p = fluid.au - fluid.ax_mar - fluid.ax_drag
+            ay_p = fluid.av - fluid.ay_mar - fluid.ay_drag
+            a_pressure = np.max(np.sqrt(ax_p**2 + ay_p**2))
+
+            # 3. Estatísticas do Surfactante (cs)
+            min_cs = np.min(fluid.cs)
+            max_cs = np.max(fluid.cs)
+            mean_cs = np.mean(fluid.cs)
+            contrast_cs = (max_cs - min_cs) / (mean_cs + 1e-9)
 
             print("-" * 50)
             print(f"Tempo: {solver.t:.2f}s | Iteração: {solver.count}")
             print(f"Velocidade Máx: {max_v:.4f}")
+            print(f"Contraste CS: {contrast_cs:.4f}")
             print("Acelerações:")
             print(f"  > Marangoni (líq): {a_mar:.2f}")
             print(f"  > Drag:            {a_drag:.2f} (Freio)")
@@ -168,10 +191,16 @@ class SwarmApp(Application):
                         f"{solver.t:.4f}",
                         solver.count,
                         f"{max_v:.6f}",
+                        f"{mean_v:.6f}",
+                        n_fast,
                         f"{a_mar:.4f}",
                         f"{a_drag:.4f}",
                         f"{a_pressure:.4f}",
                         f"{a_total:.4f}",
+                        f"{min_cs:.4f}",
+                        f"{max_cs:.4f}",
+                        f"{mean_cs:.4f}",
+                        f"{contrast_cs:.4f}",
                     ]
                 )
 

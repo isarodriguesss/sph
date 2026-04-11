@@ -70,7 +70,12 @@ class SurfactantEquation(Equation):
     def post_loop(self, d_idx, d_rho_b_grown, d_a_c_s, d_cs, d_noise, d_grad_rho_b_mag):
         grad = min(d_grad_rho_b_mag[d_idx], 10.0)
 
-        production = self.sigma * d_rho_b_grown[d_idx] * (0.3 + grad) * d_noise[d_idx]
+        rho_b = d_rho_b_grown[d_idx]
+        qs = (
+            rho_b * rho_b / (rho_b * rho_b + 0.01)
+        )  # K² = 0.04 → meia-ativação em rho_b=0.2
+        growth_headroom = 1.2 - rho_b  # rho_max = 1.0
+        production = self.sigma * qs * growth_headroom * d_noise[d_idx]
 
         # Lambda constante: o lambda espacialmente dependente foi removido porque ele matava
         # o cs na interface (onde rho_b < 0.1), destruindo o gradiente antes que o SPH
@@ -91,7 +96,7 @@ class MarangoniForce(Equation):
     F = gate · (-β) · ∇cs
     """
 
-    def __init__(self, dest, sources, beta, grad_low=0.1, grad_high=1.0):
+    def __init__(self, dest, sources, beta, grad_low=0.05, grad_high=0.6):
         self.beta = -beta
         self.grad_low = grad_low
         self.grad_high = grad_high
@@ -107,7 +112,6 @@ class MarangoniForce(Equation):
         d_idx,
         s_idx,
         s_m,
-        d_rho,
         s_rho,
         d_cs,
         s_cs,
@@ -170,12 +174,25 @@ class LinearDrag(Equation):
         self.gamma_mature = -gamma_mature
         super(LinearDrag, self).__init__(dest, sources)
 
-    def loop(self, d_idx, d_u, d_v, d_au, d_av, d_au_drag, d_rho_b_grown):
+    def loop(
+        self,
+        d_idx,
+        d_u,
+        d_v,
+        d_au,
+        d_av,
+        d_au_drag,
+        d_rho_b_grown,
+        d_ax_drag,
+        d_ay_drag,
+    ):
         rho_b = d_rho_b_grown[d_idx]
         # Quadrático em rho_b: edge mobile, núcleo congelado
         gamma_eff = self.gamma_base + self.gamma_mature * rho_b * rho_b
         acc_x = gamma_eff * d_u[d_idx]
         acc_y = gamma_eff * d_v[d_idx]
+        d_ax_drag[d_idx] = acc_x
+        d_ay_drag[d_idx] = acc_y
         d_au[d_idx] += acc_x
         d_av[d_idx] += acc_y
         d_au_drag[d_idx] = (acc_x * acc_x + acc_y * acc_y) ** 0.5
@@ -263,7 +280,7 @@ class BiomassEOS(Equation):
     - edge_fade: smoothstep em rho_b ∈ [0.1, 0.5]
     """
 
-    def __init__(self, dest, sources, rho0, c0, gamma_eos=7.0, tension_ratio=0.1):
+    def __init__(self, dest, sources, rho0, c0, gamma_eos=7.0, tension_ratio=0.05):
         self.rho0 = rho0
         self.c0 = c0
         self.B = rho0 * c0 * c0 / gamma_eos

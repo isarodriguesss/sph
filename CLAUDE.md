@@ -1,24 +1,118 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+Este arquivo governa todas as interações do Claude Code com este repositório. As regras aqui descritas sao **obrigatorias** e tem precedencia sobre qualquer comportamento padrao.
 
-## What this project is
+---
 
-A 2D Smoothed Particle Hydrodynamics (SPH) simulation of bacterial biomass dynamics using [PySPH](https://pysph.readthedocs.io/). It models biomass growth, Marangoni surface forces driven by surfactant gradients, viscous flow, and linear drag in a fluid domain.
+## 1. Projeto e Referencial Teorico
 
-## Commands
+**Tese de Doutorado:** *"Simulacao do Swarming de Pseudomonas aeruginosa em superficies rugosas utilizando Hidrodinamica de Particulas Suavizadas (SPH)"* (Rodrigues, 2025).
+
+Simulacao 2D em SPH (via [PySPH](https://pysph.readthedocs.io/)) da dinamica de biomassa bacteriana: crescimento logistico, forcas de Marangoni induzidas por gradientes de surfactante (ramnolipideo), fluxo viscoso, arrasto diferenciado e coesao via EOS. O objetivo final e reproduzir o padrao de *swarming* dendritico de *P. aeruginosa* (fingering de Mullins-Sekerka) observado experimentalmente (Michiels et al.).
+
+### Objetivos de longo prazo (guiam decisoes arquiteturais)
+
+1. **Superficies rugosas** — Partículas de contorno estaticas com geometria irregular que interagem mecanicamente com o fluido e alteram os campos de difusao/escoamento. Toda decisao de refatoracao deve preservar a capacidade de substituir as paredes planas atuais por topografias arbitrarias.
+2. **Pressao osmotica (van't Hoff)** — Reativar `OsmoticForce` com formulacao termodinamicamente consistente (`Pi = iCRT`) acoplada ao campo de biomassa, substituindo a abordagem atual via ramo atrativo da EOS quando estável.
+3. **Motilidade flagelar orientada por gradiente** — Forca propulsiva alinhada ao gradiente local de surfactante (quimiotaxia) ou ao eixo de polarizacao individual, modelando o flagelo de *P. aeruginosa* como motor ativo.
+
+**Regra de Alinhamento Teorico (Rodrigues, 2025):** Antes de sugerir qualquer mudanca no codigo, a IA **deve** verificar se a alteracao e consistente com as equacoes governantes do projeto (SPH, Navier-Stokes incompressivel com termos-fonte biologicos) e com os tres objetivos de longo prazo acima. Mudancas que comprometam a extensibilidade para superficies rugosas, pressao osmotica ou motilidade flagelar devem ser sinalizadas e justificadas.
+
+---
+
+## 2. Regra de Validacao Baseada em Dados
+
+A IA **nunca** deve sugerir mudancas cegas em parametros fisicos. Antes de calibrar qualquer variavel (`beta`, `sigma`, `gamma`, `D`, `lambda_`, `r_growth`, `c0`, `alpha_mon`, etc.), o seguinte protocolo e **obrigatorio**:
+
+### 2.1 Analise quantitativa do `log.csv`
+
+- Verificar tendencias temporais de `mean_v`, `n_fast`, `a_marangoni`, `mean_cs`, `max_cs`, `contrast_cs`.
+- Identificar colapsos (motor de Marangoni morrendo), saturacoes (cs uniforme), e outliers (n_fast = 1 indica particula rogue, nao expansao real).
+- Comparar valores atuais com o **orcamento de aceleracoes** (Secao 8) antes de propor ajustes.
+
+### 2.2 Validacao visual da morfologia
+
+- Solicitar ou levar em consideracao a analise dos frames gerados em `main_output/movie/` para confirmar se a morfologia e fisicamente valida.
+- **Criterio de sucesso:** formacao de dendritos/gavinhas com perimetro irregular (fingering). **Criterio de falha:** expansao circular uniforme, anel oco, ou colapso para disco compacto.
+- Nao declarar um Pass como "bem-sucedido" baseando-se apenas em metricas escalares — a forma da colonia e o validador final.
+
+### 2.3 Predicao antes da acao
+
+- Para cada mudanca de parametro, a IA deve apresentar uma **predicao quantitativa** do efeito esperado (ex: "reduzir D de 4e-3 para 2e-3 deve aumentar |nabla cs| em ~40% e reduzir L_D de 1.5h para 1.1h").
+- Apos a simulacao, comparar predicao vs. resultado. Discrepancias > 2x devem ser investigadas antes do proximo passo.
+
+---
+
+## 3. Skill: SPH Bacterial Swarming Specialist
+
+### 3.1 Balanco critico de forcas
+
+O swarming dendritico emerge do balanco entre:
+
+| Papel | Forca | Mecanismo |
+|-------|-------|-----------|
+| **Desestabilizadora** | Marangoni | Gradiente de surfactante (ramnolipideo) gera tensao superficial diferencial que puxa a interface para fora |
+| **Estabilizadora** | Viscosidade SPH | Difusao de momento suaviza perturbacoes de curto comprimento de onda |
+| **Estabilizadora** | Arrasto diferenciado | Nucleo maduro (EPS) e imóvel; borda (swarmers) e motil |
+| **Estabilizadora** | EOS coesiva | Pressao negativa em rarefacao mantem a colonia coesa |
+| **Desestabilizadora** | Ruido estocastico | Perturbacoes na producao de surfactante semeiam instabilidades |
+
+A condicao de fingering exige que Marangoni supere as forcas estabilizadoras **apenas nas pontas** (interface), enquanto o interior permanece coeso. Se Marangoni domina em todo lugar → explosao. Se nunca domina → disco compacto.
+
+### 3.2 Cinco frentes de modelagem fisica
+
+**Frente 1 — Crescimento bacteriano logistico**
+- `drho_b/dt = r * rho_b * (1 - rho_b/rho_max)` ([equations.py:16](src/equations.py#L16))
+- Controla a velocidade da frente de saturacao. `r_growth` baixo (0.8) estende o tempo de residencia na zona ativa (`rho_b ~ 0.5`), permitindo acumulo de surfactante antes da saturacao.
+
+**Frente 2 — Dinamica de reacao-difusao de surfactantes (Quorum Sensing / Hill)**
+- Producao: `sigma * qs(rho_b) * (1 - rho_b) * noise`, com `qs = rho_b^2/(rho_b^2 + K^2)` ([equations.py:74-78](src/equations.py#L74-L78))
+- Difusao: Laplaciano de Brookshaw simetrico ([equations.py:62-68](src/equations.py#L62-L68))
+- Decaimento: `-lambda * cs`
+- O modelo Hill (`K^2 = 0.01`) implementa quorum sensing: producao so ativa para `rho_b > 0.1`. O fator `(1 - rho_b)` (Pass F) cria uma frente movel de producao — o nucleo maduro vira sumidouro.
+
+**Frente 3 — Fluxo induzido por Marangoni**
+- `F = -beta * nabla_cs * gate(|nabla_rho_b|)` ([equations.py:137-138](src/equations.py#L137-L138))
+- Gradiente simetrico SPH: `cs_ij = cs_j - cs_i` (Pass E.1)
+- Gate smoothstep em `grad_rho_b_mag in [0.05, 0.6]` restringe a forca a interface da colonia.
+- Requer campo cs com camada de transicao resolvida em >= 1.5*h.
+
+**Frente 4 — Pressao Osmotica (Equacao de van't Hoff)** *(a implementar)*
+- `Pi = iCRT` — pressao proporcional a concentracao de solutos intra/extracelulares.
+- `OsmoticForce` existe em [equations.py:318-363](src/equations.py#L318-L363) mas esta desabilitada. A EOS coesiva atual (ramo atrativo) funciona como substituto simplificado.
+- Meta: reativar com formulacao termodinamica quando a estabilidade numerica permitir.
+
+**Frente 5 — Motilidade Flagelar orientada por gradiente** *(a implementar)*
+- Forca propulsiva `F_flag = f0 * hat(nabla_cs)` ou com persistencia angular (run-and-tumble).
+- Modela o flagelo polar de *P. aeruginosa* como motor ativo complementar ao Marangoni.
+- Deve ser acoplada ao campo de surfactante (quimiotaxia) com ruido rotacional.
+
+### 3.3 Meta de superficies rugosas
+
+Partículas de contorno (`solid` em [particles.py](src/particles.py)) atualmente formam paredes planas de 2 camadas. O objetivo e substituí-las por:
+- Topografias irregulares (rugosidade controlada por amplitude e comprimento de onda).
+- Interacao mecanica bidirecional: a rugosidade canaliza o fluxo e altera os caminhos de difusao.
+- Condicoes de contorno de nao-deslizamento (no-slip) ou deslizamento parcial conforme o substrato.
+
+Toda refatoracao da geometria de contorno ou do NNPS deve ser compativel com esta meta.
+
+---
+
+## 4. Comandos
 
 ```bash
-make run          # Clear output dir and run simulation (python main.py)
-make view         # Visualize output with PySPH viewer
-make run_view     # Run then view
-make format       # Lint and format with Ruff
-make paraview     # Export HDF5 output to VTK for ParaView
+make run          # Limpa output e executa simulacao (python main.py)
+make view         # Visualiza output com PySPH viewer
+make run_view     # Executa e visualiza
+make format       # Lint e formatacao com Ruff
+make paraview     # Exporta HDF5 para VTK (ParaView)
 ```
 
-The simulation outputs HDF5 files to `main_output/` at intervals defined by `print_freq`.
+A simulacao gera arquivos HDF5 em `main_output/` a cada `print_freq` iteracoes.
 
-## Environment setup
+---
+
+## 5. Setup do Ambiente
 
 ```bash
 conda create -n pysph_env python=3.10 numpy scipy matplotlib -c conda-forge
@@ -29,89 +123,199 @@ conda install mayavi -c conda-forge
 conda install mpi4py -c conda-forge
 ```
 
-## Architecture
+---
 
-**Entry point:** `main.py` — defines `SwarmApp(Application)`, sets all physical parameters as module-level globals, creates particles, scheme, and solver. The `post_step` hook prints per-step diagnostics and optionally handles cell division (`use_splitting = False` by default).
+## 6. Arquitetura
 
-**`src/particles.py`** — `create_initial_state()` builds the initial 2D grid: fluid particles with a Gaussian `rho_b_grown` (biomass) field plus perturbations, and 2-layer solid ghost particles forming the boundary walls.
+**Entry point:** [main.py](main.py) — define `SwarmApp(Application)`, parametros fisicos como globais, cria particulas, scheme e solver. O hook `post_step` imprime diagnosticos por iteracao e opcionalmente trata divisao celular (`use_splitting = False`).
 
-**`src/scheme.py`** — `MyBiomassScheme(Scheme)` wires all equations into two PySPH `Group`s:
-1. Pre-step (non-real): `SummationDensity` → `BiomassEOS`
-2. Main step: `MomentumEquation` (with strong Monaghan `alpha`) → `BiomassGrowth` → `BiomassGradient` → `MarangoniForce` → `ViscousForce` → `LinearDrag` → `SurfactantEquation`
+**[src/particles.py](src/particles.py)** — `create_initial_state()` constroi a grade 2D: particulas fluidas com campo Gaussiano `rho_b_grown` (biomassa) + perturbacoes, e particulas-fantasma solidas (2 camadas) formando paredes.
 
-`BiomassGradient` **must** run before `MarangoniForce` — Marangoni uses `grad_rho_b_mag` as an interface gate.
+**[src/scheme.py](src/scheme.py)** — `MyBiomassScheme(Scheme)` conecta todas as equacoes em dois `Group`s PySPH:
+1. Pre-step (non-real): `SummationDensity` -> `BiomassEOS`
+2. Main step: `MomentumEquation` (Monaghan `alpha`) -> `BiomassGrowth` -> `BiomassGradient` -> `MarangoniForce` -> `ViscousForce` -> `LinearDrag` -> `SurfactantEquation`
 
-`CustomEulerStep` extends `EulerStep` to also integrate `rho_b_grown` (biomass density) and `cs` (surfactant concentration), with clamping: `rho_b_grown` ∈ [0, 1], `cs` ≥ 1e-9.
+**Invariante critico:** `BiomassGradient` **deve** executar antes de `MarangoniForce` — Marangoni usa `grad_rho_b_mag` como gate de interface.
 
-**`src/equations.py`** — All custom SPH equations as `Equation` subclasses:
-- `BiomassGrowth`: logistic growth `drho_b/dt = r * rho_b * (1 - rho_b/rho_max)`
-- `BiomassGradient`: SPH gradient of biomass field; magnitude used by Marangoni gate
-- `MarangoniForce`: `f = -β ∇cs · gate(|∇rho_b|)` — only active at the colony interface (smoothstep gate on `grad_rho_b_mag`, default `[0.05, 0.6]`). Uses the **symmetric SPH gradient** `∇cs_i ≈ (1/ρ_i)·Σ_j m_j·(cs_j − cs_i)·∇W_ij` (Pass E, ram-8827-v1, [equations.py:134](src/equations.py#L134)). The earlier non-symmetric form `(1/ρ_i)·Σ_j m_j·cs_j·∇W_ij` was found to capture only **transient kernel-deficit** at sharp boundaries and decay as the colony "wets" — see resolved failure mode below. The symmetric form requires a cs field with a transition layer **resolved across at least ~1.5·h** to produce a non-zero pairwise difference `cs_ij`.
-- `SurfactantEquation`: `Dcs/Dt = σ·qs(rho_b)·(1 − rho_b)·noise + D·∇²cs − λ·cs`, where `qs = rho_b²/(rho_b² + K²)` is a **Hill function (quorum-sensing model)** with `K² = 0.01` ([equations.py:75-78](src/equations.py#L75-L78)). The `(1 − rho_b)` factor (Pass F applied) gates production OFF in the mature core (rho_b → 1) so the core becomes a cs SINK and the active growth ring (rho_b ≈ 0.5) is the production peak. This creates a moving production front rather than a static saturated source. **Confirmed working topologically** (Pass F log: `mean_cs` no longer saturates, decays to zero — but motor amplitude is now subcritical, see "production-front extinction" failure mode). The diffusive Brookshaw Laplacian uses the symmetric form `cs_ij = d_cs − s_cs` weighted by `(x_ij·∇W_ij)/|r_ij|²`.
-- `LinearDrag`: `f = -γ_eff·v` with `γ_eff = γ_base + γ_mature·rho_b²` — biological mobility gradient: motile edge swarmers vs. immobile EPS-embedded core. **Currently `γ_mature = 0.3·γ_base`** in [scheme.py:125](src/scheme.py#L125) (was `2.0·γ_base` — caused core freezing).
-- `ViscousForce`: standard viscous SPH term, with density-weighted `mu_eff = mu·min(rho_avg, 1)`
-- `BiomassEOS`: "Soft Interior, Cohesive Edge" — quadratic repulsion when `ρ > ρ₀`, **slight negative pressure when `ρ < ρ₀`** (surface tension / cohesion via `MomentumEquation`). `edge_fade` smoothstep on `rho_b ∈ [0.1, 0.5]` ensures P=0 at the free colony border. **Default `tension_ratio=0.1`** (note: not overridden in [scheme.py:93](src/scheme.py#L93)) → attractive branch is 10% of repulsive strength.
-- `OsmoticForce`: **disabled** (kept in file for reference). Replaced by EOS cohesive branch, which is more stable than `∇(rho_SPH)`-based pulling.
+`CustomEulerStep` estende `EulerStep` para integrar `rho_b_grown` e `cs`, com clamping: `rho_b_grown` em [0, 1], `cs` >= 1e-9.
 
-## Key parameters (tuned in `main.py`)
+**[src/equations.py](src/equations.py)** — Equacoes SPH customizadas:
 
-Current calibration (post Passes A+B+C+D+E.1+E.2+F+G, ram-8827-v1). Goal: dendritic fingering pattern (Michiels et al.). **MAJOR PROGRESS**: Pass G achieved a sustained motor for the first time — `mean_v` peak 0.019, `n_fast` peak 657, `a_mar` peak 49, active phase 27s, colony radius doubled from 0.65 → 1.7, **dendritic fingering morphology confirmed in frame 023**. Remaining issue (Pass H pending): late "tail extinction" at t≈37s — once the entire colony saturates uniformly with `rho_b → 1`, the `(1 − rho_b)` gate kills production globally and cs drains exponentially. Need a residual production floor to enable indefinite expansion. See "Known failure modes" below.
+| Equacao | Descricao | Referencia |
+|---------|-----------|------------|
+| `BiomassGrowth` | Crescimento logistico `drho_b/dt = r * rho_b * (1 - rho_b/rho_max)` | [equations.py:4-18](src/equations.py#L4-L18) |
+| `BiomassGradient` | Gradiente SPH simetrico de biomassa; magnitude usada pelo gate Marangoni | [equations.py:21-49](src/equations.py#L21-L49) |
+| `SurfactantEquation` | Reacao-difusao: Hill QS + frente movel `(1 - rho_b)` + Brookshaw + decaimento | [equations.py:52-83](src/equations.py#L52-L83) |
+| `MarangoniForce` | `F = -beta * nabla_cs * gate(grad_rho_b)`, gradiente simetrico | [equations.py:86-150](src/equations.py#L86-L150) |
+| `LinearDrag` | `F = -gamma_eff * v`, com `gamma_eff = gamma_base + gamma_mature * rho_b^2` | [equations.py:153-198](src/equations.py#L153-L198) |
+| `ViscousForce` | Viscosidade SPH padrao com `mu_eff = mu * min(rho_avg, 1)` | [equations.py:215-259](src/equations.py#L215-L259) |
+| `BiomassEOS` | "Soft Interior, Cohesive Edge" — repulsao quadratica + atracao leve + edge_fade | [equations.py:262-315](src/equations.py#L262-L315) |
+| `OsmoticForce` | **Desabilitada.** Substituida pelo ramo atrativo da EOS. Mantida para referencia | [equations.py:318-363](src/equations.py#L318-L363) |
 
-| Parameter | Variable | Current value | Notes |
-|-----------|----------|:-------------:|-------|
-| Viscosity | `mu` | 0.025 | Halved from 0.05 — allow small-scale perturbations to grow |
-| Linear drag (base) | `gamma` | 60.0 | a_drag = γ·v_term = 6 at v=0.1 (was 120) |
-| Drag (mature core) | `gamma_mature` (in scheme) | `0.3·γ` | Was `2.0·γ` — core was frozen at γ_eff=360 |
-| Marangoni coeff | `beta` | 4.0 | Hold while testing Pass E; reduce to ~2.5 if a_mar > 30 sustained after D-cut |
-| Surfactant production | `sigma` | 1.2 | Pass G applied. ×3 boost compensated the (1−rho_b) suppression and pushed motor above the bulk drag floor. Validated: a_mar peak 49, mean_v peak 0.019 |
-| Diffusion | `D` | 4.0e-3 | L_D = 0.163 ≈ 1.5·h. Pass E.2 applied. Confirmed: produces correct spatial profile (a_mar peak = 16.28 vs predicted 17), but does NOT fix temporal saturation lock |
-| Surfactant decay | `lambda_` | 0.15 | Hold — reducing it shortens L_D but proportionally lowers cs_eq, no net |∇cs| gain |
-| Growth rate | `r_growth` | 0.8 | Pass G applied. Slow growth extends front residence τ_sat 0.8s → 2.5s, raises per-particle cs accumulation 11% → 31% of equilibrium. Validated: max_cs reached 3.18 |
-| Production model | `qs · (1−rho_b)` | `[rho_b²/(rho_b²+0.01)] · (1−rho_b)` | Pass F applied. Pass H target: change to `(1.2 − rho_b)` to provide a 17% production floor in the mature core, preventing late extinction at t≈37s |
-| Monaghan artificial visc | `alpha_mon` | 0.15 | Lowered to allow MS instability seeds to grow |
-| Speed of sound (EOS) | `c0` | 0.8 | B ≈ 0.09; tension branch 10% (default `tension_ratio=0.1`) |
-| Kernel smoothing | `h_factor` (in `particles.py`) | 1.8·dx | ~35 neighbors per particle |
-| Timestep | `dt` in `create_solver` | 5e-5 (adaptive, CFL=0.4) | |
-| Grid | `x_dim, y_dim` | 100×100 | |
-| Domain | `x/y_min/max_domain` | [-3, 3]² | 6×6 centered at origin |
-| Initial perturbation | `noise` in `main.py:77` | `1.0 + 0.25·sin(12θ) + 0.1·rand()` | Coherent N=12 azimuthal mode seed |
+---
 
-## Target acceleration budget (v_term = 0.1)
+## 7. Parametros Calibrados (branch `ram-8827-v1`)
 
-| Term | Target | Formula |
-|------|:------:|---------|
-| a_marangoni (líquida) | ~6 | β · \|∇cs\| · gate (only at tips/interface) |
-| a_drag | ~6 | γ · v_term = 60·0.1 |
-| a_pressão EOS | <3 | B · excess² · edge_fade (computed in main.py post_step from `au − ax_mar − ax_drag`) |
-| a_viscosa | ~1.5 | μ · v / h² |
-| **Total \|a\|** | **5–15** | Equilibrium: Marangoni ≈ Drag at tips |
+Calibracao pos-Passes A-I.7. **MARCO I.7:** Transicao blob→dendritico confirmada. `a_mar` pico **148**, selecao competitiva de dedos, tendril dominante formado. Difusao bi-escala (D_int/D_ext) e o mecanismo-chave para Mullins-Sekerka.
 
-## Known failure modes
+| Parametro | Variavel | Valor atual | Notas |
+|-----------|----------|:-----------:|-------|
+| Viscosidade | `mu` | 0.012 | Pass I.2: reduzida de 0.025 para filamentos finos |
+| Arrasto (base) | `gamma` | 60.0 | a_drag = gamma*v_term = 6 em v=0.1 |
+| Arrasto (nucleo) | `gamma_mature` (scheme) | `1.5*gamma` | Pass I.4: razao core/edge 2.5x (era 0.3*gamma) |
+| Coef. Marangoni | `beta` | 4.0 | Estavel — a_mar pico 148 com sigma=2.0 |
+| Producao surfactante | `sigma` | 2.0 | Pass I.7: +67% para compensar drenagem por D_ext |
+| Difusao (biofilme) | `D` (D_int) | 1.5e-3 | Pass I.3: gradiente afiado na interface (L_D_int=0.93h) |
+| Difusao (agar) | `D_ext` | 0.01 | Pass I.7: campo de longo alcance (L_D_ext=2.4h) |
+| Decaimento | `lambda_` | 0.15 | Manter — confina cs mas permite penetracao de L_D_ext |
+| Taxa crescimento | `r_growth` | 0.8 | Pass G: crescimento lento estende tau_sat 0.8s -> 2.5s |
+| Modelo producao | `qs * (1.2 - rho_b)` | `[rho_b^2/(rho_b^2+0.01)] * (1.2 - rho_b)` | Pass H aplicado: piso de 17% no nucleo maduro |
+| Visc. artificial Monaghan | `alpha_mon` | 0.06 | Pass I.2: reduzida de 0.15 para gradientes afiados |
+| Vel. som (EOS) | `c0` | 0.8 | B ~ 0.09; tensao `tension_ratio=0.02` (Pass I.5) |
+| Smoothing kernel | `h_factor` | 1.8*dx | ~35 vizinhos por particula |
+| Timestep | `dt` | 5e-5 (adaptivo, CFL=0.4) | |
+| Grade | `x_dim, y_dim` | 100x100 | |
+| Dominio | `x/y_min/max` | [-3, 3]^2 | 6x6 centrado na origem |
+| Perturbacao inicial (rho_b) | `azimuthal_perturb` | `0.5*cos(8*theta)` | Pass I.1: N=8 unificado (era N=16) |
+| Perturbacao inicial (noise) | `noise` | `1.0 + 0.4*sin(8*theta) + 0.03*rand()` | Pass I.1: N=8, ruido reduzido |
 
-- **Marangoni "thermal death" (t ≈ 30s) — RESOLVED**: After initial expansion, the colony spread into a low-density disk and `cs` production collapsed because it was linearly proportional to `rho_b`. **Fixed** by Hill quorum-sensing model in `SurfactantEquation.post_loop` (saturates production for `rho_b > 0.3`). Confirmed working: log shows `mean_cs` stable at ~0.057 indefinitely, no longer decaying.
+---
 
-- **Marangoni "diffusive death" (t ≈ 12s) — RESOLVED**: Was caused by `D = 3e-4` (too small). **Fixed** by raising `D` to 1.5e-2 and removing the `(0.3 + grad_rho_b)` production bias, so cs accumulates in the colony interior with smooth profile.
+## 8. Orcamento de Aceleracoes (v_term = 0.1)
 
-- **Marangoni "kernel asymmetry collapse" (t ≈ 11s) — RESOLVED (Pass E.1)**: The non-symmetric SPH gradient operator captured only transient kernel-deficit at sharp free-surface boundaries and decayed to zero once the boundary "wet" via EOS cohesion. **Fixed** by reverting to the symmetric form `cs_ij = s_cs - d_cs` in [equations.py:134](src/equations.py#L134). Confirmed: with the symmetric form, a_mar reached **14.6 sustained** for ~3s (iter 400, t=7.7s) — a real, well-formed signal — vs. the non-symmetric form's transient spike of 28→0.024.
+| Termo | Meta | Formula |
+|-------|:----:|---------|
+| a_marangoni (liquida) | ~6 | beta * |nabla_cs| * gate (so interface/pontas) |
+| a_drag | ~6 | gamma * v_term = 60*0.1 |
+| a_pressao EOS | <3 | B * excess^2 * edge_fade |
+| a_viscosa | ~1.5 | mu * v / h^2 |
+| **Total |a|** | **5-15** | Equilibrio: Marangoni ~ Drag nas pontas |
 
-- **Marangoni "diffusive flatness" (t ≈ 15s) — RESOLVED-PARTIAL (Pass E.2)**: With L_D = 2.9·h the spatial spreading was confirmed excessive. **Fixed** by reducing `D` from 1.5e-2 → 4.0e-3 (L_D = 1.5·h). Spatial signature confirmed: a_mar peak rose from 14.6 → **16.28** at iter 200 — quantitatively matching the prediction (~17). However, the underlying TEMPORAL saturation was not addressed: collapse still occurs at t≈15.8s (vs t=15.3s before) — only marginally better. The bottleneck is now reframed below.
+---
 
-- **Marangoni "production-saturation lock" (t ≈ 15s) — RESOLVED (Pass F)**: The Hill production saturated uniformly across the entire mature ring, creating a flat cs blanket with ∇cs → 0. **Fixed** by multiplying production by `(1 − rho_b/rho_max)` in [equations.py:77-78](src/equations.py#L77-L78). Confirmed: `mean_cs` no longer locks at σ/λ — it now decays to zero in the post-Pass-F log, proving the saturation attractor is gone. The mature core successfully became a sink.
+## 9. Historico de Passes e Failure Modes
 
-- **CSV column drift — RESOLVED (Pass F instrument repair)**: writer at [main.py:185-200](main.py#L185-L200) now correctly emits all 13 columns including `mean_v` and `n_fast`. Confirmed: post-Pass-F log shows `mean_v` and `n_fast` populated, allowing bulk-vs-outlier disambiguation. **Critical finding enabled by repair**: in steady state, `n_fast = 1` confirms the persistent "single outlier particle" pollution that was masking diagnostics in all prior runs — `max_v = 0.222` and `a_drag = 17.3` in the final state are entirely due to ONE rogue particle, not the bulk.
+### Resolvidos
 
-- **Marangoni "production-front extinction" (t ≈ 17s) — RESOLVED (Pass G)**: Pass F's moving-front motor was too weak (τ_sat/τ_decay = 0.12) and too short to bootstrap expansion. **Fixed** by combined `sigma: 0.4 → 1.2` (×3 amplitude) + `r_growth: 2.5 → 0.8` (extends τ_sat from 0.8s → 2.5s, raises cs accumulation per particle from 11% → 31%). Validated: a_mar peak 49.0 (predicted 18, undersold by gate factor), max_cs peak 3.18 (predicted 2.5), mean_v peak 0.019 (predicted 0.03), n_fast peak **657** (predicted ≥ 50). The bootstrap paradox is closed.
+- **"Thermal death" (t~30s):** Producao de cs proporcional a rho_b colapsava em disco de baixa densidade. **Fix:** modelo Hill QS (satura producao para rho_b > 0.3).
 
-- **Pass G dendritic morphology — ACHIEVED**: frame 023 of [main_output/movie/](main_output/movie/) (t≈30s) shows the colony at r≈1.7 with an irregular ameboid perimeter and ~30 small protrusions — clearly a Mullins-Sekerka fingering pattern in the noise-dominated regime. Not the clean N=12 organized dendrites of Michiels et al. (the azimuthal seed was overwhelmed by stochastic noise in the production term), but qualitatively a true dendritic colony for the first time. Active phase 3–37s (~34s of sustained motor), peak activity at iter 4600 (t=30s) with n_fast=657.
+- **"Diffusive death" (t~12s):** `D = 3e-4` muito pequeno. **Fix:** `D = 1.5e-2`, remocao do bias `(0.3 + grad_rho_b)`.
 
-- **Marangoni "tail extinction" (t ≈ 37s) — CURRENT (Pass H)**: Pass G achieved sustained expansion but eventually hits the same wall as Pass F, just delayed: once the colony stops expanding (because it has filled the available domain or exhausted its biomass headroom), `rho_b → 1` everywhere, the `(1 − rho_b)` factor zeros production globally, and cs drains exponentially to zero with τ = 1/λ ≈ 6.7s. Confirmed in [log.csv](log.csv):
-  - iter 4600 (t=30s): `mean_v = 0.019` ★ peak, `n_fast = 657`, `mean_cs = 0.226` (still climbing slightly)
-  - iter 5400 (t=32.5s): `mean_v = 0.012` (declining), `mean_cs = 0.252` (stalled — saturation onset)
-  - iter 6800 (t=37s): `mean_v = 0.0019`, `n_fast = 1` (back to outlier-only), `a_mar = 6.7` (declining)
-  - iter 7400 (t=51s): `mean_cs = 0.030`, `max_cs = 0.40` (cs draining)
-  - iter 9600 (t=100s): `mean_cs ≈ 0`, `a_mar ≈ 0`, locked in outlier-only steady state
-  - `contrast_cs` collapses from peak 67 (iter 200) → 13 (iter 5400) → 10 (final), the same homogenization signature as Pass E.2.
+- **"Kernel asymmetry collapse" (t~11s, Pass E.1):** Gradiente SPH nao-simetrico capturava apenas deficit transiente de kernel. **Fix:** forma simetrica `cs_ij = cs_j - cs_i`. Resultado: a_mar = 14.6 sustentado por ~3s.
 
-  **Mechanistic difference from Pass F**: Pass F died at t=10s because the motor never even started (insufficient amplitude). Pass G dies at t=37s because the motor RAN OUT of fresh territory. The colony grew, expanded, but eventually filled the domain at the limit allowed by its finite biomass + the (1−rho_b) silencing.
+- **"Diffusive flatness" (t~15s, Pass E.2):** L_D = 2.9*h excessivo. **Fix:** `D: 1.5e-2 -> 4e-3` (L_D = 1.5*h). a_mar subiu de 14.6 -> 16.28.
 
-  **Fix direction (Pass H)**: replace `growth_headroom = 1.0 - rho_b` with `growth_headroom = 1.2 - rho_b` in [equations.py:77](src/equations.py#L77). Single-character change. At rho_b=1.0 the factor is now 0.2 (was 0), maintaining 17% of peak production indefinitely in the mature core. Predicted: active phase preserved (factor at rho_b=0.5 only changes 0.5 → 0.7, a 40% boost in front production), late phase becomes a sustained "weak motor" steady state rather than extinction (cs_steady ≈ 1.6 in core, |∇cs| ≈ 10 at outer boundary, a_mar ≈ 15 indefinitely). Biophysical justification: rhamnolipid secretion is constitutively expressed in stationary biofilm at reduced rate (Lequette & Greenberg 2005), not zero. The binary `(1 − rho_b)` model is unphysical at rho_b → 1.
+- **"Production-saturation lock" (t~15s, Pass F):** Hill saturava uniformemente, criando cs plano com nabla_cs -> 0. **Fix:** fator `(1 - rho_b)` criou frente movel de producao.
+
+- **CSV column drift (Pass F):** Writer em [main.py:188-205](main.py#L188-L205) corrigido para 13 colunas. Revelou: outlier de particula unica (n_fast=1) poluia max_v e a_drag.
+
+- **"Production-front extinction" (t~17s, Pass G):** Motor da frente movel muito fraco. **Fix:** `sigma: 0.4 -> 1.2` (x3) + `r_growth: 2.5 -> 0.8`. Resultado: a_mar pico 49, n_fast pico 657, morfologia dendritica confirmada.
+
+- **Morfologia dendritica (Pass G):** Frame 023 (t~30s) mostra colonia r~1.7 com perimetro irregular e ~30 protuberancias — fingering de Mullins-Sekerka no regime dominado por ruido. Fase ativa 3-37s.
+
+### Em andamento
+
+- **"Tail extinction" (t~37s, Pass H):** Colonia satura globalmente com `rho_b -> 1`, fator `(1 - rho_b)` zera producao, cs drena exponencialmente. Confirmado no log.csv: mean_v 0.019 (pico t=30s) -> 0.0019 (t=37s) -> 0 (t=100s).
+  - **Mecanismo:** diferente de Pass F (motor nunca iniciou). Pass G morreu porque esgotou territorio fresco.
+  - **Fix aplicado (Pass H):** `growth_headroom = 1.2 - rho_b` em [equations.py:77](src/equations.py#L77). Em rho_b=1.0 o fator e 0.2 (era 0), mantendo 17% de producao no nucleo maduro indefinidamente. Justificativa biofisica: secrecao de ramnolipideo e constitutivamente expressa em biofilme estacionario em taxa reduzida (Lequette & Greenberg 2005).
+  - **Validacao pendente:** executar simulacao e verificar se fase ativa persiste alem de t=37s sem explosao numerica.
+
+---
+
+## 10. Protocolo de Trabalho
+
+### Ao receber uma tarefa de calibracao:
+1. Ler `log.csv` e identificar a fase atual do motor (bootstrap, ativo, declinante, morto).
+2. Consultar o orcamento de aceleracoes (Secao 8) e verificar quais termos estao fora do alvo.
+3. Formular predicao quantitativa do efeito da mudanca proposta.
+4. Implementar a mudanca (preferencialmente uma variavel por vez).
+5. Apos execucao, comparar predicao vs. resultado e atualizar este documento.
+
+### Ao receber uma tarefa de implementacao:
+1. Verificar alinhamento com os 3 objetivos de longo prazo (Secao 1).
+2. Checar se a mudanca afeta invariantes criticos (ex: ordem das equacoes no scheme).
+3. Implementar com testes minimos de sanidade (ex: verificar que forcas somam zero em equilibrio).
+4. Documentar a mudanca neste arquivo na secao apropriada.
+
+### Proibicoes explicitas:
+- **Nao** alterar parametros fisicos sem antes ler `log.csv`.
+- **Nao** declarar sucesso de um Pass sem evidencia visual da morfologia.
+- **Nao** introduzir dependencias externas sem justificativa.
+- **Nao** refatorar a ordem das equacoes em `scheme.py` sem verificar invariantes.
+- **Nao** remover equacoes desabilitadas (como `OsmoticForce`) que sao parte do roadmap.
+
+---
+
+## 11. Roadmap: Passes I-L (Correcao Morfologica e Extensoes Fisicas)
+
+Diagnostico realizado em 2026-04-16 comparando frames da simulacao (Pass G/H, branch ram-8827-v1) com referencia experimental (Michiels et al., reference.jpg). A simulacao produz um **blob ameboide com ~30 bumps curtos**, enquanto a referencia mostra **10-15 dendritos longos e finos** com separacao clara. Cinco causas-raiz identificadas (P1-P5).
+
+### Pass I — Correcao morfologica (dedos longos e separados)
+
+**Objetivo:** Transformar o blob ameboide em uma colonia com 8-12 dendritos finos (razao aspecto >= 1:5), separados por espaco vazio, visualmente similar a referencia.
+
+**I.1 — Unificar e reduzir modos azimutais na condicao inicial**
+- **Problema (P1):** N=16 em rho_b ([particles.py:32](src/particles.py#L32)) e N=12 em noise ([main.py:85](main.py#L85)) interferem, criando ~30 bumps em vez de 10-15 ramos dominantes.
+- **Mudanca:** Unificar ambos em N=8. Aumentar amplitude coerente de 0.25→0.4 em noise, reduzir ruido de 0.1→0.03. Em particles.py: N=16→8, amplitude 0.3→0.5.
+- **Predicao:** 8 protuberancias dominantes claras no frame 000 em vez de ~30 ruido-dominadas. Competicao mais limpa → dedos selecionados mais cedo.
+
+**I.2 — Reduzir amortecimento viscoso para permitir filamentos finos**
+- **Problema (P2):** `mu=0.025` + `alpha_mon=0.15` suavizam gradientes de velocidade, impedindo formacao de estruturas finas.
+- **Mudanca:** `mu: 0.025 → 0.012`, `alpha_mon: 0.15 → 0.06`.
+- **Predicao:** Escala de dissipacao viscosa reduzida ~2x. Perturbacoes de comprimento de onda curto crescem em vez de serem amortecidas. Risco: instabilidade numerica se dt nao acompanhar (CFL adaptivo deve compensar).
+
+**I.3 — Reduzir difusao para concentrar ∇cs nas pontas**
+- **Problema (P3):** `D=4e-3` → `L_D=0.163≈1.5h`. Gradiente de cs e suave e largo.
+- **Mudanca:** `D: 4e-3 → 1.5e-3`. Novo `L_D = sqrt(1.5e-3/0.15) = 0.1 ≈ 0.93h`.
+- **Predicao:** Gradiente ~2.7x mais afiado. `a_mar` pico deve subir de ~50 para ~135 (proporcional a 1/L_D). Risco: se L_D < h, o gradiente nao e resolvido pelo kernel SPH. Com 0.93h estamos no limite — monitorar artefatos de resolucao.
+
+**I.4 — Aumentar contraste de mobilidade core/borda**
+- **Problema (P4):** `gamma_mature=0.3*gamma` → razao core/edge = 1.3x (quase nenhuma diferenciacao).
+- **Mudanca:** `gamma_mature: 0.3*gamma → 1.5*gamma`. Novo `gamma_eff(rho_b=1) = 60+90 = 150`. Razao core/edge = 150/60 = **2.5x**.
+- **Predicao:** Nucleo efetivamente imobilizado. Expansao forcada para as pontas apenas. Combinado com I.2, cria frente de mobilidade afiada.
+
+**I.5 — Reduzir coesao EOS para permitir estiramento**
+- **Problema (P5):** `tension_ratio=0.05` puxa material de volta ao corpo, impedindo elongacao.
+- **Mudanca:** `tension_ratio: 0.05 → 0.02` em [equations.py:283](src/equations.py#L283).
+- **Predicao:** Ramo atrativo 2.5x mais fraco. Dedos podem se esticar sem serem "puxados" de volta. Risco: se muito fraco, particulas na ponta podem se desconectar (fragmentacao).
+
+**Resultado I.1-I.5 (2026-04-16):** Motor +28% mais forte (a_mar pico 103 vs 81, mean_v 0.027 vs 0.021, n_fast 965 vs 769). Morfologia AINDA blob-like — expansao uniforme sem selecao de dedos. Causa-raiz reclassificada: nao e parametrica, e **mecanistica**. O campo de cs penetra apenas L_D=0.1 (~1.7dx) no exterior — insuficiente para focalizacao geometrica Laplaciana nas pontas. Sem campo de longo alcance exterior, todas as secoes do perimetro recebem gradiente identico.
+
+**I.6 — Difusao bi-escala (mecanismo de Mullins-Sekerka)**
+- **Problema:** L_D_int = 0.1 (apenas ~2 particulas de penetracao no exterior). Sem campo de longo alcance, nao ha amplificacao geometrica nas pontas.
+- **Mudanca:** `SurfactantEquation.loop` agora usa `D_eff` variavel: `D_int = 1.5e-3` dentro da colonia (rho_b > 0.5), `D_ext` no agar (rho_b < 0.1), com smoothstep na transicao. Justificativa biologica: ramnolipideo difunde rapido no agar livre e lento no biofilme/EPS.
+- **Resultado I.6 (D_ext=0.03):** Motor ENFRAQUECIDO 50% (a_mar pico 45 vs 103). D_ext excessivo (20x D_int) drenava cs para o exterior mais rapido que a producao. Porem, uma protuberancia elongada formou-se no quadrante inferior — sinal de que a instabilidade geometrica funciona, mas o motor e fraco demais para alimenta-la.
+- **Correcao I.7:** `D_ext: 0.03 → 0.01` (7x D_int em vez de 20x, L_D_ext = 0.26 ≈ 2.4h) + `sigma: 1.2 → 2.0` (+67% producao para compensar drenagem).
+- **Resultado I.7 (2026-04-16):** Motor restaurado e mais forte que nunca: `a_mar` pico **148** (vs 103 em I, 45 em I.6), `mean_v` pico 0.025, `n_fast` pico 888. `max_cs = 7.9` (quase 2x Pass I). **MARCO MORFOLOGICO:** frame final mostra **transicao de blob para lobular/dendritico** — tendril dominante no quadrante inferior (selecao competitiva confirmada), perimetro assimetrico com protuberancias de razao aspecto ~1:3-1:4. Primeira evidencia clara de focalizacao geometrica tipo Mullins-Sekerka. Motor ainda morre em t≈36s — piso de producao `(1.2 - rho_b)` insuficiente para sustentar indefinidamente. Gaps restantes: dedos ainda curtos/largos (resolucao), motor nao sustentado (Pass J), ausencia de propulsao ativa (Pass K).
+
+**I.8 — Aumentar resolucao da grade**
+- **Mudanca:** `x_dim, y_dim: 100 → 150`. Novo dx=0.04, h=0.072. Dedo de largura 0.2 tera ~5 particulas (era ~3).
+- **Predicao:** Melhor resolucao de estruturas finas. Custo: tempo ~3.4x.
+
+### Pass J — Motor sustentado indefinido
+
+**Objetivo:** Manter motor ativo alem de t=50s. Meta: `mean_v > 0.005` e `n_fast > 100` sustentados ate t=100s.
+
+**Mudanca implementada:** Decaimento espacialmente dependente em `SurfactantEquation.post_loop`:
+- Interior (rho_b > 0.5): `lambda_eff = lambda = 0.15` — preserva reservatorio de cs
+- Exterior (rho_b < 0.1): `lambda_eff = lambda_ext = 3 * lambda = 0.45` — remove cs rapido no agar
+- Transicao: smoothstep em rho_b in [0.1, 0.5]
+
+**Justificativa biologica:** Ramnolipideo no agar livre esta exposto a degradacao ambiental (UV, oxidacao, diluicao por difusao radial). Dentro do biofilme, a matriz EPS protege o surfactante.
+
+**Predicao:** No exterior, L_D_ext efetivo cai de `sqrt(D_ext/lambda)=0.26` para `sqrt(D_ext/lambda_ext)=0.15 ≈ 2h`. O gradiente na borda fica mais afiado (cs cai mais rapido para zero fora da colonia). O cs interior persiste com `tau_int = 1/lambda = 6.7s`, alimentando continuamente a difusao para fora → motor sustentado.
+
+### Pass K — Motilidade flagelar (Frente 5)
+
+- Implementar `FlagellarForce(Equation)` com `F_flag = f0 * hat(∇cs) * motility_gate(rho_b)`.
+- `motility_gate`: smoothstep em rho_b ∈ [0.1, 0.6] — so swarmers na borda.
+- `f0 ~ 0.5*gamma*v_term = 3` (metade do orcamento de drag).
+- Acoplamento quimiotaxico: forca alinhada ao gradiente local de cs.
+- Predicao: v_term nas pontas sobe de 0.1 para ~0.15. Dedos elongam ~50% mais rapido.
+
+### Pass L — Superficies rugosas (Objetivo 1)
+
+- Substituir paredes planas em [particles.py](src/particles.py) por topografia irregular.
+- Geometria: senoidais com amplitude A e comprimento de onda Lambda controlados, ou perfil aleatorio com espectro de potencia definido.
+- Interacao: particulas solidas com no-slip (velocidade zero imposta via MomentumEquation sources=["solid"]).
+- Validacao: colonia deve canalizar pelos vales da rugosidade.

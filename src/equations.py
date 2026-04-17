@@ -50,37 +50,77 @@ class BiomassGradient(Equation):
 
 
 class SurfactantEquation(Equation):
-    def __init__(self, dest, sources, sigma, lambda_, D):
+    def __init__(self, dest, sources, sigma, lambda_, D, D_ext=0.03, lambda_ext_ratio=3.0):
         self.D = D
+        self.D_ext = D_ext
         self.sigma = sigma
         self.lambda_ = lambda_
+        self.lambda_ext = lambda_ * lambda_ext_ratio
         super(SurfactantEquation, self).__init__(dest, sources)
 
     def initialize(self, d_idx, d_a_c_s):
         d_a_c_s[d_idx] = 0.0
 
-    def loop(self, d_idx, s_idx, s_rho, d_cs, s_cs, s_m, RIJ, XIJ, DWIJ, d_a_c_s, d_h):
+    def loop(
+        self,
+        d_idx,
+        s_idx,
+        s_rho,
+        d_cs,
+        s_cs,
+        s_m,
+        RIJ,
+        XIJ,
+        DWIJ,
+        d_a_c_s,
+        d_h,
+        d_rho_b_grown,
+        s_rho_b_grown,
+    ):
+        # Difusao bi-escala: D_int dentro da colonia, D_ext no agar exterior.
+        # Ramnolipideo difunde rapido no agar livre e lento dentro do biofilme (EPS).
+        # Usa a media geometrica dos rho_b do par para transicao suave.
+        rho_b_avg = 0.5 * (d_rho_b_grown[d_idx] + s_rho_b_grown[s_idx])
+        # Smoothstep gate: D_ext para rho_b<0.1, D_int para rho_b>0.5
+        if rho_b_avg < 0.1:
+            D_eff = self.D_ext
+        elif rho_b_avg < 0.5:
+            t = (rho_b_avg - 0.1) / 0.4
+            gate = t * t * (3.0 - 2.0 * t)
+            D_eff = self.D_ext + (self.D - self.D_ext) * gate
+        else:
+            D_eff = self.D
+
         cs_ij = d_cs[d_idx] - s_cs[s_idx]
         rij_sq = RIJ**2 + 0.01 * d_h[d_idx] ** 2
         dot_product = XIJ[0] * DWIJ[0] + XIJ[1] * DWIJ[1]
 
         term = (s_m[s_idx] / s_rho[s_idx]) * (cs_ij / rij_sq) * dot_product
-        d_a_c_s[d_idx] += 2.0 * self.D * term
+        d_a_c_s[d_idx] += 2.0 * D_eff * term
 
     def post_loop(self, d_idx, d_rho_b_grown, d_a_c_s, d_cs, d_noise, d_grad_rho_b_mag):
-        grad = min(d_grad_rho_b_mag[d_idx], 10.0)
-
         rho_b = d_rho_b_grown[d_idx]
         qs = (
             rho_b * rho_b / (rho_b * rho_b + 0.01)
-        )  # K² = 0.04 → meia-ativação em rho_b=0.2
+        )  # K² = 0.01 → meia-ativacao em rho_b=0.1
         growth_headroom = 1.2 - rho_b  # rho_max = 1.0
         production = self.sigma * qs * growth_headroom * d_noise[d_idx]
 
-        # Lambda constante: o lambda espacialmente dependente foi removido porque ele matava
-        # o cs na interface (onde rho_b < 0.1), destruindo o gradiente antes que o SPH
-        # pudesse calculá-lo. O confinamento do surfactante é garantido pelo D pequeno.
-        d_a_c_s[d_idx] += production - self.lambda_ * d_cs[d_idx]
+        # Pass J: decaimento espacialmente dependente.
+        # lambda_ext (3x lambda) no agar exterior — remove cs rapidamente fora da colonia,
+        # mantendo gradiente afiado na borda. lambda normal no interior — preserva
+        # reservatorio de cs. Justificativa biologica: ramnolipideo no agar livre e
+        # degradado mais rapido que dentro da matriz EPS do biofilme.
+        if rho_b < 0.1:
+            lambda_eff = self.lambda_ext
+        elif rho_b < 0.5:
+            t = (rho_b - 0.1) / 0.4
+            gate = t * t * (3.0 - 2.0 * t)
+            lambda_eff = self.lambda_ext + (self.lambda_ - self.lambda_ext) * gate
+        else:
+            lambda_eff = self.lambda_
+
+        d_a_c_s[d_idx] += production - lambda_eff * d_cs[d_idx]
 
 
 class MarangoniForce(Equation):
@@ -280,7 +320,7 @@ class BiomassEOS(Equation):
     - edge_fade: smoothstep em rho_b ∈ [0.1, 0.5]
     """
 
-    def __init__(self, dest, sources, rho0, c0, gamma_eos=7.0, tension_ratio=0.05):
+    def __init__(self, dest, sources, rho0, c0, gamma_eos=7.0, tension_ratio=0.02):
         self.rho0 = rho0
         self.c0 = c0
         self.B = rho0 * c0 * c0 / gamma_eos

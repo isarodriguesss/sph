@@ -66,6 +66,7 @@ class MyBiomassScheme(Scheme):
         beta,
         sigma,
         D,
+        D_ext,
         lambda_,
         r_growth,
         rho_max,
@@ -78,6 +79,7 @@ class MyBiomassScheme(Scheme):
         self.beta = beta
         self.sigma = sigma
         self.D = D
+        self.D_ext = D_ext
         self.lambda_ = lambda_
         self.r_growth = r_growth
         self.rho_max = rho_max
@@ -122,12 +124,13 @@ class MyBiomassScheme(Scheme):
                     dest="fluid",
                     sources=None,
                     gamma_base=self.gamma,
-                    gamma_mature=self.gamma * 0.3,
+                    gamma_mature=self.gamma * 1.5,  # Pass I.4: razao core/edge=2.5x (era 0.3)
                 ),
                 SurfactantEquation(
                     dest="fluid",
                     sources=["fluid"],
                     D=self.D,
+                    D_ext=self.D_ext,
                     sigma=self.sigma,
                     lambda_=self.lambda_,
                 ),

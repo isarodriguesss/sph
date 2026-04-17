@@ -24,7 +24,7 @@ LOG_HEADER = [
     "constrast_cs",
 ]
 
-x_dim, y_dim = 100, 100
+x_dim, y_dim = 150, 150  # Pass I.8: resolucao aumentada (era 100x100, dx 0.06→0.04)
 
 # Domínio 6×6 centrado na origem
 x_min_domain, x_max_domain = -3.0, 3.0
@@ -38,15 +38,16 @@ dx = (x_max_domain - x_min_domain) / (x_dim - 1)
 # Coesão vem de: (a) EOS com ramo atrativo (p<0 se rho<rho0),
 #                (b) viscosidade maior, (c) Monaghan artificial viscosity forte,
 #                (d) kernel com ~35 vizinhos (h_factor=1.8).
-mu = 0.025  # Viscosidade média: mantém continuidade do braço dendrítico
+mu = 0.012  # Pass I.2: reduzida para permitir filamentos finos (era 0.025)
 gamma = 60.0  # Drag: a_drag = gamma * v_term = 60 * 0.1 = 6
 beta = 4.0  # Marangoni (com gate de interface, só ~60% ativo em média)
-sigma = 1.2  # Produção de surfactante (cs_eq = sigma/lambda = 10)
-D = 4.0e-3  # Difusão elevada → engrossa e estica tentáculos
-lambda_ = 0.15  # Decaimento rápido → cs confinado perto da interface
+sigma = 2.0  # Pass I.7: boost +67% compensa drenagem por D_ext (era 1.2)
+D = 1.5e-3  # Pass I.3: D_int dentro do biofilme — gradiente afiado na interface
+D_ext = 0.01  # Pass I.7: D_ext no agar — L_D_ext=0.26≈2.4h (era 0.03, muito agressivo)
+lambda_ = 0.15  # Decaimento: confina cs mas permite penetracao de ~L_D_ext no exterior
 r_growth = 0.8  # Crescimento lento → tempo para ramificar antes de saturar
 rho_max = 1.0
-alpha_mon = 0.15  # Monaghan artificial viscosity FORTE → estabilidade do braço
+alpha_mon = 0.06  # Pass I.2: reduzida para permitir gradientes afiados (era 0.15)
 
 dt_global = 0.001
 total_sim_time = 100.0
@@ -82,8 +83,8 @@ class SwarmApp(Application):
                 pa.add_property("noise")
                 pa.noise[:] = (
                     1.0
-                    + 0.25 * np.sin(12 * np.arctan2(pa.y, pa.x))
-                    + 0.1 * np.random.rand(len(pa.x))
+                    + 0.4 * np.sin(8 * np.arctan2(pa.y, pa.x))
+                    + 0.03 * np.random.rand(len(pa.x))
                 )
                 pa.add_property("dt_force")
                 pa.add_property("dt_cfl")
@@ -114,6 +115,7 @@ class SwarmApp(Application):
             beta=beta,
             sigma=sigma,
             D=D,
+            D_ext=D_ext,
             lambda_=lambda_,
             r_growth=r_growth,
             rho_max=rho_max,

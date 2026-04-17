@@ -5,9 +5,15 @@ format:
 run:
 	rm -rf main_output
 	python main.py
+	python plot.py
 
 view:
 	pysph view main_output
 
 paraview:
-	pysph dump_vtk main_output
+	rm -rf /Users/isa/Developer/sph_results/paraview
+	pysph dump_vtk main_output -d /Users/isa/Developer/sph_results/paraview
+
+run_view:
+	make run
+	make view

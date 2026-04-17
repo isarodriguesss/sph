@@ -13,3 +13,4 @@ src/__pycache__/
 
 # Ignorar arquivos e diretórios específicos do VS Code
 .vscode/
+.DS_Store

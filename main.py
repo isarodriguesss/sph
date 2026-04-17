@@ -1,86 +1,114 @@
+import csv
 import numpy as np
 from pysph.solver.application import Application
 from pysph.base.kernels import CubicSpline
 from pysph.solver.solver import Solver
-from pysph.base.utils import get_particle_array
 
 from src.particles import create_initial_state
 from src.scheme import MyBiomassScheme
 
-x_dim, y_dim = 64, 64
-# x_dim, y_dim = 128, 128  # Dimensões originais
+LOG_FILE = "log.csv"
+LOG_HEADER = [
+    "t",
+    "iteration",
+    "max_v",
+    "mean_v",
+    "n_fast",
+    "a_marangoni",
+    "a_drag",
+    "a_pressure",
+    "a_total",
+    "min_cs",
+    "max_cs",
+    "mean_cs",
+    "constrast_cs",
+]
 
-x_min_domain, x_max_domain = -1.0, 5.0
-y_min_domain, y_max_domain = -1.0, 5.0
+x_dim, y_dim = 150, 150  # Pass I.8: resolucao aumentada (era 100x100, dx 0.06→0.04)
+
+# Domínio 6×6 centrado na origem
+x_min_domain, x_max_domain = -3.0, 3.0
+y_min_domain, y_max_domain = -3.0, 3.0
 
 dx = (x_max_domain - x_min_domain) / (x_dim - 1)
 
-# expansões maiores
-# x_min_domain, x_max_domain = -6.0, 6.0
-# y_min_domain, y_max_domain = -6.0, 6.0
 
-mu = 0.07
-# mu = 0.07  # Valor para evitar instabilidade
-gamma = 50.0
-# gamma = 13.0  # Valor para evitar instabilidade
-beta = 1.0
-# beta = 0.5  # Valor para evitar instabilidade
-sigma = 1.0
-D = 0.001
-lambda_ = 0.1
-r_growth = 0.5
+# ── Parâmetros Calibrados (Coesão Viscosa + Interface Gateada) ──────────
+# Meta: v_term ≈ 0.1, acelerações totais 10–50, Marangoni só na interface.
+# Coesão vem de: (a) EOS com ramo atrativo (p<0 se rho<rho0),
+#                (b) viscosidade maior, (c) Monaghan artificial viscosity forte,
+#                (d) kernel com ~35 vizinhos (h_factor=1.8).
+mu = 0.012  # Pass I.2: reduzida para permitir filamentos finos (era 0.025)
+gamma = 60.0  # Drag: a_drag = gamma * v_term = 60 * 0.1 = 6
+beta = 4.0  # Marangoni (com gate de interface, só ~60% ativo em média)
+sigma = 2.0  # Pass I.7: boost +67% compensa drenagem por D_ext (era 1.2)
+D = 1.5e-3  # Pass I.3: D_int dentro do biofilme — gradiente afiado na interface
+D_ext = 0.01  # Pass I.7: D_ext no agar — L_D_ext=0.26≈2.4h (era 0.03, muito agressivo)
+lambda_ = 0.15  # Decaimento: confina cs mas permite penetracao de ~L_D_ext no exterior
+r_growth = 0.4  # Crescimento lento → tempo para ramificar antes de saturar
 rho_max = 1.0
+alpha_mon = 0.06  # Pass I.2: reduzida para permitir gradientes afiados (era 0.15)
 
 dt_global = 0.001
-total_sim_time = 20.0
-# total_sim_time = 100.0 # expensões maiores
-print_freq = 500
-# print_freq = 2500 # expensões maiores
+total_sim_time = 100.0
+print_freq = 200
 
 trajectory_store_interval = 20
 
-prob_of_splitting = 0.05
+prob_of_splitting = 0.03
+c0 = 0.8  # EOS: B = 1.5²/7 ≈ 0.32 (repulsão suave, atração ~0.1)
+
+use_splitting = False
 
 
 class SwarmApp(Application):
     def initialize(self):
-        self.n_bact = 300
-        self.all_bact_trajectories = [[] for _ in range(self.n_bact)]
+        with open(LOG_FILE, "w", newline="") as f:
+            csv.writer(f).writerow(LOG_HEADER)
 
     def create_particles(self):
-        fluid_solid = create_initial_state(x_dim=x_dim, y_dim=y_dim, rho_max=rho_max)
-        x = np.linspace(x_min_domain, x_max_domain, x_dim)
-        y = np.linspace(y_min_domain, y_max_domain, y_dim)
-        center_x = (x.min() + x.max()) / 2.0
-        center_y = (y.min() + y.max()) / 2.0
-        r0 = (x[1] - x[0]) * 2
-        angles = np.linspace(0, 2 * np.pi, self.n_bact, endpoint=False)
-
-        xb = center_x + r0 * np.cos(angles)
-        yb = center_y + r0 * np.sin(angles)
-
-        bact = get_particle_array(
-            name="bact",
-            x=xb,
-            y=yb,
-            m=np.ones_like(xb),
-            h=np.ones_like(xb) * (x[1] - x[0]) * 1.2,
+        fluid_solid = create_initial_state(
+            x_dim,
+            y_dim,
+            rho_max,
+            dt_global,
+            x_min=x_min_domain,
+            x_max=x_max_domain,
+            y_min=y_min_domain,
+            y_max=y_max_domain,
         )
 
-        bact.add_property("u", default=0.0)
-        bact.add_property("v", default=0.0)
-
-        bact.add_property("rho", default=1.0)
-
-        self.particles = fluid_solid + [bact]
-
-        for pa in self.particles:
+        for pa in fluid_solid:
             if pa.name == "fluid":
-                pa.add_output_arrays(["rho_b_grown", "cs", "u", "v", "p"])
-            elif pa.name == "bact":
-                pa.add_output_arrays(["u", "v"])
+                pa.add_property("noise")
+                pa.noise[:] = (
+                    1.0
+                    + 0.4 * np.sin(8 * np.arctan2(pa.y, pa.x))
+                    + 0.03 * np.random.rand(len(pa.x))
+                )
+                pa.add_property("dt_force")
+                pa.add_property("dt_cfl")
+                pa.add_output_arrays(["rho_b_grown", "cs", "u", "v", "p", "noise"])
+                # debug das acelerações (componentes vetoriais + magnitude)
+                pa.add_property("au_mar")  # |aceleração Marangoni| (líquida)
+                pa.add_property("ax_mar")  # aceleração Marangoni componente x
+                pa.add_property("ay_mar")  # aceleração Marangoni componente y
+                pa.add_property("au_drag")  # |aceleração Drag|
+                # gradiente da densidade
+                pa.add_property("grad_rho_b_x")
+                pa.add_property("grad_rho_b_y")
+                pa.add_property("grad_rho_b_mag")
+                # gradiente do surfactante (usado por FlagellarForce)
+                pa.add_property("grad_cs_x")
+                pa.add_property("grad_cs_y")
+                pa.add_property("ax_drag")
+                pa.add_property("ay_drag")
+                # flag
+                pa.add_property("au_flag")
+            elif pa.name == "solid":
+                pa.add_property("p")
 
-        return self.particles
+        return fluid_solid
 
     def create_scheme(self):
         return MyBiomassScheme(
@@ -92,9 +120,12 @@ class SwarmApp(Application):
             beta=beta,
             sigma=sigma,
             D=D,
+            D_ext=D_ext,
             lambda_=lambda_,
             r_growth=r_growth,
             rho_max=rho_max,
+            c0=c0,
+            alpha_mon=alpha_mon,
         )
 
     def create_solver(self):
@@ -103,101 +134,157 @@ class SwarmApp(Application):
             dim=2,
             integrator=self.scheme.get_integrator(),
             kernel=kernel,
-            dt=1e-3,
-            adaptive_timestep=False,
+            dt=5e-5,
+            adaptive_timestep=True,
+            cfl=0.4,
         )
         solver.tf = total_sim_time
         solver.set_print_freq(print_freq)
         return solver
 
     def post_step(self, solver):
-        dt = solver.dt
-        bact = self.particles[2]
+        # dt = solver.dt
+        # bact = self.particles[2]
 
-        bact.x += dt * bact.u
-        bact.y += dt * bact.v
+        # bact.x += dt * bact.u
+        # bact.y += dt * bact.v
 
-        domain_width = x_max_domain - x_min_domain
-        domain_height = y_max_domain - y_min_domain
+        # domain_width = x_max_domain - x_min_domain
+        # domain_height = y_max_domain - y_min_domain
 
-        bact.x[:] = (bact.x - x_min_domain) % domain_width + x_min_domain
-        bact.y[:] = (bact.y - y_min_domain) % domain_height + y_min_domain
+        # bact.x[:] = (bact.x - x_min_domain) % domain_width + x_min_domain
+        # bact.y[:] = (bact.y - y_min_domain) % domain_height + y_min_domain
 
-        if solver.count % trajectory_store_interval == 0:
-            for i in range(self.n_bact):
-                self.all_bact_trajectories[i].append([bact.y[i], bact.x[i]])
+        # if solver.count % trajectory_store_interval == 0:
+        #     for i in range(self.n_bact):
+        #         self.all_bact_trajectories[i].append([bact.y[i], bact.x[i]])
 
         if solver.count % print_freq == 0:
             fluid = self.particles[0]
-            max_vel = np.max(np.sqrt(fluid.u**2 + fluid.v**2))
+            v_mag = np.sqrt(fluid.u**2 + fluid.v**2)
+            max_v = np.max(v_mag)
+            mean_v = np.mean(v_mag)
+            n_fast = int(np.sum(v_mag > 0.1))
 
-            print(
-                f"  t={solver.t:.2e}s ({((solver.t) / total_sim_time) * 100:.1f}%), "
-                f"dt={solver.dt:.2e}s, Max c_s: {np.max(fluid.cs):.2e}, "
-                f"Max rho_b: {np.max(fluid.rho_b_grown):.2f}, Max |v|: {max_vel:.2e}"
-            )
+            # Marangoni líquido (magnitude do vetor, não soma de normas)
+            a_mar = np.max(np.abs(fluid.au_mar))
+            a_drag = np.max(np.abs(fluid.au_drag))
+            # Aceleração total (inclui pressão via MomentumEquation + tudo)
+            a_total = np.max(np.sqrt(fluid.au**2 + fluid.av**2))
+            # ax_pressure = au_total - ax_mar - ax_drag
+            ax_p = fluid.au - fluid.ax_mar - fluid.ax_drag
+            ay_p = fluid.av - fluid.ay_mar - fluid.ay_drag
+            a_pressure = np.max(np.sqrt(ax_p**2 + ay_p**2))
+            a_flag = np.max(np.abs(fluid.au_flag))
 
-        if solver.count > 0 and solver.count % 100 == 0:
-            fluid = self.particles[0]
-            mature_indices = np.where(fluid.m > 1.99 * fluid.m0)[0]
-            indices_to_split = []
-            for idx in mature_indices:
-                if np.random.rand() < prob_of_splitting:
-                    indices_to_split.append(idx)
+            # 3. Estatísticas do Surfactante (cs)
+            min_cs = np.min(fluid.cs)
+            max_cs = np.max(fluid.cs)
+            mean_cs = np.mean(fluid.cs)
+            contrast_cs = (max_cs - min_cs) / (mean_cs + 1e-9)
 
-            if len(indices_to_split) > 0:
-                print(
-                    f"\n--- Divisão Celular em t={solver.t:.2f}: {len(indices_to_split)} partículas se dividindo. ---"
+            print("-" * 50)
+            print(f"Tempo: {solver.t:.2f}s | Iteração: {solver.count}")
+            print(f"Velocidade Máx: {max_v:.4f}")
+            print(f"Contraste CS: {contrast_cs:.4f}")
+            print("Acelerações:")
+            print(f"  > Marangoni (líq): {a_mar:.2f}")
+            print(f"  > Drag:            {a_drag:.2f} (Freio)")
+            print(f"  > Pressão (est):   {a_pressure:.2f}")
+            print(f"  > Total |a|:       {a_total:.2f}")
+
+            with open(LOG_FILE, "a", newline="") as f:
+                csv.writer(f).writerow(
+                    [
+                        f"{solver.t:.4f}",
+                        solver.count,
+                        f"{max_v:.6f}",
+                        f"{mean_v:.6f}",
+                        n_fast,
+                        f"{a_mar:.4f}",
+                        f"{a_drag:.4f}",
+                        f"{a_pressure:.4f}",
+                        f"{a_flag:.4f}",
+                        f"{a_total:.4f}",
+                        f"{min_cs:.4f}",
+                        f"{max_cs:.4f}",
+                        f"{mean_cs:.4f}",
+                        f"{contrast_cs:.4f}",
+                    ]
                 )
 
-                daughters = fluid.empty_clone()
+        if use_splitting:
+            print("Iniciando processo de divisão celular...")
+            if solver.count > 0 and solver.count % 500 == 0:
+                fluid = self.particles[0]
+                min_rho_b_for_division = 0.05
+                mature_by_mass_indices = np.where(fluid.m > 1.99 * fluid.m0)[0]
+                mature_by_rho_b_indices = np.where(
+                    fluid.rho_b_grown[mature_by_mass_indices] > min_rho_b_for_division
+                )[0]
+                indices_to_split = []
+                for idx in mature_by_rho_b_indices:
+                    original_idx = mature_by_mass_indices[idx]
+                    if np.random.rand() < prob_of_splitting:
+                        indices_to_split.append(original_idx)
 
-                props_to_copy = [
-                    "x",
-                    "y",
-                    "m",
-                    "h",
-                    "rho",
-                    "rho_b_grown",
-                    "cs",
-                    "u",
-                    "v",
-                    "au",
-                    "av",
-                    "a_rho_b_grown",
-                    "a_c_s",
-                    "m0",
-                ]
+                if len(indices_to_split) > 0:
+                    print(
+                        f"\n--- Divisão Celular em t={solver.t:.2f}: {len(indices_to_split)} partículas se dividindo. ---"
+                    )
 
-                for parent_idx in indices_to_split:
-                    parent_props = {
-                        prop: getattr(fluid, prop)[parent_idx] for prop in props_to_copy
-                    }
+                    daughters = fluid.empty_clone()
 
-                    for i in range(2):
-                        daughter_data = parent_props.copy()
-                        daughter_data["m"] = parent_props["m"] / 2.0
-                        daughter_data["m0"] = parent_props["m0"]
-                        daughter_data["rho_b_grown"] = parent_props["rho_b_grown"] / 2.0
-                        dx_local = parent_props["h"] / 4.0
-                        offset_x = dx_local * (np.random.rand() - 0.5)
-                        offset_y = dx_local * (np.random.rand() - 0.5)
+                    props_to_copy = [
+                        "x",
+                        "y",
+                        "m",
+                        "h",
+                        "rho",
+                        "rho_b_grown",
+                        "cs",
+                        "u",
+                        "v",
+                        "au",
+                        "av",
+                        "a_rho_b_grown",
+                        "a_c_s",
+                        "m0",
+                    ]
 
-                        daughter_data = parent_props.copy()
-                        daughter_data["x"] = parent_props["x"] + offset_x
-                        daughter_data["y"] = parent_props["y"] + offset_y
-
-                        data_to_add = {
-                            key: [value] for key, value in daughter_data.items()
+                    for parent_idx in indices_to_split:
+                        parent_props = {
+                            prop: getattr(fluid, prop)[parent_idx]
+                            for prop in props_to_copy
                         }
 
-                        daughters.add_particles(**data_to_add)
+                        for i in range(2):
+                            daughter_data = parent_props.copy()
+                            daughter_data["m"] = parent_props["m"] / 2.0
+                            daughter_data["m0"] = parent_props["m0"]
+                            # daughter_data["rho_b_grown"] = parent_props["rho_b_grown"] / 2.0
+                            dx_local = parent_props["h"] * 0.5
+                            offset_x = dx_local * (np.random.rand() - 0.5)
+                            offset_y = dx_local * (np.random.rand() - 0.5)
 
-                fluid.append_parray(daughters)
+                            daughter_data = parent_props.copy()
+                            daughter_data["x"] = parent_props["x"] + offset_x
+                            daughter_data["y"] = parent_props["y"] + offset_y
 
-                fluid.remove_particles(indices_to_split)
+                            data_to_add = {
+                                key: [value] for key, value in daughter_data.items()
+                            }
 
-                solver.nnps.update()
+                            daughters.add_particles(**data_to_add)
+
+                    fluid.append_parray(daughters)
+
+                    fluid.remove_particles(indices_to_split)
+
+                    solver.nnps.update()
+
+        else:
+            pass
 
 
 if __name__ == "__main__":

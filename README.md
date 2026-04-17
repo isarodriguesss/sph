@@ -36,3 +36,7 @@ make run
 ## Visualizando
 
 make view
+
+## Tabela de parâmetros
+
+![alt text](image.png)

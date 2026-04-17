@@ -50,7 +50,9 @@ class BiomassGradient(Equation):
 
 
 class SurfactantEquation(Equation):
-    def __init__(self, dest, sources, sigma, lambda_, D, D_ext=0.03, lambda_ext_ratio=3.0):
+    def __init__(
+        self, dest, sources, sigma, lambda_, D, D_ext=0.03, lambda_ext_ratio=3.0
+    ):
         self.D = D
         self.D_ext = D_ext
         self.sigma = sigma
@@ -401,3 +403,80 @@ class OsmoticForce(Equation):
             d_au[d_idx] += acc_x
             d_av[d_idx] += acc_y
             d_au_osm[d_idx] += (acc_x * acc_x + acc_y * acc_y) ** 0.5
+
+
+class FlagellarForce(Equation):
+    """
+    Pass K — Motilidade flagelar orientada por gradiente (Frente 5, CLAUDE.md).
+
+    F_flag = -f0 * gate(rho_b) * n̂(∇cs)
+
+    Forca propulsiva constante em magnitude (f0), alinhada a -∇cs (mesma direcao
+    de Marangoni — para agar fresco). Sobrevive a saturacao do reservatorio de cs
+    porque depende apenas da DIRECAO do gradiente, nao da magnitude. Modela o
+    flagelo polar de P. aeruginosa como motor ativo quimiotactico.
+
+    Gate rho_b em [0.1, 0.6] com pico em 0.35: so swarmers de borda recebem a forca,
+    nucleo maduro (rho_b~1) e agar livre (rho_b~0) sao imunes.
+
+    Loop: acumula gradiente SPH completo de cs em grad_cs_x/y.
+    Post_loop: normaliza o vetor total e aplica com sinal correto.
+    """
+
+    def __init__(self, dest, sources, f0):
+        self.f0 = f0
+        super().__init__(dest, sources)
+
+    def initialize(self, d_idx, d_au_flag, d_grad_cs_x, d_grad_cs_y):
+        d_au_flag[d_idx] = 0.0
+        d_grad_cs_x[d_idx] = 0.0
+        d_grad_cs_y[d_idx] = 0.0
+
+    def loop(
+        self,
+        d_idx,
+        s_idx,
+        s_m,
+        s_rho,
+        s_cs,
+        d_cs,
+        d_grad_cs_x,
+        d_grad_cs_y,
+        DWIJ,
+    ):
+        vol_j = s_m[s_idx] / s_rho[s_idx]
+        cs_ij = s_cs[s_idx] - d_cs[d_idx]
+        d_grad_cs_x[d_idx] += vol_j * cs_ij * DWIJ[0]
+        d_grad_cs_y[d_idx] += vol_j * cs_ij * DWIJ[1]
+
+    def post_loop(
+        self,
+        d_idx,
+        d_rho_b_grown,
+        d_grad_cs_x,
+        d_grad_cs_y,
+        d_au,
+        d_av,
+        d_au_flag,
+    ):
+        rho_b = d_rho_b_grown[d_idx]
+        # Gate: swarmers na borda apenas, pico em rho_b=0.35
+        if rho_b >= 0.1 and rho_b <= 0.6:
+            if rho_b < 0.35:
+                t = (rho_b - 0.1) / 0.25
+            else:
+                t = (0.6 - rho_b) / 0.25
+            gate = t * t * (3.0 - 2.0 * t)
+
+            gx = d_grad_cs_x[d_idx]
+            gy = d_grad_cs_y[d_idx]
+            mag = (gx * gx + gy * gy) ** 0.5 + 1e-9
+
+            # Sinal negativo: forca aponta na direcao de -∇cs (mesma de Marangoni,
+            # para o agar fresco). Magnitude constante = f0 * gate, independente
+            # de |∇cs|, por isso sobrevive a saturacao do reservatorio.
+            acc_x = -self.f0 * gate * gx / mag
+            acc_y = -self.f0 * gate * gy / mag
+            d_au[d_idx] += acc_x
+            d_av[d_idx] += acc_y
+            d_au_flag[d_idx] = (acc_x * acc_x + acc_y * acc_y) ** 0.5

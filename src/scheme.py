@@ -8,6 +8,7 @@ from pysph.sph.wc.basic import MomentumEquation
 from .equations import (
     BiomassEOS,
     BiomassGrowth,
+    FlagellarForce,
     MarangoniForce,
     SurfactantEquation,
     LinearDrag,
@@ -124,7 +125,8 @@ class MyBiomassScheme(Scheme):
                     dest="fluid",
                     sources=None,
                     gamma_base=self.gamma,
-                    gamma_mature=self.gamma * 1.5,  # Pass I.4: razao core/edge=2.5x (era 0.3)
+                    gamma_mature=self.gamma
+                    * 1.5,  # Pass I.4: razao core/edge=2.5x (era 0.3)
                 ),
                 SurfactantEquation(
                     dest="fluid",
@@ -133,6 +135,11 @@ class MyBiomassScheme(Scheme):
                     D_ext=self.D_ext,
                     sigma=self.sigma,
                     lambda_=self.lambda_,
+                ),
+                FlagellarForce(
+                    dest="fluid",
+                    sources=["fluid"],
+                    f0=2.0,
                 ),
             ],
         )

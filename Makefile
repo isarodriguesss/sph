@@ -5,6 +5,7 @@ format:
 run:
 	rm -rf main_output
 	python main.py
+	python plot.py
 
 view:
 	pysph view main_output

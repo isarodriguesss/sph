@@ -45,7 +45,7 @@ sigma = 2.0  # Pass I.7: boost +67% compensa drenagem por D_ext (era 1.2)
 D = 1.5e-3  # Pass I.3: D_int dentro do biofilme — gradiente afiado na interface
 D_ext = 0.01  # Pass I.7: D_ext no agar — L_D_ext=0.26≈2.4h (era 0.03, muito agressivo)
 lambda_ = 0.15  # Decaimento: confina cs mas permite penetracao de ~L_D_ext no exterior
-r_growth = 0.8  # Crescimento lento → tempo para ramificar antes de saturar
+r_growth = 0.4  # Crescimento lento → tempo para ramificar antes de saturar
 rho_max = 1.0
 alpha_mon = 0.06  # Pass I.2: reduzida para permitir gradientes afiados (era 0.15)
 
@@ -98,8 +98,13 @@ class SwarmApp(Application):
                 pa.add_property("grad_rho_b_x")
                 pa.add_property("grad_rho_b_y")
                 pa.add_property("grad_rho_b_mag")
+                # gradiente do surfactante (usado por FlagellarForce)
+                pa.add_property("grad_cs_x")
+                pa.add_property("grad_cs_y")
                 pa.add_property("ax_drag")
                 pa.add_property("ay_drag")
+                # flag
+                pa.add_property("au_flag")
             elif pa.name == "solid":
                 pa.add_property("p")
 
@@ -170,6 +175,7 @@ class SwarmApp(Application):
             ax_p = fluid.au - fluid.ax_mar - fluid.ax_drag
             ay_p = fluid.av - fluid.ay_mar - fluid.ay_drag
             a_pressure = np.max(np.sqrt(ax_p**2 + ay_p**2))
+            a_flag = np.max(np.abs(fluid.au_flag))
 
             # 3. Estatísticas do Surfactante (cs)
             min_cs = np.min(fluid.cs)
@@ -198,6 +204,7 @@ class SwarmApp(Application):
                         f"{a_mar:.4f}",
                         f"{a_drag:.4f}",
                         f"{a_pressure:.4f}",
+                        f"{a_flag:.4f}",
                         f"{a_total:.4f}",
                         f"{min_cs:.4f}",
                         f"{max_cs:.4f}",

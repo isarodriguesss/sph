@@ -126,7 +126,7 @@ class MyBiomassScheme(Scheme):
                     sources=None,
                     gamma_base=self.gamma,
                     gamma_mature=self.gamma
-                    * 1.5,  # Pass I.4: razao core/edge=2.5x (era 0.3)
+                    * 1.5,  # K.16c: revertido a baseline K.15; pinning via edge_fade invertido
                 ),
                 SurfactantEquation(
                     dest="fluid",
@@ -139,7 +139,7 @@ class MyBiomassScheme(Scheme):
                 FlagellarForce(
                     dest="fluid",
                     sources=["fluid"],
-                    f0=2.0,
+                    f0=0.5,
                 ),
             ],
         )

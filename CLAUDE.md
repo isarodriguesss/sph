@@ -12,7 +12,7 @@ Simulacao 2D em SPH (via [PySPH](https://pysph.readthedocs.io/)) da dinamica de 
 
 ### Objetivos de longo prazo (guiam decisoes arquiteturais)
 
-1. **Superficies rugosas** *(em aberto — prioridade apos Pass K)* — Partículas de contorno estaticas com geometria irregular que interagem mecanicamente com o fluido e alteram os campos de difusao/escoamento. Toda decisao de refatoracao deve preservar a capacidade de substituir as paredes planas atuais por topografias arbitrarias.
+1. **Superficies rugosas** *(em aberto — bloqueado ate atingir morfologia de `reference.jpg`)* — Partículas de contorno estaticas com geometria irregular que interagem mecanicamente com o fluido e alteram os campos de difusao/escoamento. Toda decisao de refatoracao deve preservar a capacidade de substituir as paredes planas atuais por topografias arbitrarias. **PRE-REQUISITO OBRIGATORIO (§2.2):** a IA so pode sugerir implementar rugosidade (Pass L) apos a simulacao reproduzir a morfologia dendritica de `reference.jpg` via mecanismos hidrodinamicos puros (Marangoni + Flagelar + EOS). Rugosidade e **refinamento fisico**, nao muleta para compensar motor insuficiente.
 2. **Pressao osmotica (van't Hoff)** *(em aberto)* — Reativar `OsmoticForce` com formulacao termodinamicamente consistente (`Pi = iCRT`) acoplada ao campo de biomassa, substituindo a abordagem atual via ramo atrativo da EOS quando estável.
 3. **Motilidade flagelar orientada por gradiente** *(✅ implementado — Pass K)* — Forca propulsiva de **magnitude constante** (`f0 * gate`) alinhada a `-∇cs` (quimiotaxia para agar fresco), gateada a swarmers de borda (`rho_b ∈[0.1, 0.6]`). Ver `FlagellarForce` em [src/equations.py](src/equations.py) e §3.2 Frente 5.
 
@@ -33,13 +33,41 @@ A IA **nunca** deve sugerir mudancas cegas em parametros fisicos. Antes de calib
 ### 2.2 Validacao visual da morfologia
 
 - Solicitar ou levar em consideracao a analise dos frames gerados em `main_output/movie/` para confirmar se a morfologia e fisicamente valida.
-- **Criterio de sucesso:** formacao de dendritos/gavinhas com perimetro irregular (fingering). **Criterio de falha:** expansao circular uniforme, anel oco, ou colapso para disco compacto.
-- Nao declarar um Pass como "bem-sucedido" baseando-se apenas em metricas escalares — a forma da colonia e o validador final.
+- **Referencia visual obrigatoria:** [reference.jpg](reference.jpg) (Michiels et al.) — colonia com ~15-20 dendritos radiais longos, `AR >= 1:5`, separados por agar limpo, nucleo central coeso com picos de surfactante nas pontas (painel C da referencia).
+- **Criterio de sucesso (Pass I-K):** aproximacao monotonica da morfologia de `reference.jpg` — dendritos cada vez mais finos, longos e separados.
+- **Criterio de falha:** expansao circular uniforme, anel oco, colapso para disco compacto, ou blob ameboide com muitos bumps curtos (AR ~1:2).
+- Nao declarar um Pass como "bem-sucedido" baseando-se apenas em metricas escalares — a forma da colonia **comparada a `reference.jpg`** e o validador final.
+- **Gatilho para Pass L (rugosidade):** so propor apos frames mostrarem dendritos de AR >= 1:5 separados por agar limpo. Ate la, refinar mecanismos hidrodinamicos (Pass I-K).
 
 ### 2.3 Predicao antes da acao
 
 - Para cada mudanca de parametro, a IA deve apresentar uma **predicao quantitativa** do efeito esperado (ex: "reduzir `D` de 4e-3 para 2e-3 deve aumentar `|nabla cs|` em ~40% e reduzir `L_D` de 1.5h para 1.1h").
 - Apos a simulacao, comparar predicao vs. resultado. Discrepancias > 2x devem ser investigadas antes do proximo passo.
+
+### 2.4 CRITERIO BLOQUEANTE — Core Pinning (diagnosticado 2026-04-22, pos-K.15)
+
+**Contexto biologico:** na literatura (Michiels et al., Tremblay et al., Kearns — P. aeruginosa PA14 em agar swarming), a colonia exibe **nucleo denso imovel** (matriz EPS madura) com **dendritos finos sendo a unica frente de expansao**. A velocidade radial da colonia = velocidade das pontas. Interior e baias entre dendritos sao **estaticos**.
+
+**Falha observada na simulacao (K.15, t=0→33.8s):** apesar de motor sustentado e dendritos visiveis (AR 1:5-1:7), a **colonia inteira expande radialmente** — toda a interface (borda, baias, pontas) avança junto. Dendritos sao "bumps arrastados" na superficie de um blob inflando, nao extensoes de um nucleo ancorado. Consequencia morfologica: ausencia de tip-splitting e de estrutura fractal — pontas nao tem trajetoria propria para bifurcar.
+
+**Metricas diagnosticas (core pinning failure):**
+- **`a_pressure` (orcamento §8: <3) observada 15-30 rotina, picos >50** (~5-17× excesso). EOS com `edge_fade=1.0` no interior (`rho_b>0.5`) pressuriza o nucleo quando `rho > rho0`, empurrando radialmente.
+- **`n_fast` 900-1300** — ativacao em massa; fracao ativa/total > 50%. Nao localizada nas pontas.
+- **Razao drag core/borda = 2.2×** (`gamma_mature=1.5·gamma`) — insuficiente (§3.2 sugere 5-10×).
+
+**Criterios de aceitacao para desbloquear qualquer avanco:**
+1. `a_pressure` sustentada **<5** em t>20s (max eventual <15).
+2. `n_fast / N_interface < 2` — ativacao predominantemente nas pontas, nao no bulk.
+3. Visualmente nos frames: **baias entre dendritos devem permanecer estacionarias** entre frames sucessivos (t-spaced ≥3s); so as pontas avançam radialmente.
+4. Razao efetiva `v_core / v_tip < 0.2` — nucleo pinnado relativamente as pontas.
+
+**BLOQUEIO DURO:** enquanto core pinning failure persistir, sao **proibidas**:
+- Novas mudancas em parametros de surfactante (`sigma`, `beta`, `lambda`, `D`, `k_consume`).
+- Propostas de Etapa 2 (tip-splitting, Peclet-Mullins via β).
+- Propostas de nova fisica (substrato consumivel, Ising, etc.).
+- **Pass L (rugosidade) permanece BLOQUEADO** (segundo bloqueio ativo, alem de §1/§2.2).
+
+**Unicas acoes permitidas:** tunar `gamma_mature` (core drag), `c0` (EOS stiffness), e `edge_fade` geometria/domínio da BiomassEOS — parametros que atuam diretamente no pinning.
 
 ---
 
@@ -170,21 +198,22 @@ Calibracao pos-Passes A-I.7. **MARCO I.7:** Transicao blob→dendritico confirma
 | Viscosidade | `mu` | 0.012 | Pass I.2: reduzida de 0.025 para filamentos finos |
 | Arrasto (base) | `gamma` | 60.0 | `a_drag` = `gamma*v_term` = 6 em v=0.1 |
 | Arrasto (nucleo) | `gamma_mature` (scheme) | `1.5*gamma` | Pass I.4: razao core/edge 2.5x (era 0.3*gamma) |
-| Coef. Marangoni | `beta` | 4.0 | Estavel — `a_mar` pico 148 com sigma=2.0 |
-| Producao surfactante | `sigma` | 2.0 | Pass I.7: +67% para compensar drenagem por `D_ext` |
+| Coef. Marangoni | `beta` | **1.0** | Pass K.5: 4→1 (4x reduzido para domar feedback amplificado por K.6/K.7) |
+| Producao surfactante | `sigma` | **0.8** | Pass K.9: 0.6→0.8 (ponto medio entre explosao K.7 e one-tip K.8) |
+| Forca flagelar | `f0` | **0.5** | Pass K.5: 2.0→0.5 (4x reduzido junto com beta) |
 | Difusao (biofilme) | `D` (`D_int`) | 1.5e-3 | Pass I.3: gradiente afiado na interface (`L_D_int`=0.93h) |
-| Difusao (agar) | `D_ext` | 0.01 | Pass I.7: campo de longo alcance (`L_D_ext`=2.4h) |
+| Difusao (agar) | `D_ext` | 0.01 | Pass I.7, **validado K.10**: reduzir para 0.005 mata o campo long-range de Mullins-Sekerka (pior morfologia) |
 | Decaimento | `lambda_` | 0.15 | Manter — confina `cs` mas permite penetracao de `L_D_ext` |
-| Taxa crescimento | `r_growth` | 0.8 | Pass G: crescimento lento estende tau_sat 0.8s -> 2.5s |
-| Modelo producao | `qs * (1.2 - rho_b)` | `[rho_b^2/(rho_b^2+0.01)] * (1.2 - rho_b)` | Pass H aplicado: piso de 17% no nucleo maduro |
+| Taxa crescimento | `r_growth` | 0.4 | Pass K: estende janela de swarmers de borda |
+| Modelo producao | `sigma*qs*(1.2-rho_b)*noise*tip_boost*motile_boost` | — | K.6 adicionou `tip_boost = 1+3*grad_rho_b_mag`; K.7 adicionou `motile_boost = 1+50*min(|v|,0.1)` |
 | Visc. artificial Monaghan | `alpha_mon` | 0.06 | Pass I.2: reduzida de 0.15 para gradientes afiados |
 | Vel. som (EOS) | `c0` | 0.8 | B ~ 0.09; tensao `tension_ratio=0.02` (Pass I.5) |
 | Smoothing kernel | `h_factor` | 1.8*dx | ~35 vizinhos por particula |
 | Timestep | `dt` | 5e-5 | Adaptivo, CFL=0.4 |
-| Grade | `x_dim, y_dim` | 100x100 | |
+| Grade | `x_dim, y_dim` | 150x150 | Pass I.8: resolucao aumentada |
 | Dominio | `x/y_min/max` | [-3, 3]^2 | 6x6 centrado na origem |
-| Perturbacao inicial (rho_b) | `azimuthal_perturb` | `0.5*cos(8*theta)` | Pass I.1: N=8 unificado (era N=16) |
-| Perturbacao inicial (noise) | `noise` | `1.0 + 0.4*sin(8*theta) + 0.03*rand()` | Pass I.1: N=8, ruido reduzido |
+| Perturbacao inicial (rho_b) | `azimuthal_perturb` | `0.8*cos(8*theta)` | Pass K.12: N unificado em 8 (K.4 era N=5, K.11 N=10) |
+| Perturbacao inicial (noise) | `noise` | `1.0 + 0.6*sin(8*theta) + 0.01*rand()` | Pass K.12: N=8 coerente com rho_b |
 
 ---
 
@@ -218,15 +247,32 @@ Calibracao pos-Passes A-I.7. **MARCO I.7:** Transicao blob→dendritico confirma
 
 ### Em andamento
 
-- **Pass K — Motilidade flagelar implementada; morfologia ainda lobular:** Com Pass J+K, motor sustentado ate t=24.5s confirmado (`log.csv`). `a_mar` pico 182, `mean_v` estavel 0.0075. Porem, frames 030/047 mostram colonia lobular com ~15-20 bumps curtos (AR ~1:2), nao dendritos finos (meta: 8-12 dedos com AR >= 1:5). No painel `cs` o anel da borda e quase uniforme — falta seleção competitiva entre pontas. Hipoteses:
-  - `f0 = 2.0` pode ser insuficiente — `FlagellarForce` redundante com Marangoni.
-  - Seleção competitiva requer canalização geométrica (Pass L, superfícies rugosas).
-  - Gate de Marangoni (`grad_rho_b_mag ∈ [0.05, 0.6]`) pode ser largo demais — ativa em quase todo o perímetro.
+- **Pass K.8 — "One-tip tyranny" (confirmada visualmente):** Apos K.5-K.8 (ver §12), frame 034 (t~28s) mostrou **um unico dendrito** radial com AR ≥ 1:10 e nucleo compacto preservado — morfologia individual **identica a `reference.jpg`**. Porem referencia pede **10-15 dendritos**, nao um. Causa: winner steals — um vencedor consome todo o gradiente de cs via difusao lateral, extinguindo competidores (`n_fast` cai de 670 → 130 entre t=3s e t=13s).
+- **Pass K.9 — few-tip tyranny:** `sigma: 0.6→0.8` relaxou one-tip para **3-4 dendritos** (frame 039, t=30s). `a_mar` pico 300, `contrast_cs` 95-155, sustentado. Melhor que K.8 mas ainda sub-alvo.
+- **Pass K.10 — reducao D_ext falhou:** `D_ext: 0.01→0.005` tentou localizar cs para prevenir winner-steal. Resultado: **pior morfologia** (5-6 bumps curtos, AR ~1:2). Lecao: reduzir D_ext mata o campo long-range necessario para focalizacao geometrica Mullins-Sekerka. **D_ext=0.01 e otimo**, nao reduzir mais.
+- **Pass K.11 — multi-seeding N=10 (rho_b) + N=8 (noise):** `D_ext: 0.005→0.01`, `cos(10θ)` em particles. `a_mar` pico 368 (vs K.9 300, +23%), `n_fast` pico 560. Porem `contrast_cs` em queda monotonica **188→83** em 16s e `max_cs` declinou apos pico (51.5→33.4). **Regressao morfologica**: N=10 semeou muitos tips que se sobrepuseram via difusao lateral, homogeneizando o campo. Mismatch N=10/N=8 (rho_b vs noise) violou licao I.1 de coerencia de modos.
+- **Pass K.12 — unificar em N=8:** `cos(8θ)` tambem em particles.py. `a_mar` pico identico (368), `contrast_cs` cai igualmente (204→81). **Unificacao morfologicamente neutra**. Dado novo: `n_fast` apresentou **pulsacao forte** (627→165→567 em 12s) nao vista em K.11. Frames revelaram blob lobular com ~14 bumps uniformes AR 1:2 — pre-semeadura nao resistiu a homogeneizacao difusiva dos plumes.
+- **Pass K.13 — avanco parcial + falha terminal diagnosticada tardiamente (2026-04-22):** `lambda_ext_ratio=5.0` em [src/scheme.py:131-138](src/scheme.py#L131-L138). `lambda_ext=0.75`, `L_D_ext=0.115`. Frames 090-130 (t=28-40s) mostraram dendritos visualmente discerniveis (avanco genuino vs K.12 bumps AR 1:2), porem **morfologia incorreta vs P. aeruginosa**: lobulos bulbosos, SEM tip-splitting, SEM estrutura fractal. **Falha terminal confirmada via analise temporal extendida (t=0→53s):** `contrast_cs` **colapsa monotonicamente 131→32** entre t=30s e t=53s, `mean_cs` **cresce sem limite 0.26→1.17** (saturacao global do interior), `n_fast` sobe 430→1787 (4x) com `max_v` degradando — **ativacao bulk disfarcada de motor seletivo**. Causa raiz: **ausencia de sumidouro fisico** para cs. Com `(1.2-rho_b)=0.2` + `motile_boost` + `lambda_int=0.15`, estado estacionario interior cs_∞ = σ·0.17/λ ≈ 0.91 — afogamento inevitavel. Falha auto-diagnosticada apos frame 056 ser declarado sucesso prematuramente. **Pass L permanece BLOQUEADO.**
+- **Pass K.14 — sumidouro biomassa-dependente (Etapa 1, 2026-04-22):** adicionado termo `-k_consume * rho_b * cs` em [src/equations.py:147](src/equations.py#L147) `SurfactantEquation.post_loop`. `k_consume=0.5` — decaimento efetivo interior = `lambda + k_consume*rho_b` = 0.65 em rho_b=1 (4.3x maior que K.13). Exterior (rho_b≈0) preserva mecanismo inalterado. **Fundamentacao biologica**: ramnolipideos sao adsorvidos nas membranas bacterianas e degradados por enzimas rhlE/rhlB reguladoras intrinsecas em alta densidade (QS homeostase). **Resultado**: motor prevenido de afogar mas sub-amplitude — `a_mar` pico 172 (vs K.13 368). Morfologia lobular sem dendritos. Evoluiu para K.15.
+- **Pass K.15 — sigma 0.8→1.2 para restaurar amplitude (2026-04-22):** mantido `k_consume=0.5`, aumentado `sigma: 0.8 → 1.2` em[main.py:45](main.py#L45). Resultado (t=0→33.8s): **primeira morfologia dendritica real** (~15-18 dendritos, AR 1:5 a 1:7 em frames 097/110/132), motor sustentado (`a_mar` pico 329, pulsos 100-260), `contrast_cs` plateau 55-95 apos transitorio (inicial 204→52 em t=26s, recuperou para 94 em t=29s), `mean_cs` plateau 0.47-0.55 (afogamento estabilizado), `max_cs` 30-45. **Motor resolvido (Etapa 1 ✓).** Porem: **core pinning failure diagnosticado** (§2.4) — `a_pressure` 15-30 rotina com picos >50 (orcamento <3), `n_fast` 900-1300 (ativacao em massa, nao localizada nas pontas), razao drag core/borda apenas 2.2× (`gamma_mature=1.5·gamma`). Conclusao: colonia inteira infla radialmente, dendritos sao bumps arrastados. Tip-splitting ausente. **Pass K.16 abordara core pinning (§2.4).**
+
+**Invariantes morfologicos descobertos (K.5-K.14):**
+1. `smoothstep` em `[a,b]` satura em 1.0 no pico → **max(metric) e cego ao estreitamento do gate**. K.1, K.2 pareceram no-op por isso; diagnostico correto requer `n_active` e `mean_active`, nao `max`.
+2. Tip-boost via `|∇rho_b|` e **uniforme no rim** (pontas, baias e trechos retos tem magnitude similar). Nao discrimina pontas sozinho.
+3. **Motilidade (|v|) e o discriminador correto**: swarmers ativos estao so nas pontas avancando. Acoplar producao a |v| localiza cs em pontas (K.7 provou — primeira inversao de `contrast_cs`).
+4. Feedback `tip_boost × motile_boost` e **multiplicativo** — amplifica exponencialmente. Saturar escala via `sigma` (nao quebrar feedback).
+5. `D_ext ∈[0.008, 0.012]` e a janela funcional: menos mata Mullins-Sekerka, mais permite winner-steal.
+6. **Multi-seeding sozinho nao seleciona dendritos** (K.11/K.12): com D_ext=0.01 e `lambda_ext_ratio=3.0`, plumes de cs de tips vizinhos se sobrepoe via difusao lateral — 8-10 candidatos nao amadurecem em dendritos distintos. Precisa **confinamento adicional via decaimento**, nao so pre-semeadura.
+7. **`lambda_ext_ratio=5.0` confina plumes laterais** (K.13): `L_D_ext 0.149→0.115` impede fusao, produziu dendritos visualmente discerniveis. Porem **nao suficiente**: sem sumidouro fisico, saturacao global do interior destroi gradiente em t>30s.
+8. **Ausencia de sumidouro biomassa-dependente e falha terminal** (diagnosticada K.13 → correcao K.14): sem termo `-k·rho_b·cs`, `(1.2-rho_b)` + `motile_boost` geram producao contínua no core saturado. `mean_cs` cresce sem limite, `contrast_cs` colapsa monotonicamente, `mean_v` **cresce aparentemente** por ativacao bulk espuria (n_fast 4x maior com max_v degradando). **Licao critica de diagnostico**: `mean_v` e `n_fast` podem crescer enquanto motor colapsa — sempre validar com tendencia temporal de `contrast_cs` e crescimento de `mean_cs`.
+9. **Morfologia `reference.jpg` de P. aeruginosa e FRACTAL, nao radial simples**: ~15 dendritos de primeira ordem + ramificacao secundaria/terciaria por **tip-splitting**. Modelo atual (Marangoni + flagelar + EOS + difusao bi-escala + sumidouro em K.14) gera apenas instabilidade primaria de Mullins-Sekerka → **lobulos bulbosos sem bifurcacao**. Tip-splitting requer mecanismo adicional: substrato consumivel, ruido estocastico forte, ou razao capilar β/f0 otimizada.
+10. **Core pinning failure e pre-requisito invisivel para tip-splitting** (diagnosticado K.15, 2026-04-22): ativacao em massa (`n_fast` 900-1300 em ~10⁴ particulas) e `a_pressure` 15-30 (vs orcamento <3) impedem bifurcacao porque pontas nao tem **trajetoria propria** — sao arrastadas pela expansao radial do blob. Na morfologia real (literatura P. aeruginosa PA14), nucleo EPS e imovel e pontas sao a unica frente de avanco. **Pinning tem que vir antes de tip-splitting** — sem nucleo ancorado, nenhuma competicao capilar (β/f0) consegue isolar uma ponta que se bifurque: a proxima iteracao do blob arrasta as duas metades juntas. **Tres alavancas hidrodinamicas**: (a) `gamma_mature` drasticamente maior (5-10× gamma vs 1.5× atual), (b) `c0` reduzido (0.8→0.5 para B/a_pressure drop 2.56×), (c) revisao de `edge_fade` para zerar pressao EOS justamente no nucleo (`rho_b>0.8`) ao inves de maximiza-la.
 
 **Proximos diagnosticos obrigatorios:**
-1. Adicionar `a_flag` no log e `au_flag` no `plot.py` (painel extra) para validar que `FlagellarForce` esta ativa na borda.
-2. Rodar ate t=100s para confirmar motor sustentado alem da janela atual.
-3. Se `a_flag ≈ 2` e morfologia ainda blob → aumentar `f0: 2.0 → 3.5` ou pular para Pass L.
+1. **Pass K.14 (Etapa 1 — aplicado 2026-04-22):** sumidouro `-k_consume*rho_b*cs` em [src/equations.py:147](src/equations.py#L147), `k_consume=0.5`. Meta: estabilizar `mean_cs ∈ [0.25, 0.35]` e `contrast_cs ≥ 80` sustentado em t=60-100s. Executar `make run` e comparar log + frames vs K.13.
+2. **Se K.14 estabilizar motor:** iniciar Etapa 2 (tip-splitting). Testar em ordem: (a) β:1.0→1.5 capilaridade, (b) ruido estocastico 0.01→0.05 na noise de producao, (c) se insuficiente, arquitetura nova — campo substrato `c_n` consumivel por ρ_b + chemotaxis positivo para `+∇c_n` na `FlagellarForce`.
+3. **Se K.14 nao estabilizar:** k_consume insuficiente — testar 0.8 ou reformular lambda_int mais alto diretamente.
+4. **Pass L (rugosidade) permanece BLOQUEADO** ate frames mostrarem morfologia fractal com tip-splitting matching `reference.jpg` de P. aeruginosa (Michiels et al.), nao apenas dendritos radiais simples.
 
 ---
 
@@ -247,14 +293,55 @@ Calibracao pos-Passes A-I.7. **MARCO I.7:** Transicao blob→dendritico confirma
 
 ### Proibicoes explicitas:
 - **Nao** alterar parametros fisicos sem antes ler `log.csv`.
-- **Nao** declarar sucesso de um Pass sem evidencia visual da morfologia.
+- **Nao** declarar sucesso de um Pass sem evidencia visual da morfologia comparada a `reference.jpg`.
 - **Nao** introduzir dependencias externas sem justificativa.
 - **Nao** refatorar a ordem das equacoes em `scheme.py` sem verificar invariantes.
 - **Nao** remover equacoes desabilitadas (como `OsmoticForce`) que sao parte do roadmap.
+- **Nao sugerir implementar rugosidade (Pass L) enquanto a morfologia nao reproduzir `reference.jpg`.** Rugosidade e extensao fisica, nao remedio para motor insuficiente ou selecao competitiva ausente. Se Marangoni + Flagelar + EOS nao geram dendritos finos separados (`AR >= 1:5`), a causa-raiz esta em um desses mecanismos — investigar e refinar antes de adicionar nova fisica.
+- **Nao sugerir nenhuma mudanca em parametros de surfactante ou nova fisica enquanto core pinning failure (§2.4) persistir.** Criterios de aceitacao (todos): `a_pressure < 5` sustentado, `n_fast / N_interface < 2`, baias estacionarias entre frames t-spaced ≥3s, `v_core/v_tip < 0.2`. Unicas alavancas permitidas ate passar: `gamma_mature`, `c0`, `edge_fade` geometria. Motor sustentado sem core pinning nao produz tip-splitting — dendritos sao bumps arrastados (K.15).
 
 ---
 
-## 11. Roadmap: Passes I-L (Correcao Morfologica e Extensoes Fisicas)
+## 11. Protocolo Mandatorio para Analise Morfologica Comparativa
+
+Antes de afirmar que uma morfologia de simulacao esta "de acordo" ou "consistente" com uma imagem de referencia, e imperativo e nao opcional executar a seguinte analise profunda em tres etapas. Uma semelhanca visual superficial e considerada uma **falha analitica**.
+
+### Etapa 1: Analise Morfologica Quantitativa e Qualitativa
+
+Nao se limite a "olhar". Descreva e compare as caracteristicas geometricas fundamentais do padrao:
+
+- **Proporcoes dos bracos:** Analise a razao `comprimento/largura` dos dendritos. Sao finos e alongados (alta razao) ou curtos e grossos (baixa razao)?
+- **Morfologia da ponta:** As pontas de crescimento sao afiadas, arredondadas (bulbosas), ou estao se dividindo (bifurcando)?
+- **Estrutura de ramificacao:** O padrao exibe ramificacoes secundarias ou terciarias? Ha ausencia total de bifurcacoes (`tip-splitting`)?
+- **Densidade e espacamento:** Os bracos sao densamente compactados ou bem espacados?
+
+### Etapa 2: Validacao Fisica Cruzada com Dados (`log.csv`)
+
+Esta e a etapa mais critica. **Toda afirmacao sobre a morfologia deve ser justificada com dados da simulacao.**
+
+- **Valide o crescimento:** Se a morfologia parece estavel ou em crescimento, isso deve ser confirmado por uma `mean_v` (velocidade media) estavel ou crescente no log. Se os bracos parecem estagnados, a `mean_v` deve estar em declinio ou proxima de zero. **Cuidado:** `mean_v` pode crescer espuriamente por ativacao bulk — sempre cruzar com `contrast_cs` tendencia temporal.
+- **Valide o motor principal:** A forca motriz deve ser consistente com a forma. Para um crescimento dendritico saudavel via Marangoni, a `contrast_cs` (contraste de surfactante) deve ser **alta e estavel**. Se a morfologia e um "blob" ou os bracos sao bulbosos e estagnados, voce **deve** verificar se a `contrast_cs` esta em colapso, indicando a falha do motor.
+- **Valide o equilibrio de forcas:** A forma dos bracos e explicada pelo balanco de forcas? Pontas arredondadas e grossas sugerem que a `a_pressure` (aceleracao de pressao) esta dominando uma `a_marangoni` enfraquecida. Bracos finos requerem um dominio claro da `a_marangoni` na ponta.
+
+### Etapa 3: Sintese e Diagnostico Final
+
+Somente apos cruzar a analise visual (Etapa 1) com a validacao dos dados (Etapa 2), emita um diagnostico.
+
+**Exemplo de diagnostico INCORRETO (superficial):**
+> *"Sim, a simulacao parece consistente com a referencia, pois ambos mostram um padrao de crescimento com multiplos bracos."*
+
+**Exemplo de diagnostico CORRETO (rebuscado):**
+> *"Nao, a simulacao **falha** em replicar a morfologia de referencia. Enquanto a referencia exibe dendritos finos e ramificados, a simulacao produz bracos curtos e bulbosos que estagnam. A analise do `log.csv` confirma essa falha: a `contrast_cs` entra em colapso ao longo do tempo, enfraquecendo a `a_marangoni`. Isso causa a queda da `mean_v` e permite que a `a_pressure` domine, resultando na morfologia arredondada e estagnada, que e fisicamente e visualmente inconsistente com o alvo."*
+
+### Regra Geral
+
+**Nunca declare conformidade morfologica sem apresentar dados quantitativos do log que justifiquem fisicamente a estabilidade, a dinamica e a forma da estrutura observada.**
+
+Uma violacao deste protocolo ja ocorreu (Pass K.13, 2026-04-20 → 2026-04-22): frame 110 foi declarado como "morfologia indistinguivel de `reference.jpg`" baseado em inspecao visual isolada. Analise temporal subsequente revelou `contrast_cs` em colapso monotonico (131→32) e `mean_cs` em crescimento sem limite (0.26→1.17) — afogamento global do motor. **O Pass foi revertido.** Incidentes deste tipo devem ser impossibilitados pelo cumprimento rigoroso deste protocolo.
+
+---
+
+## 12. Roadmap: Passes I-L (Correcao Morfologica e Extensoes Fisicas)
 
 Diagnostico realizado em 2026-04-16 comparando frames da simulacao (Pass G/H, branch `ram-8827-v1`) com referencia experimental (Michiels et al., reference.jpg). A simulacao produz um **blob ameboide com ~30 bumps curtos**, enquanto a referencia mostra **10-15 dendritos longos e finos** com separacao clara. Cinco causas-raiz identificadas (P1-P5).
 
@@ -325,17 +412,62 @@ Diagnostico realizado em 2026-04-16 comparando frames da simulacao (Pass G/H, br
 - `grad_cs_x`, `grad_cs_y` registrados como propriedades em `main.py`.
 - Posicionada apos `SurfactantEquation` no `scheme` para usar `cs` atualizado.
 
-**Resultado (`log.csv` ate t=24.5s, 2026-04-17):** Motor sustentado confirmado — `mean_v` estavel 0.0075, `n_fast` 150-300, `max_cs` cresce ate 8.2, `a_mar` pico 182 (+23% vs I.7). Morfologia: colonia lobular com ~15-20 bumps curtos (AR ~1:2) — transicao para dendritos finos nao confirmada. Gap: seleção competitiva de dedos longos continua aberta.
+**Resultado parcial (`log.csv` ate t=24.5s, 2026-04-17):** Motor aparentemente sustentado — `mean_v` estavel 0.0075, `n_fast` 150-300. Numeros de aceleracao reportados como `a_mar` pico 182 sao **invalidos** (bug do `LOG_HEADER`, ver §9). Morfologia: colonia lobular com ~15-20 bumps curtos (AR ~1:2).
 
-**Proximos diagnosticos pendentes:**
-1. Instrumentacao de log/plot — adicionar `a_flag` ao `LOG_HEADER`/writer em `main.py` (variavel `fluid.au_flag` ja existe); adicionar painel `au_flag` em `plot.py`.
-2. Rodar ate t=100s para confirmar motor indefinido.
-3. Se morfologia continuar lobular apos (1)+(2): testar `f0: 2.0 → 3.5` ou avancar para Pass L.
+**Resultado completo (`log.csv` ate t=99.6s, 2026-04-20):** Motor **NAO** sustentado. Ciclo ativo 0-67s, colapso abrupto 70-72s por saturacao global de `rho_b` zerando o gate flagelar. Frame 390 (t=99s): colonia preenche dominio com ~40 bumps curtos, morfologia ainda nao dendritica. Ver §9 "Em andamento" para analise das 3 fases e causa-raiz.
 
-### Pass L — Superficies rugosas (Objetivo 1)
+**Instrumentacao aplicada (2026-04-20):**
+- `plot.py` expandido para 1×3 paineis (`rho_b`, `cs`, `|a_flag|`) com `vmax=2.0=f0` no painel de motilidade — permite ver diretamente o gate saturando.
+- `au_flag`, `au_mar` adicionados a `add_output_arrays` em [main.py:92](main.py#L92).
 
-**Objetivo:** Substituir paredes planas em `particles.py` por topografia irregular.
+**Proximos diagnosticos pendentes (hidrodinamicos — Pass L bloqueado, ver §10):**
+1. **Corrigir `LOG_HEADER`** (prerequisito — sem isso, todas as metricas de aceleracao mentem).
+2. **Widen flag gate** `rho_b ∈ [0.1, 0.6] → [0.05, 0.8]` para sobreviver a saturacao.
+3. Se (2) nao restaurar dendritos: refinar mecanismos hidrodinamicos (estreitar gate Marangoni, aumentar `f0` ou `beta`, revisar ruido inicial). Ver §9 Em andamento para lista detalhada.
+
+### Pass K.1–K.12 — Busca por selecao competitiva de dendritos
+
+Sequencia de intervencoes pos-K iniciada em 2026-04-20 com objetivo de produzir a morfologia de `reference.jpg` (10-15 dendritos AR ≥ 1:5). `LOG_HEADER` corrigido no inicio desta sequencia.
+
+**K.1 (refutado) — estreitar gate Marangoni:** `grad_rho_b_mag ∈ [0.05, 0.6] → [0.15, 0.5]` em `MarangoniForce`. Sem efeito mensuravel. Lecao: `max(a_mar)` e **cego ao estreitamento** porque `smoothstep` satura em 1.0 no pico.
+
+**K.2 (refutado) — estreitar gate flagelar:** `rho_b ∈ [0.1, 0.6] → [0.2, 0.6]` em `FlagellarForce`. `a_flag` permaneceu cravado em 2.0. Mesma razao que K.1.
+
+**K.4 (head-start azimutal) — sem efeito morfologico:** Perturbacao inicial `cos(5θ)` com amplitude 1.0 em rho_b + `sin(5θ)` com amplitude 0.7 em noise, ruido reduzido a 0.01. Motor +65% (`a_mar` pico 306), mas morfologia permaneceu blob porque motor forte **afoga** assimetria inicial.
+
+**K.5 (domar motor) — domou mas nao selecionou:** `beta: 4→1`, `f0: 2→0.5`. `a_mar` pico 63, `mean_v=0.002`, `n_fast=1-23` — motor apagou. Morfologia: blob com ~15 bumps AR ~1:2. Confirmou que "motor forte afoga selecao" era verdade parcial; motor fraco tambem nao seleciona.
+
+**K.6 (tip-boost via `|∇rho_b|`) — amplifica mas nao discrimina:** `production *= (1 + 3*grad_rho_b_mag)`. `max_cs` subiu 9.6 → 27.9 (+190%), `a_mar` 63 → 127. Mas cs forma **anel uniforme**, nao picos nas pontas — `|∇rho_b|` e aproximadamente uniforme em todo o rim (pontas, baias e trechos retos tem magnitude similar).
+
+**K.7 (motility-coupled production) — BREAKTHROUGH + explosao numerica:** `production *= motile_boost` onde `motile_boost = 1 + 50*min(|v|, 0.1)`. **Primeira inversao de `contrast_cs`** (estabilizou em 120-160 apos sempre cair). Frame 030 mostrou **8-10 dendritos radiais** com AR ~1:6. Porem `a_mar` pico **745** (124x orcamento), `max_v=6.1`, dt adaptivo colapsou em t=5.6s. Mecanismo correto, amplitude destrutiva.
+
+**K.8 (dominar via sigma) — one-tip tyranny:** `sigma: 2.0 → 0.6` (3.3x reducao para normalizar producao absoluta). Todas as 7 predicoes quantitativas bateram (`a_mar` 225, `max_v` 1.7, `mean_cs` 0.28, `contrast_cs` 130). **Morfologia: UM dendrito** longo e fino (AR ~1:10) emergindo para cima em frame 034 (t~28s) — qualidade individual identica a `reference.jpg`, mas so um. `n_fast` caiu de 670 → 130 em 10s (winner-takes-all — winner consome gradiente de cs via difusao lateral, extinguindo competidores).
+
+**K.9 (few-tip) — meio caminho:** `sigma: 0.6 → 0.8`. `a_mar` pico 300, `contrast_cs` 95-155, `n_fast` 300-550 sustentado. Frame 039 (t~30s) mostra **3-4 dendritos** com AR 1:3-1:4 + bumps menores. Melhor que K.8 em multiplicidade mas pior em AR individual.
+
+**K.10 (reduzir D_ext) — refutado:** `D_ext: 0.01 → 0.005` tentou localizar cs para prevenir winner-steal. Resultado: **5-6 bumps curtos** AR ~1:2 — **pior** que K.9. Causa: D_ext reduzido matou o campo long-range necessario para focalizacao geometrica Mullins-Sekerka. **Invariante confirmado: `D_ext=0.01` e otimo, nao reduzir.**
+
+**K.11 (multi-seeding N=10 rho_b / N=8 noise) — regressao:** `D_ext` revertido para 0.01, `azimuthal_perturb = 0.8*cos(10θ)` em particles.py. Motor reforcado: `a_mar` pico 368 (+23% vs K.9). Mas `contrast_cs` caiu monotonicamente **188→83** em 16s, `max_cs` declinou apos pico (51.5→33.4). Winner-steal via sobreposicao de plumes: 10 tips semeados interferiram entre si via difusao lateral. Mismatch N=10/N=8 violou licao de coerencia I.1.
+
+**K.12 (unificar N=8 em ambos) — neutra:** `cos(8θ)` tambem em particles.py. `a_mar` pico identico (368), `contrast_cs` caiu igual (204→81). Unificacao de modos **nao resolveu homogeneizacao** — a sobreposicao de plumes independe de modos serem coerentes. **Dado novo**: `n_fast` pulsou 627→165→567 em 12s (oscilacao tipica de ondas sucessivas de ativacao), possivelmente indicando side-branching em t>20s (nao confirmado sem frames).
+
+**Lecoes consolidadas K.1-K.12 (ver §9 Em andamento para lista completa):**
+- Metricas `max(·)` sao cegas a gates smoothstep — usar `n_active`/`mean_active`.
+- `|∇rho_b|` nao discrimina pontas de resto-do-rim; `|v|` discrimina (motilidade localiza automaticamente).
+- Feedback multiplicativo (tip×motile) divergence exponencial — saturar escala via `sigma`.
+- `D_ext ∈ [0.008, 0.012]` e janela funcional; fora dela o mecanismo morre.
+- **Multi-seeding sozinho nao e suficiente** (K.11/K.12): plumes de cs de tips vizinhos se fundem via difusao lateral no ágar. Precisa **confinamento de plume via `lambda_ext`** (K.13) complementar a pre-semeadura.
+
+### Pass L — Superficies rugosas (Objetivo 1) — **BLOQUEADO**
+
+> ⚠️ **PRE-REQUISITO:** Pass L so pode ser iniciado apos a simulacao reproduzir a morfologia de [reference.jpg](reference.jpg) (dendritos de `AR >= 1:5`, separados por agar limpo, nucleo coeso) via mecanismos hidrodinamicos puros. Ver §1 Objetivo 1, §2.2 e §10 Proibicoes.
+>
+> **Justificativa:** Rugosidade e uma extensao fisica do modelo (objetivo de tese), nao uma muleta para compensar motor insuficiente. Se Marangoni + Flagelar + EOS nao produzem dendritos finos em paredes planas, a causa-raiz esta em um desses mecanismos. Adicionar rugosidade antes de resolver o problema hidrodinamico:
+> - Oculta o bug real (dendritos "emergem" mas por razao errada).
+> - Impossibilita isolar a contribuicao da rugosidade no mecanismo de fingering.
+> - Compromete a validade cientifica da tese.
+
+**Objetivo (quando desbloqueado):** Substituir paredes planas em `particles.py` por topografia irregular para estudar o efeito da rugosidade no padrao de swarming ja estabelecido.
 - **Geometria:** Senoidais com amplitude `A` e comprimento de onda `Lambda` controlados, ou perfil aleatorio com espectro de potencia definido.
 - **Interacao:** Particulas solidas com no-slip (velocidade zero imposta via `MomentumEquation` `sources=["solid"]`).
-- **Validacao:** Colonia deve canalizar pelos vales da rugosidade.
-- **Hipotese:** A canalizacao geometrica pelas paredes pode ser o mecanismo faltante para selecionar 8-12 dedos em vez de ~15-20 bumps — complementa os mecanismos hidrodinamicos (Marangoni+Flagelar) com restricao topologica.
+- **Validacao:** Colonia ja dendritica deve apresentar modulacao da morfologia pela rugosidade (canalizacao pelos vales, ancoragem de dedos, etc.), nao formar dendritos pela primeira vez.

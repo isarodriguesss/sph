@@ -17,3 +17,6 @@ paraview:
 run_view:
 	make run
 	make view
+
+plot:
+	python plot.py

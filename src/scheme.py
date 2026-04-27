@@ -35,17 +35,30 @@ class CustomEulerStep(EulerStep):
         d_a_c_s,
         dt,
     ):
-        d_u[d_idx] += dt * d_au[d_idx]
-        d_v[d_idx] += dt * d_av[d_idx]
-        d_x[d_idx] += dt * d_u[d_idx]
-        d_y[d_idx] += dt * d_v[d_idx]
-        d_m[d_idx] += dt * d_am[d_idx]
-
         d_rho_b_grown[d_idx] += dt * d_a_rho_b_grown[d_idx]
         d_cs[d_idx] += dt * d_a_c_s[d_idx]
 
         d_rho_b_grown[d_idx] = max(0.0, min(d_rho_b_grown[d_idx], 1.0))
         d_cs[d_idx] = max(1e-9, d_cs[d_idx])
+
+        # K.17 — hard core pinning: rho_b >= 0.8 representa matriz EPS madura
+        # (gel solido imovel). Velocidade zerada; posicao congelada.
+        # cs e rho_b continuam evoluindo (producao/difusao ativas no nucleo).
+        if d_rho_b_grown[d_idx] < 0.8:
+            d_u[d_idx] += dt * d_au[d_idx]
+            d_v[d_idx] += dt * d_av[d_idx]
+            d_x[d_idx] += dt * d_u[d_idx]
+            d_y[d_idx] += dt * d_v[d_idx]
+            d_m[d_idx] += dt * d_am[d_idx]
+        else:
+            d_u[d_idx] = 0.0
+            d_v[d_idx] = 0.0
+
+        d_u[d_idx] += dt * d_au[d_idx]
+        d_v[d_idx] += dt * d_av[d_idx]
+        d_x[d_idx] += dt * d_u[d_idx]
+        d_y[d_idx] += dt * d_v[d_idx]
+        d_m[d_idx] += dt * d_am[d_idx]
 
         # vmax = 5.0
 

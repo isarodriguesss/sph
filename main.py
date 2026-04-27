@@ -57,7 +57,7 @@ print_freq = 200
 trajectory_store_interval = 20
 
 prob_of_splitting = 0.03
-c0 = 0.8  # EOS: B = 1.5²/7 ≈ 0.32 (repulsão suave, atração ~0.1)
+c0 = 0.35  # EOS: B = 1.5²/7 ≈ 0.32 (repulsão suave, atração ~0.1)
 
 use_splitting = False
 

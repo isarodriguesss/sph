@@ -380,11 +380,8 @@ class BiomassEOS(Equation):
         elif rho_b < 0.5:
             t = (rho_b - 0.1) / 0.4
             edge_fade = t * t * (3.0 - 2.0 * t)
-        elif rho_b < 0.8:
-            t = (rho_b - 0.5) / 0.3
-            edge_fade = 1.0 - t * t * (3.0 - 2.0 * t)
         else:
-            edge_fade = 0.0
+            edge_fade = 1.0
 
         if ratio > 1.0:
             # Compressão: repulsão quadrática suave

@@ -29,9 +29,9 @@ def create_initial_state(
     dist = np.sqrt((X_grid - center_x) ** 2 + (Y_grid - center_y) ** 2)
     theta = np.arctan2(Y_grid - center_y, X_grid - center_x)
     # Inject 16-mode azimuthal symmetry-breaking perturbation
-    azimuthal_perturb = 0.5 * np.cos(8 * theta) * np.exp(-((dist - 0.15) ** 2) / 0.01)
+    azimuthal_perturb = 0.8 * np.cos(8 * theta) * np.exp(-((dist - 0.15) ** 2) / 0.01)
     rho_b += azimuthal_perturb
-    noise = 0.05 * np.random.randn(*X_grid.shape)
+    noise = 0.01 * np.random.randn(*X_grid.shape)
     rho_b += rho_b * noise
 
     """ initial_rho_b_radius = 0.25

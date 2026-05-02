@@ -1,3 +1,4 @@
+from numpy import sqrt
 from pysph.sph.equation import Equation
 
 
@@ -51,13 +52,22 @@ class BiomassGradient(Equation):
 
 class SurfactantEquation(Equation):
     def __init__(
-        self, dest, sources, sigma, lambda_, D, D_ext=0.03, lambda_ext_ratio=3.0
+        self,
+        dest,
+        sources,
+        sigma,
+        lambda_,
+        D,
+        D_ext=0.03,
+        lambda_ext_ratio=5.0,
+        k_consume=0.5,
     ):
         self.D = D
         self.D_ext = D_ext
         self.sigma = sigma
         self.lambda_ = lambda_
         self.lambda_ext = lambda_ * lambda_ext_ratio
+        self.k_consume = k_consume
         super(SurfactantEquation, self).__init__(dest, sources)
 
     def initialize(self, d_idx, d_a_c_s):
@@ -100,13 +110,33 @@ class SurfactantEquation(Equation):
         term = (s_m[s_idx] / s_rho[s_idx]) * (cs_ij / rij_sq) * dot_product
         d_a_c_s[d_idx] += 2.0 * D_eff * term
 
-    def post_loop(self, d_idx, d_rho_b_grown, d_a_c_s, d_cs, d_noise, d_grad_rho_b_mag):
+    def post_loop(
+        self, d_idx, d_rho_b_grown, d_a_c_s, d_cs, d_noise, d_grad_rho_b_mag, d_u, d_v
+    ):
         rho_b = d_rho_b_grown[d_idx]
-        qs = (
-            rho_b * rho_b / (rho_b * rho_b + 0.01)
-        )  # K² = 0.01 → meia-ativacao em rho_b=0.1
-        growth_headroom = 1.2 - rho_b  # rho_max = 1.0
-        production = self.sigma * qs * growth_headroom * d_noise[d_idx]
+        qs = rho_b * rho_b / (rho_b * rho_b + 0.01)
+        growth_headroom = 1.2 - rho_b
+        grad_mag = d_grad_rho_b_mag[d_idx]
+        if grad_mag > 1.0:
+            grad_mag = 1.0
+        tip_boost = 1.0 + 3.0 * grad_mag
+
+        # Pass K.7: motility-coupled production.
+        # Swarmers em movimento (pontas avancando) produzem cs; imoveis (bulk, baias) nao.
+        # Identifica pontas pela informacao que ja existe: velocidade local.
+        v_mag = sqrt(d_u[d_idx] * d_u[d_idx] + d_v[d_idx] * d_v[d_idx])
+        if v_mag > 0.1:
+            v_mag = 0.1
+        motile_boost = 1.0 + 50.0 * v_mag  # 1x em estatico, 6x em v=0.1
+
+        production = (
+            self.sigma
+            * qs
+            * growth_headroom
+            * d_noise[d_idx]
+            * tip_boost
+            * motile_boost
+        )
 
         # Pass J: decaimento espacialmente dependente.
         # lambda_ext (3x lambda) no agar exterior — remove cs rapidamente fora da colonia,
@@ -122,7 +152,15 @@ class SurfactantEquation(Equation):
         else:
             lambda_eff = self.lambda_
 
-        d_a_c_s[d_idx] += production - lambda_eff * d_cs[d_idx]
+        # Pass K.14: consumo biomassa-dependente (sumidouro de cs).
+        # Ramnolipideo e adsorvido/degradado por bacterias em alta densidade
+        # (acao enzimatica rhlE/rhlB + adsorcao membranar). Previne saturacao
+        # global do interior — essencial para sustentar gradiente.
+        # Interior (rho_b=1): decaimento efetivo = lambda + k_consume = 0.65 (era 0.15)
+        # Exterior (rho_b=0): consumo zerado, so difusao+decaimento preservam L_D_ext.
+        consumption = self.k_consume * d_rho_b_grown[d_idx] * d_cs[d_idx]
+
+        d_a_c_s[d_idx] += production - lambda_eff * d_cs[d_idx] - consumption
 
 
 class MarangoniForce(Equation):
@@ -138,7 +176,7 @@ class MarangoniForce(Equation):
     F = gate · (-β) · ∇cs
     """
 
-    def __init__(self, dest, sources, beta, grad_low=0.05, grad_high=0.6):
+    def __init__(self, dest, sources, beta, grad_low=0.15, grad_high=0.5):
         self.beta = -beta
         self.grad_low = grad_low
         self.grad_high = grad_high
@@ -333,28 +371,39 @@ class BiomassEOS(Equation):
         ratio = d_rho[d_idx] / self.rho0
         rho_b = d_rho_b_grown[d_idx]
 
-        # Edge fade: smoothstep — pressão zero onde rho_b < 0.1,
-        # transição suave, full onde rho_b > 0.5. Garante borda livre
-        # (sem pressão) para as pontas dos dendritos.
+        # K.16e: edge_fade ASSIMETRICO — repulsao e atracao desacopladas.
+        # Repulsao (compressao): zerada no agar (rho_b<0.1) E no nucleo (rho_b>=0.8)
+        #   → elimina a_pressure no core saturado (alavanca §2.4).
+        # Atracao (rarefacao): zerada so no agar (rho_b<0.1), preservada no core
+        #   → mantem coesao estrutural do nucleo EPS, evita colapso K.16c.
         if rho_b < 0.1:
-            edge_fade = 0.0
+            fade_rep = 0.0
+            fade_att = 0.0
         elif rho_b < 0.5:
             t = (rho_b - 0.1) / 0.4
-            edge_fade = t * t * (3.0 - 2.0 * t)
+            s = t * t * (3.0 - 2.0 * t)
+            fade_rep = s
+            fade_att = s
+        elif rho_b < 0.8:
+            t = (rho_b - 0.5) / 0.3
+            s = t * t * (3.0 - 2.0 * t)
+            fade_rep = 1.0 - s
+            fade_att = 1.0
         else:
-            edge_fade = 1.0
+            fade_rep = 0.0
+            fade_att = 1.0
 
         if ratio > 1.0:
-            # Compressão: repulsão quadrática suave
+            # Compressão: repulsão quadrática suave (zerada no core)
             excess = ratio - 1.0
-            d_p[d_idx] = self.B * excess * excess * edge_fade
+            d_p[d_idx] = self.B * excess * excess * fade_rep
         else:
-            # Rarefação: tensão superficial (atração leve)
+            # Rarefação: tensão superficial (atração leve, preservada no core)
             # Limitamos o deficit a 0.3 para evitar atração excessiva em gaps
             deficit = 1.0 - ratio
             if deficit > 0.3:
                 deficit = 0.3
-            d_p[d_idx] = -self.B_tension * deficit * edge_fade
+            d_p[d_idx] = -self.B_tension * deficit * fade_att
 
 
 class OsmoticForce(Equation):
@@ -461,11 +510,11 @@ class FlagellarForce(Equation):
     ):
         rho_b = d_rho_b_grown[d_idx]
         # Gate: swarmers na borda apenas, pico em rho_b=0.35
-        if rho_b >= 0.1 and rho_b <= 0.6:
-            if rho_b < 0.35:
-                t = (rho_b - 0.1) / 0.25
+        if rho_b >= 0.2 and rho_b <= 0.6:
+            if rho_b < 0.4:
+                t = (rho_b - 0.2) / 0.2
             else:
-                t = (0.6 - rho_b) / 0.25
+                t = (0.6 - rho_b) / 0.2
             gate = t * t * (3.0 - 2.0 * t)
 
             gx = d_grad_cs_x[d_idx]

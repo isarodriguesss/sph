@@ -17,6 +17,7 @@ LOG_HEADER = [
     "a_marangoni",
     "a_drag",
     "a_pressure",
+    "a_flag",
     "a_total",
     "min_cs",
     "max_cs",
@@ -38,16 +39,16 @@ dx = (x_max_domain - x_min_domain) / (x_dim - 1)
 # Coesão vem de: (a) EOS com ramo atrativo (p<0 se rho<rho0),
 #                (b) viscosidade maior, (c) Monaghan artificial viscosity forte,
 #                (d) kernel com ~35 vizinhos (h_factor=1.8).
-mu = 0.012  # Pass I.2: reduzida para permitir filamentos finos (era 0.025)
+mu = 0.020  # K.23: I.2 revert parcial — fortalecer coesão viscosa (I.2 era 0.012, pre-I.2 era 0.025)
 gamma = 60.0  # Drag: a_drag = gamma * v_term = 60 * 0.1 = 6
-beta = 4.0  # Marangoni (com gate de interface, só ~60% ativo em média)
-sigma = 2.0  # Pass I.7: boost +67% compensa drenagem por D_ext (era 1.2)
+beta = 1.0  # Marangoni (com gate de interface, só ~60% ativo em média)
+sigma = 1.2  # Pass I.7: boost +67% compensa drenagem por D_ext (era 1.2)
 D = 1.5e-3  # Pass I.3: D_int dentro do biofilme — gradiente afiado na interface
-D_ext = 0.01  # Pass I.7: D_ext no agar — L_D_ext=0.26≈2.4h (era 0.03, muito agressivo)
+D_ext = 0.08  # K.18: 4x — L_D_ext=0.298 (~2x maior); habilita focalizacao Mullins-Sekerka pos-K.17
 lambda_ = 0.15  # Decaimento: confina cs mas permite penetracao de ~L_D_ext no exterior
-r_growth = 0.4  # Crescimento lento → tempo para ramificar antes de saturar
+r_growth = 0.05  # K.21: 0.4→0.15 — estende vida do swarmer ring (~60s→~150s) evitando trap K.17 quando rho_b satura globalmente
 rho_max = 1.0
-alpha_mon = 0.06  # Pass I.2: reduzida para permitir gradientes afiados (era 0.15)
+alpha_mon = 0.12  # K.23: I.2 revert parcial — previne instabilidade de tração SPH (I.2 era 0.06, pre-I.2 era 0.15)
 
 dt_global = 0.001
 total_sim_time = 100.0
@@ -56,7 +57,7 @@ print_freq = 200
 trajectory_store_interval = 20
 
 prob_of_splitting = 0.03
-c0 = 0.8  # EOS: B = 1.5²/7 ≈ 0.32 (repulsão suave, atração ~0.1)
+c0 = 0.35  # EOS: B = 1.5²/7 ≈ 0.32 (repulsão suave, atração ~0.1)
 
 use_splitting = False
 
@@ -83,12 +84,11 @@ class SwarmApp(Application):
                 pa.add_property("noise")
                 pa.noise[:] = (
                     1.0
-                    + 0.4 * np.sin(8 * np.arctan2(pa.y, pa.x))
-                    + 0.03 * np.random.rand(len(pa.x))
+                    + 0.6 * np.sin(8 * np.arctan2(pa.y, pa.x))
+                    + 0.01 * np.random.rand(len(pa.x))
                 )
                 pa.add_property("dt_force")
                 pa.add_property("dt_cfl")
-                pa.add_output_arrays(["rho_b_grown", "cs", "u", "v", "p", "noise"])
                 # debug das acelerações (componentes vetoriais + magnitude)
                 pa.add_property("au_mar")  # |aceleração Marangoni| (líquida)
                 pa.add_property("ax_mar")  # aceleração Marangoni componente x
@@ -105,6 +105,9 @@ class SwarmApp(Application):
                 pa.add_property("ay_drag")
                 # flag
                 pa.add_property("au_flag")
+                pa.add_output_arrays(
+                    ["rho_b_grown", "cs", "u", "v", "p", "noise", "au_flag", "au_mar"]
+                )
             elif pa.name == "solid":
                 pa.add_property("p")
 

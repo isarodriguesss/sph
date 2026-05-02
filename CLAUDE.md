@@ -44,34 +44,121 @@ A IA **nunca** deve sugerir mudancas cegas em parametros fisicos. Antes de calib
 - Para cada mudanca de parametro, a IA deve apresentar uma **predicao quantitativa** do efeito esperado (ex: "reduzir `D` de 4e-3 para 2e-3 deve aumentar `|nabla cs|` em ~40% e reduzir `L_D` de 1.5h para 1.1h").
 - Apos a simulacao, comparar predicao vs. resultado. Discrepancias > 2x devem ser investigadas antes do proximo passo.
 
-### 2.4 CRITERIO BLOQUEANTE — Core Pinning (diagnosticado 2026-04-22, pos-K.15)
+### 2.4 CRITERIOS DUPLOS — Core Pinning Mecanico + Saturacao Quimica (revisado 2026-04-29, pos-K.19)
 
-**Contexto biologico:** na literatura (Michiels et al., Tremblay et al., Kearns — P. aeruginosa PA14 em agar swarming), a colonia exibe **nucleo denso imovel** (matriz EPS madura) com **dendritos finos sendo a unica frente de expansao**. A velocidade radial da colonia = velocidade das pontas. Interior e baias entre dendritos sao **estaticos**.
+**Historico:** o "core pinning failure" diagnosticado em K.15 (2026-04-22) era um sintoma de **dois bloqueios fisicamente independentes**, originalmente confundidos como um. A sequencia K.16-K.19 demonstrou que resolver o bloqueio mecanico nao e suficiente — a morfologia dendritica de `reference.jpg` exige resolver **ambos**.
 
-**Falha observada na simulacao (K.15, t=0→33.8s):** apesar de motor sustentado e dendritos visiveis (AR 1:5-1:7), a **colonia inteira expande radialmente** — toda a interface (borda, baias, pontas) avança junto. Dendritos sao "bumps arrastados" na superficie de um blob inflando, nao extensoes de um nucleo ancorado. Consequencia morfologica: ausencia de tip-splitting e de estrutura fractal — pontas nao tem trajetoria propria para bifurcar.
+**Contexto biologico:** na literatura (Michiels et al., Tremblay et al., Kearns — P. aeruginosa PA14 em agar swarming), a colonia exibe **nucleo denso imovel** (matriz EPS madura) com **dendritos finos sendo a unica frente de expansao**. Interior e baias entre dendritos sao **estaticos**, e o campo de surfactante e **localizado nas pontas** (nao saturado uniformemente).
 
-**Metricas diagnosticas (core pinning failure):**
-- **`a_pressure` (orcamento §8: <3) observada 15-30 rotina, picos >50** (~5-17× excesso). EOS com `edge_fade=1.0` no interior (`rho_b>0.5`) pressuriza o nucleo quando `rho > rho0`, empurrando radialmente.
-- **`n_fast` 900-1300** — ativacao em massa; fracao ativa/total > 50%. Nao localizada nas pontas.
-- **Razao drag core/borda = 2.2×** (`gamma_mature=1.5·gamma`) — insuficiente (§3.2 sugere 5-10×).
+#### A) Bloqueio Mecanico (RESOLVIDO por K.17, 2026-04-28)
 
-**Criterios de aceitacao para desbloquear qualquer avanco:**
-1. `a_pressure` sustentada **<5** em t>20s (max eventual <15).
-2. `n_fast / N_interface < 2` — ativacao predominantemente nas pontas, nao no bulk.
-3. Visualmente nos frames: **baias entre dendritos devem permanecer estacionarias** entre frames sucessivos (t-spaced ≥3s); so as pontas avançam radialmente.
-4. Razao efetiva `v_core / v_tip < 0.2` — nucleo pinnado relativamente as pontas.
+Nucleo deve ser estaticamente imovel para que pontas tenham trajetoria propria.
 
-**BLOQUEIO DURO:** enquanto core pinning failure persistir, sao **proibidas**:
-- Novas mudancas em parametros de surfactante (`sigma`, `beta`, `lambda`, `D`, `k_consume`).
-- Propostas de Etapa 2 (tip-splitting, Peclet-Mullins via β).
-- Propostas de nova fisica (substrato consumivel, Ising, etc.).
-- **Pass L (rugosidade) permanece BLOQUEADO** (segundo bloqueio ativo, alem de §1/§2.2).
+**Falha original (K.15):** colonia inteira inflava radialmente, dendritos eram bumps arrastados sem trajetoria propria.
 
-**Unicas acoes permitidas:** tunar `gamma_mature` (core drag), `c0` (EOS stiffness), e `edge_fade` geometria/domínio da BiomassEOS — parametros que atuam diretamente no pinning.
+**Solucao implementada:** hard pinning (`u = v = 0` em `rho_b >= 0.8`) em [src/scheme.py:44-49](src/scheme.py#L44-L49). Custom Euler step zera velocidade do nucleo a cada timestep, congelando matriz EPS madura.
+
+**Criterios de aceitacao (todos satisfeitos por K.17):**
+1. ✅ `a_pressure` rotina < 30 em t > 20s (era 15-30 com picos > 50 em K.15).
+2. ✅ `mean_v` < 0.005 (era 0.008-0.011 em K.15).
+3. ✅ `n_fast` em queda apos bootstrap (era 900-1300 sustentado em K.15).
+4. ✅ Razao efetiva `v_core / v_tip` ≈ 0 — nucleo literalmente congelado.
+
+**Lever permitidas (apenas refinamento se necessario):** `gamma_mature` (core drag adicional), `c0` (EOS stiffness), `edge_fade` geometria. Nao sao mais bloqueio principal.
+
+#### B) Bloqueio Quimico (NOVO — descoberto K.18-K.19, 2026-04-28→29)
+
+Mesmo com nucleo mecanicamente congelado, o campo `cs` **satura uniformemente** porque a producao na borda excede o sumidouro. Toda a interface ativa (rho_b ∈ [0.1, 0.8]) produz cs amplificado por `motile_boost · tip_boost`, gerando inflacao quimica que mata a selecao Mullins-Sekerka.
+
+**Falha demonstrada (K.19, t=0-100s):** `mean_cs` cresceu monotonicamente 0.13 → 2.20 antes do motor morrer (n_fast → 0 em t = 80s). Frames mostram colonia esfericamente expandindo com bumps uniformes (~15-20 protuberancias AR ~1:1), sem dendritos longos.
+
+**Fluxo de massa de surfactante (steady-state interno):**
+```
+Producao_interna ≈ σ · qs(rho_b) · (1.2-rho_b) · tip_boost · motile_boost ≈ 0.3-0.5/s (zona ativa)
+Sumidouro_interno = (λ_int + k_consume·rho_b) · cs ≈ 0.65·cs em rho_b=1 (com k_consume=0.5)
+Drenagem borda  = -D_ext · ∇cs|_fronteira (proporcional ao salto cs_int - cs_ext)
+```
+
+Se Producao > Sumidouro + Drenagem, `mean_cs` cresce sem limite → `contrast_cs` colapsa → motor morre.
+
+**Metricas diagnosticas (saturacao quimica):**
+- `mean_cs` crescendo monotonicamente alem de 0.5 indica afogamento iminente.
+- `contrast_cs` em queda monotonica (lição §11): mesmo com `mean_v` aparentemente saudavel, motor real esta morrendo.
+- `n_fast` subindo enquanto `max_v` degrada — ativacao bulk espuria (lição §9 #8).
+- `max_cs / mean_cs < 4` — cs distribuido uniformemente, nao concentrado em pontas.
+
+**Criterios de aceitacao adicionais (saturacao quimica):**
+5. `mean_cs` plateau em [0.15, 0.45] sustentado em t > 30s (sem crescimento monotonico).
+6. `contrast_cs` plateau > 100 sustentado em t > 30s (sem queda monotonica).
+7. `max_cs / mean_cs > 4` — cs concentrado nas pontas, nao distribuido uniformemente.
+8. Motor vivo em t > 100s (`n_fast > 50`, `mean_v > 0.001`).
+
+**Alavancas para resolver bloqueio quimico (DESBLOQUEADAS pos-K.19):**
+- `k_consume` em `SurfactantEquation.post_loop` ([equations.py:147](src/equations.py#L147)) — atualmente 0.5, considerar 1.5-2.5.
+- Coeficiente do `motile_boost` (atualmente `1+50·|v|`) — reduzir para 10-20× localiza producao.
+- Coeficiente do `tip_boost` (atualmente `1+3·|∇ρ_b|`) — reduzir para diminuir amplificacao na zona de transicao.
+- `σ` em conjunto com mudancas de sumidouro (nunca isolado — perde atribuicao).
+
+#### C) Bloqueio Geometrico/Mullins-Sekerka (PROVAVELMENTE NECESSARIO apos B)
+
+Mesmo com producao quimica controlada, **focalizacao geometrica** entre pontas requer que o campo cs no agar tenha alcance lateral comparavel a distancia tip-tip:
+```
+L_D_ext = √(D_ext / λ_ext)
+τ_decay_ext = 1/λ_ext
+τ_propagate_tip-tip ≈ d_tip-tip² / D_ext
+```
+Para competicao Mullins-Sekerka: `τ_decay_ext ≥ τ_propagate_tip-tip`, equivalente a `L_D_ext ≥ d_tip-tip`.
+
+**Lições K.18-K.19 (críticas para próximas calibracoes):**
+- `D_ext` e `λ_ext` agem em direcoes opostas para drenagem na borda. **Mexer simultaneamente perde atribuicao e quebra Pass J.**
+- Reduzir `λ_ext` abaixo de `λ_int` enquanto motile_boost ativo destroi drenagem na fronteira agar-biofilme. **K.19 fez isso e mean_cs explodiu para 2.2 (vs 0.71 em K.18 com λ_ext = 5·λ_int).**
+- A janela funcional `D_ext ∈ [0.008, 0.012]` da lição #5 era valida sob K.13 (motor afogando). **Pos-K.17 com bloqueio quimico resolvido, janela precisa ser re-medida.**
+
+#### D) BLOQUEIOS REMANESCENTES
+
+- **Pass L (rugosidade) permanece BLOQUEADO** ate frames mostrarem dendritos AR ≥ 1:5 com baias estacionarias e tip-splitting visivel.
+- **Combinacoes simultaneas de parametros de surfactante proibidas** (ex: mexer em `σ` e `k_consume` na mesma rodada). Uma alavanca por vez para preservar atribuicao.
+- **Reverter Pass J inadvertidamente** (reducir `λ_ext` para igualar `λ_int` sem entender que isso destroi drenagem na borda) e **proibido**. Lição K.19.
+
+#### E) Caminho prescrito (Passes K.20+)
+
+1. **K.20 — aumentar `k_consume`:** 0.5 → 2.0 (4×). Mantem Pass J intacto (`λ_ext_ratio = 5.0`). Predicao: `mean_cs` plateau em ~0.17, `contrast_cs` > 100 sustentado, motor vivo em t > 100s. **Validar criterios #5, #6, #7, #8.**
+
+2. **Se K.20 estabilizar mas dendritos curtos:** atacar bloqueio C com cuidado de uma alavanca por vez:
+   - K.21: `D_ext` 0.04 → 0.08 (mantem `λ_ext` alto). `L_D_ext` = √(0.08/0.75) = 0.327. Drenagem preservada, alcance lateral +41%.
+   - Criterio: contrast_cs > 150, baias visiveis nos frames.
+
+3. **Se K.20 + K.21 produzir baias mas pontas curtas:** ajustar β/f0 para regime Mullins-Sekerka (Etapa 2 — capilaridade vs flux).
+
+4. **Se K.20 nao estabilizar mean_cs em < 0.45:** alavanca alternativa — reduzir `motile_boost` factor 50 → 20 ou desativar amplificacao por velocidade.
 
 ---
 
 ## 3. Skill: SPH Bacterial Swarming Specialist
+
+### 3.0 Fundacao teorica — literatura referencial
+
+Cinco artigos formam a base teorica do projeto. A leitura cruzada destes papers foi consolidada em 2026-05-02 e revela tensoes importantes com nossas hipoteses anteriores.
+
+**[T1] Trinschek, John, Thiele 2018 — *Soft Matter* 14, 4464.** Modelo thin-film 2D com surfactante insoluvel + wettability + crescimento bioativo. Reproduz 4 morfologias (arrested, circular, modulated, fingering) controladas pelos parametros `W` (wettability) e `Γmax` (concentracao maxima de surfactante). Mecanismo de tendrils: gradiente forte de Γ nos tips + Γ saturado nas baias → baias arrested por wettability + Marangoni nos tips. Inspiracao original do projeto. **Limitacoes:** modelo passivo, sem QS, sem flagelo, sem nutriente explicito.
+
+**[T2] Srinivasan, Kaplan, Mahadevan 2019 — *eLife* 8, e42697.** Teoria multifase generalizada que unifica swarms e biofilmes via duas fases (ativa + passiva fluida) e equacoes de balanco de massa/momento. **Insight crucial:** swarming e biofilm sao regimes distintos:
+- **Swarming (nutrient-rich):** `c ≈ c0` constante, capilaridade dominada, steady-state com velocidade `V = C₁·g₀·H·Ca^(1/3)`. Mecanismo: osmolytes secretados pelas bacterias → pressao osmotica → influxo de fluido do agar via van't Hoff `V₀(x) = Q₀·(φ/(1-φ) - φ₀/(1-φ₀))`.
+- **Biofilm (nutrient-limited):** `Γ/c₀ ~ O(1)`, transient, dirigido por stress osmotico de polimero EPS via Flory-Huggins.
+
+Validado experimentalmente em B. subtilis (este trabalho), E. coli (Wu & Berg, Ping et al.), V. cholerae (Yan et al.). **Implicacao critica para nosso projeto:** o modelo Mimura-Murray de consumo de nutriente (`dc/dt = -k·ρ_b·c`) descreve regime de **biofilme**, NAO swarming. Para swarming de P. aeruginosa em CA (casamino acids), nutrientes sao abundantes e nao-limitantes.
+
+**[T3] Giverso, Verani, Ciarletta 2016 — *Biomech. Model. Mechanobiol.* 15, 643.** Modelo continuum 2D com sharp interface comparando expansao volumétrica (`Γ = K_γ·ρ·n`) versus chemotactic (`m = χρ∇n`). Linear stability analysis mostra dispersion curves com wavenumber caracteristico. Volumetrico → instabilidade k=1 (assimetria, translacao do centro de massa). Chemotactic → padroes mais simetricos com multiplos dendritos. Fingers crescem com `t^0.45 ≈ √t` (diffusion-limited). Validacao numerica via finite element no FreeFem++.
+
+**[T4] Potomkin, Tournus, Berlyand, Aranson 2017 — *J. R. Soc. Interface* 14, 20161031.** Modelo individual de microswimmer com flagelo flexivel em fluxo de cisalhamento. Resultados-chave: (a) **flagella bending reduz viscosidade efetiva** em suspensoes diluidas SEM tumbling (vs Haines et al. que requeria tumbling); (b) flagela buckling assiste **escape de paredes**. Complexidade dependente da rigidez `K_b` do flagelo. Valida nossa abordagem de Frente 5 (motilidade flagelar) mas sugere extensao futura para incluir flexibilidade do flagelo.
+
+**[T5] Bru, Kasallis, Zhuo, Høyland-Kroghsbo, Siryaporn 2023 — *Biophys. Rev.* 4, 031305.** Review especifico de swarming em P. aeruginosa. Pontos cruciais:
+- **Marangoni nao e dominante:** experimento de Yang et al. — adicionar surfactante (Triton X-100) DEVERIA reduzir gradiente de tensao superficial e enfraquecer Marangoni, mas EXPERIMENTALMENTE aumentou o swarming. Conclusao: pressao-osmotica (van't Hoff) e o motor dominante, NAO Marangoni.
+- **Modelo multilayer:** bacteria + camada de surfactante + agar. Ramnolipidos produzem camada distinta da camada bacteriana (confirmado por IRIS imaging).
+- **Henrichsen 1972 vs realidade P. aeruginosa:** Henrichsen definiu swarming via aggregates flagela-dependentes; sliding via expansao por crescimento sem flagelo. P. aeruginosa NAO forma aggregates organizados, sugerindo que swarming P. aeruginosa e combinacao **sliding + swarming**, nao swarming puro.
+- **Diferenca PA14 vs PAO1 (MPAO1):** PA14 forma camada de surfactante + tendrils. MPAO1 nao produz surfactante na superficie → nao forma tendrils. Surfactante e necessario.
+- **Papel do flagelo:** propor que flagelo aumenta producao de osmolytes (LPS, EPS) no rim, drenando fluido do agar. Hyperflagellation (Deforet et al.) causa hyperswarming via aumento da producao de osmolytes via metabolic turnover.
+- **Knowledge gap:** mecanismo exato pelo qual flagelo causa influxo de fluido permanece nao caracterizado em P. aeruginosa.
 
 ### 3.1 Balanco critico de forcas
 
@@ -106,18 +193,57 @@ A condicao de fingering exige que as forcas desestabilizadoras superem as estabi
 - Gate smoothstep em `grad_rho_b_mag in [0.05, 0.6]` restringe a forca a interface da colonia.
 - Requer campo `cs` com camada de transicao resolvida em >= 1.5*h.
 
-**Frente 4 — Pressao Osmotica (Equacao de van't Hoff)** *(a implementar)*
+**Frente 4 — Pressao Osmotica (Equacao de van't Hoff)** *(a implementar — possivelmente unificada com Frente 6 pos-2026-05-02)*
 - `Pi = iCRT` — pressao proporcional a concentracao de solutos intra/extracelulares.
-- `OsmoticForce` existe em[equations.py:318-363](src/equations.py#L318-L363) mas esta desabilitada. A EOS coesiva atual (ramo atrativo) funciona como substituto simplificado.
-- Meta: reativar com formulacao termodinamica quando a estabilidade numerica permitir.
+- `OsmoticForce` existe em [equations.py:318-363](src/equations.py#L318-L363) mas esta desabilitada. A EOS coesiva atual (ramo atrativo) funciona como substituto simplificado.
+- **Reformulacao 2026-05-02 (apos T2/T5):** o paper Srinivasan-Kaplan-Mahadevan (eLife 2019) e o review Bru et al. 2023 mostram que a pressao osmotica gerada por **osmolytes secretados pelas bacterias** (LPS, EPS, surfactantes) e o **motor dominante** do swarming, nao Marangoni. Mecanismo: bacterias em alta densidade secretam osmolytes → diferencial osmotico colonia-agar → influxo de fluido do agar via van't Hoff `V₀ = Q₀·(φ/(1-φ) - φ₀/(1-φ₀))` → expansao volumetrica steady-state. Isso unifica Frente 4 (osmotica) com Frente 6 (substrato/osmolyte field) numa unica frente.
+- Meta atualizada: implementar campo `c_o` (osmolyte produzido pelas bacterias) com acoplamento ao influxo de massa SPH para substituir/complementar a EOS atrativa atual.
 
 **Frente 5 — Motilidade Flagelar orientada por gradiente** *(✅ implementado — Pass K)*
 - `F_flag = -f0 * gate(rho_b) * n̂(∇cs)` — magnitude **constante** (`f0 * gate`), direcao oposta a `∇cs`.
 - **Escolha-chave:** magnitude nao depende de `|∇cs|` — por isso sobrevive a saturacao do reservatorio (quando `|∇cs|` cai mas direcao persiste). Diferente da Marangoni, que colapsa quando `cs` uniformiza.
 - `motility_gate`: smoothstep em `rho_b ∈ [0.1, 0.6]` com pico em `rho_b = 0.35` — so swarmers de borda; nucleo maduro (`rho_b ≈ 1`) e agar livre (`rho_b ≈ 0`) sao imunes.
 - Implementacao usa padrao loop/post_loop (como `BiomassGradient`): `loop` acumula `grad_cs_x/y` pelo gradiente SPH simetrico, `post_loop` normaliza o vetor total e aplica a forca com sinal `-f0` (mesma direcao da Marangoni — para agar fresco).
-- `f0 = 2.0` atual; orcamento teorico `f0 ~ 0.5*gamma*v_term = 3`.
+- `f0 = 3.0` (K.27); orcamento teorico `f0 ~ 0.5*gamma*v_term = 3`.
 - **Invariante critico:** `FlagellarForce` precisa executar **apos** `SurfactantEquation` para usar `cs` atualizado. Ver ordem em [scheme.py](src/scheme.py).
+
+**Frente 6 — Osmolyte/substrato (campo escalar)** *(a implementar — Pass M, REQUISITO ANTES DE PASS L)*
+
+**REFORMULACAO 2026-05-02 (apos analise de T2/T5):** A proposta original de Pass M (substrato consumivel `c_n` a la Mimura-Murray) foi refinada apos leitura do Srinivasan 2019 e Bru 2023. Esses papers mostram que swarming de P. aeruginosa e regime **nutrient-rich** (`c ≈ c0` constante), nao nutrient-limited. O modelo Mimura-Murray descreve **biofilm**, nao swarming. A correcao do "halo de baia" em K.27 nao requer consumo de nutriente, mas sim representacao explicita dos osmolytes que dirigem o influxo de fluido do agar.
+
+**Duas formulacoes possiveis para Pass M (a decidir empiricamente):**
+
+**Pass M-A (osmolyte produzido):**
+```
+dc_o/dt = D_o · ∇²c_o + k_o · ρ_b · (1 - c_o/c_o_max) - λ_o · c_o
+                       ↑ producao biomassa-dependente
+                       ↑ saturacao para evitar runaway
+```
+Acoplamento: `c_o` modula a EOS atrativa (representando influxo de fluido)
+ou adiciona source term na continuidade SPH para representar massa entrando do agar.
+
+**Pass M-B (substrato consumivel — original):**
+```
+dc_n/dt = D_n · ∇²c_n - k_n · ρ_b · c_n
+production_cs *= c_n/(c_n + K_n)   [Michaelis-Menten]
+```
+Mantem proposta Mimura-Murray. Pode ser apropriado se nosso regime experimental estiver na transicao swarm→biofilm (que ocorre em ageing colonies).
+
+- Diagnosticado em K.27 (2026-05-01) como omissao estrutural do modelo. Sem este mecanismo, o modelo nao consegue suprimir as baias entre dendritos — particulas no rim recebem push radial uniforme, gerando halo isotropico sobreposto ao padrao dendritico.
+- **Mecanismo biologico (Pass M-A, preferido pos-2026-05-02):** bacterias secretam LPS/EPS/surfactantes que funcionam como osmolytes. Bays cercadas por colonia que ja produziu osmolyte → gradiente local saturado, baixo influxo de fluido. Tips em agar virgem → gradiente forte, alto influxo de fluido por van't Hoff. Resultado: tips continuam expandindo via influxo, bays estagnam. Mass flow funnels do bulk para os tips via influxo localizado.
+- **Mecanismo biologico (Pass M-B, alternativa):** bacterias consomem nutriente do agar. Bacterias na baia esgotaram o nutriente local; bacterias nos tips alcancaram agar virgem com nutriente fresco. Resultado: bays param de crescer, tips continuam. Apropriado se regime virar nutrient-limited.
+- **Equacao a implementar:**
+  ```
+  dc_n/dt = D_n * Laplacian(c_n) - k_n * rho_b * c_n
+  ```
+  com `c_n(t=0) = 1.0` em todo o dominio (agar virgem uniforme), `D_n` pequeno (nutriente difunde devagar), `k_n` controla taxa de consumo.
+- **Acoplamento com producao de cs:** modificar termo de producao em `SurfactantEquation.post_loop` para depender de `c_n`:
+  ```python
+  production = sigma * qs(rho_b) * (1.2 - rho_b) * c_n / (c_n + K_n) * tip_boost * motile_boost
+  ```
+  Onde `K_n` e constante de Michaelis-Menten — quando c_n esta esgotado (baias), producao cai a zero; quando c_n esta fresco (tips), producao saturada.
+- **Acoplamento com crescimento (opcional):** `r_growth_eff = r_growth * c_n / (c_n + K_n)`. Bacterias na baia tambem param de crescer biomassa.
+- **Resultado esperado:** baias suprimidas → halo radial desaparece → mass flui para tips → dendritos finos com agar limpo entre eles, matching reference.jpg.
 
 ### 3.3 Meta de superficies rugosas
 
@@ -195,18 +321,19 @@ Calibracao pos-Passes A-I.7. **MARCO I.7:** Transicao blob→dendritico confirma
 
 | Parametro | Variavel | Valor atual | Notas |
 |-----------|----------|:-----------:|-------|
-| Viscosidade | `mu` | 0.012 | Pass I.2: reduzida de 0.025 para filamentos finos |
+| Viscosidade | `mu` | **0.020** | K.23: I.2 revert parcial — coesão viscosa (I.2=0.012, pre-I.2=0.025) |
 | Arrasto (base) | `gamma` | 60.0 | `a_drag` = `gamma*v_term` = 6 em v=0.1 |
 | Arrasto (nucleo) | `gamma_mature` (scheme) | `1.5*gamma` | Pass I.4: razao core/edge 2.5x (era 0.3*gamma) |
 | Coef. Marangoni | `beta` | **1.0** | Pass K.5: 4→1 (4x reduzido para domar feedback amplificado por K.6/K.7) |
-| Producao surfactante | `sigma` | **0.8** | Pass K.9: 0.6→0.8 (ponto medio entre explosao K.7 e one-tip K.8) |
-| Forca flagelar | `f0` | **0.5** | Pass K.5: 2.0→0.5 (4x reduzido junto com beta) |
+| Producao surfactante | `sigma` | **1.2** | Pass K.15: 0.8→1.2 (restaura amplitude; K.20 k_consume=2.0 controla saturacao) |
+| Forca flagelar | `f0` | **3.0** | K.22: 0.5→3.0 — alvo teorico §8 (f0~γ·v_term/2=3); K.21 diagnosticou regime subcritico |
 | Difusao (biofilme) | `D` (`D_int`) | 1.5e-3 | Pass I.3: gradiente afiado na interface (`L_D_int`=0.93h) |
-| Difusao (agar) | `D_ext` | 0.01 | Pass I.7, **validado K.10**: reduzir para 0.005 mata o campo long-range de Mullins-Sekerka (pior morfologia) |
+| Difusao (agar) | `D_ext` | **0.04** | K.18: 0.01→0.04; `L_D_ext=0.231`; nao confundir com janela [0.008,0.012] de K.10 (valida so pre-K.17) |
 | Decaimento | `lambda_` | 0.15 | Manter — confina `cs` mas permite penetracao de `L_D_ext` |
-| Taxa crescimento | `r_growth` | 0.4 | Pass K: estende janela de swarmers de borda |
+| Sumidouro enzimatico | `k_consume` | **2.0** | K.20: 0.5→2.0 — resolve Bloqueio B; cs_∞(interior)≈0.10 |
+| Taxa crescimento | `r_growth` | **0.15** | K.21: 0.4→0.15 — elimina K.17 Trap; swarmer ring ate t>140s |
 | Modelo producao | `sigma*qs*(1.2-rho_b)*noise*tip_boost*motile_boost` | — | K.6 adicionou `tip_boost = 1+3*grad_rho_b_mag`; K.7 adicionou `motile_boost = 1+50*min(|v|,0.1)` |
-| Visc. artificial Monaghan | `alpha_mon` | 0.06 | Pass I.2: reduzida de 0.15 para gradientes afiados |
+| Visc. artificial Monaghan | `alpha_mon` | **0.12** | K.23: I.2 revert parcial — previne instabilidade de tração SPH (I.2=0.06, pre-I.2=0.15) |
 | Vel. som (EOS) | `c0` | 0.8 | B ~ 0.09; tensao `tension_ratio=0.02` (Pass I.5) |
 | Smoothing kernel | `h_factor` | 1.8*dx | ~35 vizinhos por particula |
 | Timestep | `dt` | 5e-5 | Adaptivo, CFL=0.4 |
@@ -256,6 +383,32 @@ Calibracao pos-Passes A-I.7. **MARCO I.7:** Transicao blob→dendritico confirma
 - **Pass K.14 — sumidouro biomassa-dependente (Etapa 1, 2026-04-22):** adicionado termo `-k_consume * rho_b * cs` em [src/equations.py:147](src/equations.py#L147) `SurfactantEquation.post_loop`. `k_consume=0.5` — decaimento efetivo interior = `lambda + k_consume*rho_b` = 0.65 em rho_b=1 (4.3x maior que K.13). Exterior (rho_b≈0) preserva mecanismo inalterado. **Fundamentacao biologica**: ramnolipideos sao adsorvidos nas membranas bacterianas e degradados por enzimas rhlE/rhlB reguladoras intrinsecas em alta densidade (QS homeostase). **Resultado**: motor prevenido de afogar mas sub-amplitude — `a_mar` pico 172 (vs K.13 368). Morfologia lobular sem dendritos. Evoluiu para K.15.
 - **Pass K.15 — sigma 0.8→1.2 para restaurar amplitude (2026-04-22):** mantido `k_consume=0.5`, aumentado `sigma: 0.8 → 1.2` em[main.py:45](main.py#L45). Resultado (t=0→33.8s): **primeira morfologia dendritica real** (~15-18 dendritos, AR 1:5 a 1:7 em frames 097/110/132), motor sustentado (`a_mar` pico 329, pulsos 100-260), `contrast_cs` plateau 55-95 apos transitorio (inicial 204→52 em t=26s, recuperou para 94 em t=29s), `mean_cs` plateau 0.47-0.55 (afogamento estabilizado), `max_cs` 30-45. **Motor resolvido (Etapa 1 ✓).** Porem: **core pinning failure diagnosticado** (§2.4) — `a_pressure` 15-30 rotina com picos >50 (orcamento <3), `n_fast` 900-1300 (ativacao em massa, nao localizada nas pontas), razao drag core/borda apenas 2.2× (`gamma_mature=1.5·gamma`). Conclusao: colonia inteira infla radialmente, dendritos sao bumps arrastados. Tip-splitting ausente. **Pass K.16 abordara core pinning (§2.4).**
 
+- **Pass K.16a-e — varredura de alavancas mecanicas falhada (2026-04-28):** testou todas as 3 alavancas §2.4 originais isoladamente. **K.16a** (`gamma_mature: 1.5x → 5x`): drag combate velocidade ja estabelecida, nao a fonte de pressao. **K.16c** (edge_fade invertido com fade_repulsao=fade_atracao=0 em `rho_b≥0.8`): SPH pair-wise pressure persiste; sem coesao no core, a casca de transicao 0.5-0.8 absorve toda carga de pressao. **K.16d** (`c0: 0.8 → 0.35`): SPH auto-regula via `excess²` quando B cai. **K.16e** (edge_fade assimetrico — `fade_repulsao=0`, `fade_atracao=1` em core): `B_tension = 0.02·B` e negligível (50× mais fraca que repulsao); manter atracao no core nao mudou dinamica. **Conclusao: alavancas mecanicas isoladas insuficientes para core pinning.**
+
+- **Pass K.16f — `gamma_mature = 8x` parcialmente eficaz (2026-04-28):** `a_pressure` 8-22 rotina (vs 15-35 K.16e), `mean_v` 0.005-0.008 (-30%), `n_fast` 300-450 (-30%), `contrast_cs` plateau 122-180. **Primeiro avanco mensuravel da sequencia K.16.** Frames 060-072 mostraram 4-5 dendritos distribuidos angularmente. Porem extensao para t=40s: `mean_cs` saturou 0.43→0.65, `contrast_cs` colapsou 138→81, `n_fast` explodiu 300→972 — **recidiva K.13 syndrome**. Conclusao: drag pesado contem expansao mecanica mas **nao previne saturacao quimica** (motile_boost ainda ativo na borda).
+
+- **Pass K.17 — hard pinning rigido (2026-04-28):** implementado `u = v = 0` para `rho_b ≥ 0.8` em [src/scheme.py:44-49](src/scheme.py#L44-L49) `CustomEulerStep.stage1`. Reverteu `gamma_mature` para baseline 1.5x. **Bloqueio mecanico (§2.4-A) RESOLVIDO**: `mean_v` 0.001-0.005, `n_fast` 200-340, nucleo congelado literalmente. Critério #4 `v_core/v_tip < 0.2` passa diretamente. Porem: **morfologia continuou anel uniforme** (~15-20 bumps AR ~1:1) em vez de dendritos. **Diagnostico**: pinning resolveu sintoma errado — bloqueio nao era cinematico (nucleo movendo) mas **quimico** (cs saturando uniformemente apesar de nucleo estatico).
+
+- **Pass K.18 — `D_ext: 0.01 → 0.04` (2026-04-28):** hipotese: `L_D_ext` muito pequeno impede focalizacao Mullins-Sekerka. Calculo: `L_D_ext = √(D_ext/λ_ext) = √(0.04/0.75) = 0.231` (assumindo `λ_ext_ratio=5`); razao `L_D_ext/R = 0.15`. Predicoes: `contrast_cs` subir, `max_cs` subir, `mean_cs` cair. Resultado real: `mean_cs` 0.13→0.71 (cresceu 5×), `contrast_cs` continuou colapso. **Predicoes falharam.** Diagnostico: `D_ext` maior aumenta drenagem na borda mas nao toca producao interna; insuficiente para deter saturacao quimica. Frame 078 (t=52s): expansao mais contida (R=1.5 vs K.16f R=2.0) mas sem dendritos.
+
+- **Pass K.19 — `λ_ext_ratio: 5.0 → 1.0` (2026-04-29) — FALHA CATASTROFICA:** hipotese: aumentar `τ_decay_ext` de 1.3s para 6.7s permite cs no agar alcancar pontas vizinhas (`L_D_ext = 0.516`, razao 0.34). Resultado completo (t=0-100s): `mean_cs` cresceu 0.13 → **2.20** (saturacao 17×, vs 0.71 em K.18). Motor morreu em t=80s (`n_fast → 0`, `mean_v → 0.0001`). Frame 345 (t=99s): colônia parou de crescer em R=2.5, painel cs cinza uniforme (cs decaído quase a zero), |a_flag| zero. **Causa raiz**: reduzir `λ_ext` para igualar `λ_int` permite cs acumular no agar → gradiente na fronteira agar-biofilme cai → fluxo difusivo que drenava cs do bulk **diminuiu drasticamente** → `mean_cs` interno explode. **Reverteu Pass J inadvertidamente.** Lição: a premissa "pontas roubam gradiente das baias" requer **bulk com cs bounded primeiro**; quando `mean_cs` satura para 2.0+, gradiente lateral tip-tip e irrelevante (eclipsado pelo salto vertical biofilme-agar). **Pos-K.19, §2.4 revisada para reconhecer bloqueio quimico como independente do mecanico.**
+
+- **Pass K.20 — `k_consume: 0.5 → 2.0` (2026-04-29, REVERTEU K.19 + aplicou k_consume):** Bloqueio quimico §2.4-B resolvido. Steady-state interior cs_∞ = σ·0.17/2.15 ≈ 0.10 (vs 0.85 K.13). `mean_cs` plateau 0.08-0.18 ✅, contrast_cs > 80 sustentado. Porem motor sub-amplitude (mean_v 0.001-0.002, n_fast 0-46). Evoluiu para K.21.
+
+- **Pass K.21 — `r_growth: 0.4 → 0.15` (2026-04-30):** Eliminado K.17 Trap (saturacao global de rho_b que congelava toda a colonia em t~68s com r_growth=0.4). Tempo de residencia swarmer estendido de ~60s para ~150s. Diagnostico pos-K.21: Blockers A e B ✅ confirmados. **"Motor Starvation" identificado** — pontas tentam avançar mas estagnam. Fronteira "ferve" sem elongacao. AR ~1:1 nas poucas protuberancias que sobrevivem. Ver lição #14 e §2.4-E para analise completa.
+
+- **Pass K.22 — `f0: 0.5 → 3.0` (2026-04-30, FALHA — motor ativo mas material frágil):** f0=3.0 aumentou a_flag de 0.5→3.0 e restaurou ignição flagellar (a_flag=3.0 constante no log). Porem morfologia ficou **mais estagnada que K.21**. Causa raiz diagnosticada: **instabilidade de tração SPH** ("brittle neck"). Hard pinning (K.17) ancora o nucleo; f0=3.0 puxa a ponta com força 3.0; o "pescoço" do dendrito tem coesão EOS de B_tension = rho0·c0²/7·0.02 = 0.00035 — quase zero. F_tração/F_coesão ≈ 8500 → fratura antes de elongar. Adicionalmente, motile_boost=3.5× com f0=3.0 elevou produção de cs, mean_cs subiu 0.08→0.31 em 100s (Bloqueio B re-emergindo lentamente). **Diagnostico confirmado pelo usuario (2026-05-01):** Pass I.2 deixou o fluido excessivamente "fino" (mu=0.012, alpha_mon=0.06), criando material quebradiço em vez de viscoelástico. Solução: revert parcial I.2 para fortalecer coesão.
+
+- **Pass K.23 — revert parcial I.2: `mu: 0.012→0.020`, `alpha_mon: 0.06→0.12` (2026-05-01):** Fortaleceu coesao SPH contra fratura. Resultado: 2 dendritos coerentes formaram mas estagnaram em ~25s por K.17 trap. Confirmou que `alpha_mon` e o lever direto contra instabilidade de tracao.
+
+- **Pass K.24 — `r_growth: 0.15 → 0.05` (2026-05-01):** Estendeu swarmer pool ~3×. Diagnosticado snapping/anel voador devido a f0=3.0 violento + r=0.05. Frames mostraram 2 dendritos formando + ring de particulas voadoras descoladas do corpo.
+
+- **Pass K.25a — `threshold: 0.8→0.95 + f0: 3.0→1.5` (2026-05-01, FALHA):** Borbulhamento sem estrutura. a_pressure caiu 3-5× (1.5-3.5 vs 8-22 K.23). Ancora destruida + motor sub-critico = colonia gel uniforme sem dendritos. **Confirmou: hard pinning rigido em 0.8 e estrutural — nao negociavel.**
+
+- **Pass K.26 — `threshold: 0.95→0.8 mantendo f0=1.5` (2026-05-01, SUCESSO MORFOLOGICO):** **PRIMEIRA MORFOLOGIA DENDRITICA MULTIPLA PERSISTENTE** desde inicio do projeto. Frames 050-079 mostram **8 dendritos formados** (matching cos(8θ) seed), AR ~1:4-1:6, dendritos persistentes (sem swallowing), nucleo ancorado (sem ballooning), sem snapping. Limitacao: dendritos bulbosos (largura 4-5 particulas vs 1-2 da reference.jpg) + halo radial de baia visivel.
+
+- **Pass K.27 — `f0: 1.5 → 3.0` (2026-05-01, DIAGNOSTICO ESTRUTURAL):** Manteve sucesso K.26 e amplificou ambos os fenomenos simultaneamente — os 8 dendritos cresceram (n_fast pico 113, +50%) E o halo radial das baias tambem cresceu. **Diagnostico fundamental:** o motile_boost atual (1+50·v) gera diferencial tip/bay de apenas 2.3× — insuficiente para criar gradiente azimutal de cs capaz de funilar massa das baias para os tips. Bays expandem em paralelo, nao param. **CONCLUSAO: calibracao parametrica esgotada para suprimir baias. Mass flow para os tips requer mecanismo de SUPRESSAO ATIVA das baias — nutriente consumivel `c_n` (Frente 6, Pass M).**
+
 **Invariantes morfologicos descobertos (K.5-K.14):**
 1. `smoothstep` em `[a,b]` satura em 1.0 no pico → **max(metric) e cego ao estreitamento do gate**. K.1, K.2 pareceram no-op por isso; diagnostico correto requer `n_active` e `mean_active`, nao `max`.
 2. Tip-boost via `|∇rho_b|` e **uniforme no rim** (pontas, baias e trechos retos tem magnitude similar). Nao discrimina pontas sozinho.
@@ -268,11 +421,58 @@ Calibracao pos-Passes A-I.7. **MARCO I.7:** Transicao blob→dendritico confirma
 9. **Morfologia `reference.jpg` de P. aeruginosa e FRACTAL, nao radial simples**: ~15 dendritos de primeira ordem + ramificacao secundaria/terciaria por **tip-splitting**. Modelo atual (Marangoni + flagelar + EOS + difusao bi-escala + sumidouro em K.14) gera apenas instabilidade primaria de Mullins-Sekerka → **lobulos bulbosos sem bifurcacao**. Tip-splitting requer mecanismo adicional: substrato consumivel, ruido estocastico forte, ou razao capilar β/f0 otimizada.
 10. **Core pinning failure e pre-requisito invisivel para tip-splitting** (diagnosticado K.15, 2026-04-22): ativacao em massa (`n_fast` 900-1300 em ~10⁴ particulas) e `a_pressure` 15-30 (vs orcamento <3) impedem bifurcacao porque pontas nao tem **trajetoria propria** — sao arrastadas pela expansao radial do blob. Na morfologia real (literatura P. aeruginosa PA14), nucleo EPS e imovel e pontas sao a unica frente de avanco. **Pinning tem que vir antes de tip-splitting** — sem nucleo ancorado, nenhuma competicao capilar (β/f0) consegue isolar uma ponta que se bifurque: a proxima iteracao do blob arrasta as duas metades juntas. **Tres alavancas hidrodinamicas**: (a) `gamma_mature` drasticamente maior (5-10× gamma vs 1.5× atual), (b) `c0` reduzido (0.8→0.5 para B/a_pressure drop 2.56×), (c) revisao de `edge_fade` para zerar pressao EOS justamente no nucleo (`rho_b>0.8`) ao inves de maximiza-la.
 
-**Proximos diagnosticos obrigatorios:**
-1. **Pass K.14 (Etapa 1 — aplicado 2026-04-22):** sumidouro `-k_consume*rho_b*cs` em [src/equations.py:147](src/equations.py#L147), `k_consume=0.5`. Meta: estabilizar `mean_cs ∈ [0.25, 0.35]` e `contrast_cs ≥ 80` sustentado em t=60-100s. Executar `make run` e comparar log + frames vs K.13.
-2. **Se K.14 estabilizar motor:** iniciar Etapa 2 (tip-splitting). Testar em ordem: (a) β:1.0→1.5 capilaridade, (b) ruido estocastico 0.01→0.05 na noise de producao, (c) se insuficiente, arquitetura nova — campo substrato `c_n` consumivel por ρ_b + chemotaxis positivo para `+∇c_n` na `FlagellarForce`.
-3. **Se K.14 nao estabilizar:** k_consume insuficiente — testar 0.8 ou reformular lambda_int mais alto diretamente.
-4. **Pass L (rugosidade) permanece BLOQUEADO** ate frames mostrarem morfologia fractal com tip-splitting matching `reference.jpg` de P. aeruginosa (Michiels et al.), nao apenas dendritos radiais simples.
+11. **Bloqueios mecanico e quimico sao FISICAMENTE INDEPENDENTES** (diagnosticado pos-K.19, 2026-04-29): K.16-K.19 demonstrou empiricamente que resolver core pinning mecanico (K.17 hard pinning) **nao e suficiente** para morfologia dendritica. Mesmo com `u=v=0` no nucleo, o motor de producao cs (`σ · qs · (1.2-rho_b) · tip_boost · motile_boost`) na **borda ativa** (rho_b ∈ [0.1, 0.8], que continua se movendo) gera saturacao global. Em K.19 `mean_cs` cresceu 0.13→2.20 com nucleo congelado. **Os dois bloqueios precisam de alavancas diferentes**: (a) mecanico via integrador/drag/EOS, (b) quimico via `k_consume`/coeficiente do `motile_boost`/redistribuicao da producao. Erro original §2.4 (K.15): unir os dois sintomas em "core pinning failure" e bloquear surfactante. Erro corrigido em §2.4 atual.
+
+12. **Reduzir `λ_ext` abaixo de `λ_int` destroi Pass J** (lição K.19): a drenagem que mantem `mean_cs` interior bounded depende do **gradiente de cs na fronteira biofilme-agar**. Quando `λ_ext > λ_int`, cs decai rapido no agar → `cs_ext ≈ 0` → gradiente alto → fluxo difusivo drena cs do interior. Quando `λ_ext = λ_int`, cs acumula no agar → gradiente cai → drenagem cessa → `mean_cs` interno explode. **A drenagem nao e via decaimento direto; e via gradiente que move massa para fora**. Lição metodologica: qualquer mudanca em `λ_ext` deve ser acompanhada de validacao do `cs_ext / cs_int` ratio em log; se subir > 0.3, drenagem comprometida.
+
+13. **Predicoes geometricas (Mullins-Sekerka) requerem bulk com cs bounded primeiro** (lição K.19): a tese "pontas roubam gradiente das baias via L_D_ext lateral" pressupoe que o cs interior e finito e localizado, nao saturado uniformemente. Com `mean_cs >> mean_cs(agar)`, todo o gradiente na borda e dominado pelo salto vertical biofilme-agar, **nao pela curvatura da interface**. Implicacao: bloqueio quimico (B) **deve** ser resolvido antes de qualquer ajuste em `D_ext`/`λ_ext` para focalizacao geometrica (C). Tentar resolver C antes de B (K.18, K.19) so gera predicoes invertidas.
+
+**Proximos diagnosticos obrigatorios (atualizado 2026-04-30 pos-K.21):**
+
+**Estado atual (K.22 aplicado):**
+- K.17 hard pinning ✅ (`u=v=0` em `rho_b≥0.8`)
+- K.18 `D_ext=0.04` ✅
+- K.19 REVERTIDO ✅ (`lambda_ext_ratio=5.0` restaurado)
+- K.20 `k_consume=2.0` ✅ (Bloqueio B resolvido)
+- K.21 `r_growth=0.15` ✅ (K.17 trap resolvido — swarmer ring sustentado ate t>140s)
+- K.22 `f0: 0.5→3.0` ✅ RECEM APLICADO (restaura ignição flagellar)
+
+**Diagnostico K.21 (2026-04-30) — "Motor Starvation / Regime Subcritico":**
+Blockers A (pinning) e B (saturacao quimica) confirmados resolvidos pelo log:
+- `a_pressure` plateau 0.7-8.6 ✅ (orcamento <10)
+- `mean_cs` 0.08-0.18 ✅ (nao explodindo)
+- `contrast_cs` 80-240 oscilando ✅ (sinal existe nas pontas)
+
+**Causa raiz K.21:** f0=0.5 produz v_term=0.008 << limiar motile_boost (v_sat=0.1). Sistema em bistabilidade subcritica:
+```
+v_term(flag) = f0/γ = 0.5/60 = 0.008
+motile_boost @ v=0.008: 1 + 50·0.008 = 1.4×  (vs 6× quando v=0.1)
+cs_∞(ponta, ρ_b=0.35) ≈ σ·qs·0.85·2.2·1.4 / 1.04 ≈ 2.9  (vs 12 necessario)
+```
+Resultado: pulsacoes episodicas (n_fast pico=114 em t=1.5s via perturbacao inicial, depois collapse para 0-20). mean_v=0.001-0.002 — insuficiente para elongacao dendritica.
+
+**Pass K.22 — `f0: 0.5 → 3.0` (2026-04-30):** Restaura ignição flagellar ao valor teorico (§8: f0 ~ γ·v_term/2 = 60·0.1/2 = 3). Alavanca unica, parametro flagellar — nao toca cs chemistry nem pinning.
+
+**Predicoes K.22:**
+- v_term(flag) = 3/60 = 0.05 → motile_boost = 1+50·0.05 = 3.5×
+- cs_∞(ponta, ρ_b=0.35) ≈ 7.3 (vs 2.9 K.21, 12 em K.15)
+- cs_∞(interior, ρ_b=1) ≈ 0.10 (k_consume=2.0 inalterado — Blocker B preservado)
+- a_flag = 3·gate ≈ 3 (alvo §8 ✓)
+- max_cs/mean_cs ≈ 73 >> 4 (criterio #7 ✓)
+- mean_v previsto: 0.010-0.030
+- n_fast previsto: 50-300 sustentado (vs 0-46 K.21)
+
+1. **Validar K.22:** criterios §2.4-B #5-8 + morfologia dendritica (AR ≥ 1:3 pelo menos). Se mean_cs subir para > 0.45, k_consume ja nao e suficiente — alavanca alternativa: reduzir `motile_boost` factor 50→20.
+
+2. **Pass K.23 (se K.22 estabilizar) — `D_ext: 0.04 → 0.08`:** Mullins-Sekerka geometrico (Blocker C). `L_D_ext = √(0.08/0.75) = 0.327` (+41%). Mantem `λ_ext_ratio=5.0`, drenagem preservada. Criterio: contrast_cs > 150, baias visiveis entre dendritos.
+
+3. **Se K.22 + K.23 produzirem baias mas pontas curtas:** Etapa 2 tip-splitting: razao β/f0 para regime Mullins-Sekerka capilar.
+
+4. **Pass L (rugosidade) permanece BLOQUEADO** ate frames mostrarem morfologia fractal com tip-splitting matching `reference.jpg` de P. aeruginosa.
+
+**Licao #15 — "Brittle Neck" — instabilidade de tração SPH com hard pinning + motor forte (2026-05-01):** Hard pinning (K.17, `u=v=0` em `rho_b≥0.8`) + força flagelar alta (f0=3.0) cria tração de magnitude 3.0 no pescoço entre nucleo congelado e ponta avancando. A coesão EOS (B_tension = rho0·c0²·tension_ratio/7) deve resistir a essa tração; com c0=0.35 e tension_ratio=0.02, B_tension ≈ 0.00035 — irrisório. A viscosidade (mu=0.012, alpha_mon=0.06) também não amortece a separação rápida de partículas. **Resultado:** fluido "quebradiço" — pescoço fragmenta antes de elongar, dendrito não se forma. **Fix:** aumentar mu e alpha_mon (revert parcial I.2) para dar ao fluido propriedades viscoelásticas que aguenham tração. Regra: sempre que f0 for aumentado, verificar se a coesão SPH (mu + alpha_mon + B_tension) escala proporcionalmente.
+
+**Licao #14 — "Motor Starvation" por subcriticidade flagellar (2026-04-30):** f0 foi reduzido de 2.0 (Pass K) para 0.5 (K.5) para "domar" o motor, mas isso empurrou o sistema abaixo do limiar do motile_boost. O motile_boost=1+50·|v| so amplifica producao quando v≥v_sat=0.1; com v_term(flag)=f0/γ << v_sat, o ciclo de feedback nunca arranca. **Diagnostico correto:** comparar v_term(flag) = f0/γ com v_sat. Se v_term < v_sat/3, o sistema esta em regime subcritico e f0 deve ser aumentado antes de qualquer ajuste de cs chemistry.
 
 ---
 
@@ -298,7 +498,8 @@ Calibracao pos-Passes A-I.7. **MARCO I.7:** Transicao blob→dendritico confirma
 - **Nao** refatorar a ordem das equacoes em `scheme.py` sem verificar invariantes.
 - **Nao** remover equacoes desabilitadas (como `OsmoticForce`) que sao parte do roadmap.
 - **Nao sugerir implementar rugosidade (Pass L) enquanto a morfologia nao reproduzir `reference.jpg`.** Rugosidade e extensao fisica, nao remedio para motor insuficiente ou selecao competitiva ausente. Se Marangoni + Flagelar + EOS nao geram dendritos finos separados (`AR >= 1:5`), a causa-raiz esta em um desses mecanismos — investigar e refinar antes de adicionar nova fisica.
-- **Nao sugerir nenhuma mudanca em parametros de surfactante ou nova fisica enquanto core pinning failure (§2.4) persistir.** Criterios de aceitacao (todos): `a_pressure < 5` sustentado, `n_fast / N_interface < 2`, baias estacionarias entre frames t-spaced ≥3s, `v_core/v_tip < 0.2`. Unicas alavancas permitidas ate passar: `gamma_mature`, `c0`, `edge_fade` geometria. Motor sustentado sem core pinning nao produz tip-splitting — dendritos sao bumps arrastados (K.15).
+- **Nao mudar parametros de surfactante (`σ`, `k_consume`, `D_ext`, `λ_ext`) sem verificar criterios duplos §2.4.** Bloqueio mecanico (A) resolvido por K.17. Bloqueio quimico (B) ATIVO — alavanca permitida atual: `k_consume` (lever direta sobre sumidouro). Nao mexer em `D_ext` e `λ_ext` simultaneamente (lição K.18-K.19). Nao reduzir `λ_ext` abaixo de `λ_int` enquanto motile_boost ativo (destroi Pass J).
+- **Nao sugerir Pass L (rugosidade)** enquanto morfologia nao reproduzir `reference.jpg` (dendritos AR ≥ 1:5, baias estacionarias, tip-splitting visivel). Bloqueio C (Mullins-Sekerka geometrico) provavelmente requer abordagem apos B resolvido.
 
 ---
 
@@ -458,16 +659,76 @@ Sequencia de intervencoes pos-K iniciada em 2026-04-20 com objetivo de produzir 
 - `D_ext ∈ [0.008, 0.012]` e janela funcional; fora dela o mecanismo morre.
 - **Multi-seeding sozinho nao e suficiente** (K.11/K.12): plumes de cs de tips vizinhos se fundem via difusao lateral no ágar. Precisa **confinamento de plume via `lambda_ext`** (K.13) complementar a pre-semeadura.
 
-### Pass L — Superficies rugosas (Objetivo 1) — **BLOQUEADO**
+### Pass M — Substrato consumível `c_n` (Frente 6) — **PROXIMO PASSO OBRIGATORIO**
 
-> ⚠️ **PRE-REQUISITO:** Pass L so pode ser iniciado apos a simulacao reproduzir a morfologia de [reference.jpg](reference.jpg) (dendritos de `AR >= 1:5`, separados por agar limpo, nucleo coeso) via mecanismos hidrodinamicos puros. Ver §1 Objetivo 1, §2.2 e §10 Proibicoes.
+> 🎯 **Diagnosticado em K.27 (2026-05-01):** calibracao parametrica esgotada. Os 8 dendritos formam corretamente (K.26-K.27), mas as baias entre dendritos NAO sao suprimidas — particulas no rim recebem push radial uniforme, gerando halo isotropico que sobrepoe ao padrao dendritico. **Mass flow das baias para os tips (esperado biologicamente) nao acontece sem mecanismo ativo de supressao das baias.**
+
+**Justificativa biologica:** P. aeruginosa em ágar consome glicose/amino acidos do substrato. Bactérias na baia esgotaram o nutriente local; bactérias nos tips alcançaram ágar virgem com nutriente fresco. Resultado natural:
+- Baias param (sem combustivel para metabolismo / producao de surfactante)
+- Tips continuam (encontram nutriente em cada avanço)
+- Mass flow funnels do bulk para os tips via gradiente azimutal de cs
+
+**Implementacao:**
+
+1. **Novo campo `c_n`** em [particles.py](src/particles.py): `pa.add_property("c_n")` inicializado em 1.0 (agar virgem) para todas as particulas.
+
+2. **Nova equacao `NutrientConsumption(Equation)`** em [equations.py](src/equations.py):
+   ```python
+   # loop: difusao SPH (similar a SurfactantEquation, sem producao)
+   d_a_c_n[d_idx] += 2.0 * D_n * Brookshaw_term
+   # post_loop: consumo biomassa-dependente
+   d_a_c_n[d_idx] -= k_n * d_rho_b_grown[d_idx] * d_c_n[d_idx]
+   ```
+
+3. **Acoplamento em `SurfactantEquation.post_loop`** — modificar termo de producao:
+   ```python
+   c_n_factor = d_c_n[d_idx] / (d_c_n[d_idx] + K_n)  # Michaelis-Menten
+   production = sigma * qs * (1.2 - rho_b) * noise * tip_boost * motile_boost * c_n_factor
+   ```
+
+4. **Acoplamento em `BiomassGrowth.loop`** (opcional mas fisicamente correto):
+   ```python
+   r_growth_eff = self.r_growth * d_c_n[d_idx] / (d_c_n[d_idx] + K_n)
+   ```
+
+5. **Integrar `c_n` em `CustomEulerStep.stage1`**:
+   ```python
+   d_c_n[d_idx] += dt * d_a_c_n[d_idx]
+   d_c_n[d_idx] = max(0.0, d_c_n[d_idx])  # nao pode ser negativo
+   ```
+
+**Parametros iniciais propostos:**
+- `D_n = 5e-4` (nutriente difunde lento, ~1/3 de D_int para cs)
+- `k_n = 1.0` (taxa de consumo: bacteria com rho_b=1 esgota c_n local em ~1s)
+- `K_n = 0.1` (Michaelis-Menten: producao cs cai a 50% quando c_n=0.1)
+
+**Predicoes Pass M:**
+- Frame 030 (t≈30s): c_n no interior da colonia ja esgotado (~0.05); c_n no rim em transicao; c_n no agar fresco virgem (~1.0)
+- Particulas das baias: cercadas por c_n esgotado (atras) e c_n moderado (frente — mas tambem sendo consumido pela frente da baia) → producao cs cai
+- Particulas dos tips: avancam em c_n virgem → producao cs sustentada
+- **Resultado morfologico:** halo das baias DESAPARECE; mass flow funnels para tips via gradiente azimutal de cs; dendritos finos com agar limpo entre eles.
+
+**Criterio de sucesso Pass M:**
+- Frames mostram dendritos finos (largura 1-2 particulas), AR ≥ 1:5
+- Agar limpo (sem halo radial) entre dendritos
+- mean_v concentrado nos tips (n_fast localizado, nao distribuido em todo rim)
+- max_cs/mean_cs > 10 (cs altamente localizado em tips)
+- Possivelmente tip-splitting emergente (Mullins-Sekerka secundario)
+
+**Apos Pass M validado:** desbloqueado o Pass L (rugosidade).
+
+---
+
+### Pass L — Superficies rugosas (Objetivo 1) — **BLOQUEADO ate Pass M**
+
+> ⚠️ **PRE-REQUISITO ATUALIZADO (2026-05-01):** Pass L agora requer **Pass M (substrato consumivel) implementado e validado primeiro**. So apos a simulacao reproduzir a morfologia de [reference.jpg](reference.jpg) com **dendritos finos AR≥1:5 + agar limpo entre eles** (Pass M criterio), iniciar Pass L. Ver §1 Objetivo 1, §2.2 e §10 Proibicoes.
 >
-> **Justificativa:** Rugosidade e uma extensao fisica do modelo (objetivo de tese), nao uma muleta para compensar motor insuficiente. Se Marangoni + Flagelar + EOS nao produzem dendritos finos em paredes planas, a causa-raiz esta em um desses mecanismos. Adicionar rugosidade antes de resolver o problema hidrodinamico:
-> - Oculta o bug real (dendritos "emergem" mas por razao errada).
-> - Impossibilita isolar a contribuicao da rugosidade no mecanismo de fingering.
-> - Compromete a validade cientifica da tese.
+> **Justificativa atualizada:** Rugosidade e uma extensao fisica do modelo (objetivo de tese final), nao uma muleta para compensar mecanismos faltantes. K.27 demonstrou que mecanismos hidrodinamicos puros (Marangoni + Flagelar + EOS) **nao produzem morfologia 100% conforme reference.jpg sem o substrato consumivel `c_n`**. A baias precisam ser suprimidas ATIVAMENTE para que o swarm reproduza o padrao natural de P. aeruginosa. Adicionar rugosidade antes de Pass M:
+> - Oculta o bug real (halo radial das baias seria mascarado por canalizacao topografica espuria).
+> - Impossibilita isolar a contribuicao da rugosidade vs. supressao quimica das baias.
+> - Compromete a validade cientifica da tese — comparacao "swarm liso vs swarm rugoso" requer baseline liso CORRETO primeiro.
 
-**Objetivo (quando desbloqueado):** Substituir paredes planas em `particles.py` por topografia irregular para estudar o efeito da rugosidade no padrao de swarming ja estabelecido.
+**Objetivo (quando desbloqueado pos-Pass M):** Substituir paredes planas em `particles.py` por topografia irregular para estudar o efeito da rugosidade no padrao de swarming ja estabelecido.
 - **Geometria:** Senoidais com amplitude `A` e comprimento de onda `Lambda` controlados, ou perfil aleatorio com espectro de potencia definido.
 - **Interacao:** Particulas solidas com no-slip (velocidade zero imposta via `MomentumEquation` `sources=["solid"]`).
 - **Validacao:** Colonia ja dendritica deve apresentar modulacao da morfologia pela rugosidade (canalizacao pelos vales, ancoragem de dedos, etc.), nao formar dendritos pela primeira vez.

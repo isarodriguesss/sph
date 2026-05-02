@@ -41,22 +41,14 @@ class CustomEulerStep(EulerStep):
         d_rho_b_grown[d_idx] = max(0.0, min(d_rho_b_grown[d_idx], 1.0))
         d_cs[d_idx] = max(1e-9, d_cs[d_idx])
 
-        # K.17 — hard core pinning: rho_b >= 0.8 representa matriz EPS madura
-        # (gel solido imovel). Velocidade zerada; posicao congelada.
-        # cs e rho_b continuam evoluindo (producao/difusao ativas no nucleo).
-        if d_rho_b_grown[d_idx] < 0.8:
-            d_u[d_idx] += dt * d_au[d_idx]
-            d_v[d_idx] += dt * d_av[d_idx]
-            d_x[d_idx] += dt * d_u[d_idx]
-            d_y[d_idx] += dt * d_v[d_idx]
-            d_m[d_idx] += dt * d_am[d_idx]
-        else:
+        if d_rho_b_grown[d_idx] >= 0.8:
             d_u[d_idx] = 0.0
             d_v[d_idx] = 0.0
+        else:
+            d_u[d_idx] += dt * d_au[d_idx]
+            d_v[d_idx] += dt * d_av[d_idx]
 
-        d_u[d_idx] += dt * d_au[d_idx]
-        d_v[d_idx] += dt * d_av[d_idx]
-        d_x[d_idx] += dt * d_u[d_idx]
+        d_x[d_idx] += dt * d_u[d_idx]  # x avança com u (que é 0 se pinnado)
         d_y[d_idx] += dt * d_v[d_idx]
         d_m[d_idx] += dt * d_am[d_idx]
 
@@ -148,11 +140,13 @@ class MyBiomassScheme(Scheme):
                     D_ext=self.D_ext,
                     sigma=self.sigma,
                     lambda_=self.lambda_,
+                    lambda_ext_ratio=5.0,  # K.20: revertido de K.19 (que destruiu Pass J). Mantem drenagem por gradiente de borda agar-biofilme
+                    k_consume=2.0,  # K.20: 0.5→2.0 (4x) — sumidouro biomassa-dependente. Steady-state cs_int ≈ 0.10 (vs 0.85). Resolve bloqueio quimico §2.4-B
                 ),
                 FlagellarForce(
                     dest="fluid",
                     sources=["fluid"],
-                    f0=0.5,
+                    f0=3.0,  # K.22: 0.5→3.0 — restaura ignição nas pontas (alvo §8: f0~γ·v_term/2=3)
                 ),
             ],
         )

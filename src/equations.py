@@ -371,29 +371,39 @@ class BiomassEOS(Equation):
         ratio = d_rho[d_idx] / self.rho0
         rho_b = d_rho_b_grown[d_idx]
 
-        # K.16c: edge_fade invertido para core pinning.
-        # Zero no agar (rho_b<0.1) E no nucleo maduro (rho_b>0.8).
-        # Full so na zona ativa de borda (rho_b ~ 0.3-0.5) onde ha swarmers.
-        # Elimina a_pressure no core saturado — nucleo EPS imovel.
+        # K.16e: edge_fade ASSIMETRICO — repulsao e atracao desacopladas.
+        # Repulsao (compressao): zerada no agar (rho_b<0.1) E no nucleo (rho_b>=0.8)
+        #   → elimina a_pressure no core saturado (alavanca §2.4).
+        # Atracao (rarefacao): zerada so no agar (rho_b<0.1), preservada no core
+        #   → mantem coesao estrutural do nucleo EPS, evita colapso K.16c.
         if rho_b < 0.1:
-            edge_fade = 0.0
+            fade_rep = 0.0
+            fade_att = 0.0
         elif rho_b < 0.5:
             t = (rho_b - 0.1) / 0.4
-            edge_fade = t * t * (3.0 - 2.0 * t)
+            s = t * t * (3.0 - 2.0 * t)
+            fade_rep = s
+            fade_att = s
+        elif rho_b < 0.8:
+            t = (rho_b - 0.5) / 0.3
+            s = t * t * (3.0 - 2.0 * t)
+            fade_rep = 1.0 - s
+            fade_att = 1.0
         else:
-            edge_fade = 1.0
+            fade_rep = 0.0
+            fade_att = 1.0
 
         if ratio > 1.0:
-            # Compressão: repulsão quadrática suave
+            # Compressão: repulsão quadrática suave (zerada no core)
             excess = ratio - 1.0
-            d_p[d_idx] = self.B * excess * excess * edge_fade
+            d_p[d_idx] = self.B * excess * excess * fade_rep
         else:
-            # Rarefação: tensão superficial (atração leve)
+            # Rarefação: tensão superficial (atração leve, preservada no core)
             # Limitamos o deficit a 0.3 para evitar atração excessiva em gaps
             deficit = 1.0 - ratio
             if deficit > 0.3:
                 deficit = 0.3
-            d_p[d_idx] = -self.B_tension * deficit * edge_fade
+            d_p[d_idx] = -self.B_tension * deficit * fade_att
 
 
 class OsmoticForce(Equation):

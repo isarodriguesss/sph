@@ -14,6 +14,7 @@ from .equations import (
     LinearDrag,
     ViscousForce,
     BiomassGradient,
+    OsmolyteProduction,
 )
 
 
@@ -33,13 +34,17 @@ class CustomEulerStep(EulerStep):
         d_a_rho_b_grown,
         d_cs,
         d_a_c_s,
+        d_c_o,
+        d_a_c_o,
         dt,
     ):
         d_rho_b_grown[d_idx] += dt * d_a_rho_b_grown[d_idx]
         d_cs[d_idx] += dt * d_a_c_s[d_idx]
+        d_c_o[d_idx] += dt * d_a_c_o[d_idx]
 
         d_rho_b_grown[d_idx] = max(0.0, min(d_rho_b_grown[d_idx], 1.0))
         d_cs[d_idx] = max(1e-9, d_cs[d_idx])
+        d_c_o[d_idx] = max(0.0, min(d_c_o[d_idx], 1.0))
 
         if d_rho_b_grown[d_idx] >= 0.8:
             d_u[d_idx] = 0.0
@@ -79,6 +84,10 @@ class MyBiomassScheme(Scheme):
         c0=10.0,
         alpha_mon=0.5,
         p0=0.0,
+        D_o=1e-3,
+        k_o=0.5,
+        lambda_o=0.05,
+        Q0=5e-4,
     ):
         self.mu = mu
         self.gamma = gamma
@@ -92,6 +101,10 @@ class MyBiomassScheme(Scheme):
         self.c0 = c0
         self.alpha_mon = alpha_mon
         self.p0 = p0
+        self.D_o = D_o
+        self.k_o = k_o
+        self.lambda_o = lambda_o
+        self.Q0 = Q0
         super(MyBiomassScheme, self).__init__(fluids, solids, dim=dim)
 
     def get_equations(self):
@@ -142,6 +155,17 @@ class MyBiomassScheme(Scheme):
                     lambda_=self.lambda_,
                     lambda_ext_ratio=5.0,  # K.20: revertido de K.19 (que destruiu Pass J). Mantem drenagem por gradiente de borda agar-biofilme
                     k_consume=2.0,  # K.20: 0.5→2.0 (4x) — sumidouro biomassa-dependente. Steady-state cs_int ≈ 0.10 (vs 0.85). Resolve bloqueio quimico §2.4-B
+                ),
+                # Pass M-A (Frente 6): osmolitos secretados pelas bacterias.
+                # |∇c_o| dispara influxo de massa (van't Hoff) — pontas incham,
+                # baias estagnam. DEVE preceder FlagellarForce (que usa cs).
+                OsmolyteProduction(
+                    dest="fluid",
+                    sources=["fluid"],
+                    D_o=self.D_o,
+                    k_o=self.k_o,
+                    lambda_o=self.lambda_o,
+                    Q0=self.Q0,
                 ),
                 FlagellarForce(
                     dest="fluid",

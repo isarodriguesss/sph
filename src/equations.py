@@ -454,6 +454,103 @@ class OsmoticForce(Equation):
             d_au_osm[d_idx] += (acc_x * acc_x + acc_y * acc_y) ** 0.5
 
 
+class OsmolyteProduction(Equation):
+    """
+    Pass M-A — Campo de osmolito c_o produzido pelas bacterias (Frente 6).
+
+    Mecanismo (Srinivasan 2019, Bru 2023): bacterias secretam LPS/EPS que
+    funcionam como osmolitos. c_o satura nas baias (agar confinado entre
+    dois dendritos) e fica ~0 nas pontas (agar virgem). |∇c_o| pequeno
+    nas baias → influxo zero. |∇c_o| grande nas pontas → influxo de massa
+    via van't Hoff (V0 ∝ |∇c_o|). Resultado: pontas incham, baias estagnam.
+
+    Loop: difusao SPH (Brookshaw) + acumulo de gradiente simetrico.
+    Post_loop: producao biomassa-dependente, decaimento, e influxo de massa
+    proporcional a |∇c_o| · gate(rho_b).
+    """
+
+    def __init__(self, dest, sources, D_o=1e-3, k_o=0.5, lambda_o=0.05, Q0=5e-4):
+        self.D_o = D_o
+        self.k_o = k_o
+        self.lambda_o = lambda_o
+        self.Q0 = Q0
+        super(OsmolyteProduction, self).__init__(dest, sources)
+
+    def initialize(self, d_idx, d_a_c_o, d_grad_co_x, d_grad_co_y):
+        d_a_c_o[d_idx] = 0.0
+        d_grad_co_x[d_idx] = 0.0
+        d_grad_co_y[d_idx] = 0.0
+
+    def loop(
+        self,
+        d_idx,
+        s_idx,
+        d_c_o,
+        s_c_o,
+        d_a_c_o,
+        d_grad_co_x,
+        d_grad_co_y,
+        s_rho,
+        s_m,
+        DWIJ,
+        XIJ,
+        RIJ,
+    ):
+        co_ij = s_c_o[s_idx] - d_c_o[d_idx]
+        Vj = s_m[s_idx] / s_rho[s_idx]
+
+        d_grad_co_x[d_idx] += Vj * co_ij * DWIJ[0]
+        d_grad_co_y[d_idx] += Vj * co_ij * DWIJ[1]
+
+        if RIJ > 1e-12:
+            eij_dot_dwij = (XIJ[0] * DWIJ[0] + XIJ[1] * DWIJ[1]) / (RIJ * RIJ)
+            d_a_c_o[d_idx] += 2.0 * self.D_o * Vj * co_ij * eij_dot_dwij
+
+    def post_loop(
+        self,
+        d_idx,
+        d_a_c_o,
+        d_c_o,
+        d_rho_b_grown,
+        d_grad_co_x,
+        d_grad_co_y,
+        d_m,
+    ):
+        rho_b = d_rho_b_grown[d_idx]
+
+        # Producao: bacterias secretam osmolito (proporcional a densidade)
+        # qs = Hill QS, satura em c_o=1 via (1 - c_o)
+        qs = rho_b * rho_b / (rho_b * rho_b + 0.01)
+        production = self.k_o * qs * (1.0 - d_c_o[d_idx])
+
+        # Decaimento lento (osmolitos persistem mais que cs)
+        decay = self.lambda_o * d_c_o[d_idx]
+
+        d_a_c_o[d_idx] += production - decay
+
+        # Influxo osmotico: V0 ∝ |∇c_o| · gate(rho_b)
+        # Gate smoothstep em rho_b ∈ [0.1, 0.6] com pico em rho_b = 0.35
+        if rho_b < 0.1:
+            gate = 0.0
+        elif rho_b > 0.6:
+            gate = 0.0
+        else:
+            t = (rho_b - 0.1) / 0.5
+            gate = t * t * (3.0 - 2.0 * t)
+            t2 = (rho_b - 0.35) / 0.25
+            envelope = 1.0 - t2 * t2
+            if envelope < 0.0:
+                envelope = 0.0
+            gate *= envelope
+
+        grad_mag = (
+            d_grad_co_x[d_idx] * d_grad_co_x[d_idx]
+            + d_grad_co_y[d_idx] * d_grad_co_y[d_idx]
+        ) ** 0.5
+
+        d_m[d_idx] += self.Q0 * gate * grad_mag
+
+
 class FlagellarForce(Equation):
     """
     Pass K — Motilidade flagelar orientada por gradiente (Frente 5, CLAUDE.md).

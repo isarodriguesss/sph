@@ -409,6 +409,31 @@ Calibracao pos-Passes A-I.7. **MARCO I.7:** Transicao blob→dendritico confirma
 
 - **Pass K.27 — `f0: 1.5 → 3.0` (2026-05-01, DIAGNOSTICO ESTRUTURAL):** Manteve sucesso K.26 e amplificou ambos os fenomenos simultaneamente — os 8 dendritos cresceram (n_fast pico 113, +50%) E o halo radial das baias tambem cresceu. **Diagnostico fundamental:** o motile_boost atual (1+50·v) gera diferencial tip/bay de apenas 2.3× — insuficiente para criar gradiente azimutal de cs capaz de funilar massa das baias para os tips. Bays expandem em paralelo, nao param. **CONCLUSAO: calibracao parametrica esgotada para suprimir baias. Mass flow para os tips requer mecanismo de SUPRESSAO ATIVA das baias — nutriente consumivel `c_n` (Frente 6, Pass M).**
 
+- **Pass M-A.1 — campo de osmolito `c_o` com influxo de massa via van't Hoff (2026-05-05, FALHA — borbulhamento isotropico):** primeira tentativa de Pass M-A (Frente 6 osmolito) implementada conforme `PASS_M_HANDOFF.md`. Adicionados: campo `c_o`, equacao `OsmolyteProduction` (difusao Brookshaw + producao biomassa-dependente Hill `k_o · qs · (1-c_o)` + decaimento `λ_o · c_o` + influxo `dm += Q0 · gate(rho_b) · |∇c_o|`). Parametros: `D_o=1e-3, k_o=0.5, λ_o=0.05, Q0=5e-4`. Inserida entre `SurfactantEquation` e `FlagellarForce` em [scheme.py:159-169](src/scheme.py#L159-L169), integrada em `CustomEulerStep` com clamp em [0,1]. Diagnosticos no log: 6 colunas novas (`min_c_o`, `max_c_o`, `mean_c_o`, `contrast_c_o`, `mass_total`, `dm_influx`).
+
+  **Resultado morfologico (frames 000-062, t=0→30s):** ~30 bumps curtos e uniformes (AR ~1:2) borbulhando radialmente, **sem selecao competitiva**. Pior que K.26-K.27 (que tinham 8 dendritos persistentes). Um filamento fino atravessa NE em frames 050-062 — **artefato de ejecao numerica** apos pico de velocidade `max_v=1.34` em t=18.5s (vs ~0.5 K.26), nao dendrito real.
+
+  **Tres falhas independentes diagnosticadas:**
+  1. **Massa runaway (BUG DE INTEGRACAO):** `d_m += Q0 · gate · |∇c_o|` no `post_loop` **NAO foi multiplicado por dt**. Acumula a cada chamada do equation evaluator (1/dt = 20 000×/s com dt=5e-5). `mass_total` cresceu de 36.5 → 406.6 em 30s (**11×**), `dm_influx` = 370. Taxa observada ≈ 12.3 unidade-massa/s, consistente com `Q0·gate·|∇c_o|/dt`. Cada particula do rim incha → SPH pressure radial → expansao tipo balao.
+  2. **Saturacao instantanea de c_o:** `max_c_o = 1.0` ja em t=2.86s (iteracao 400). Steady-state interior sob k_o/λ_o = 10:1 e `c_o_∞ = k_o·qs/(k_o·qs+λ_o) ≈ 0.91`. Apos saturacao, `(1-c_o) → 0` zera producao mas decaimento e lento — campo congela proximo de 1 dentro da colonia. `mean_c_o` cresce so de 0.006 → 0.015 em 30s (penetracao difusiva insignificante: `L_D_o = √(D_o/λ_o) = 0.14 ≈ 1.3·h`).
+  3. **Sem assimetria tip-baia (FALHA CONCEITUAL):** mecanismo `dm ∝ |∇c_o|` aplicado por particula do rim NAO discrimina pontas de baias. Todas as particulas com `rho_b ∈ [0.1, 0.6]` recebem influxo de magnitude similar porque `|∇c_o|` na fronteira biomassa-agar e dominado pelo **salto vertical** c_o_int(~1) → c_o_ext(~0), nao pela curvatura azimutal do campo. Para criar a assimetria tip-baia esperada (Srinivasan 2019, Bru 2023), seria necessario que `c_o` **acumulasse no agar das baias** (entre dois dendritos, agar confinado) e **ficasse baixo no agar das pontas** (virgem). Isso exigiria `D_o` muito maior (`L_D_o ~ d_tip-tip ≈ 0.5-1.0`) e mecanismo de confinamento entre dendritos. Implementacao atual nao tem isso.
+
+  **Metricas confirmando falha (log.csv linhas 2-71):**
+  - `mass_total` 36.5 → 406.6 (runaway)
+  - `dm_influx` 0 → 370 (sem cap)
+  - `max_c_o` saturado em 1.0 desde t=2.86s
+  - `mean_c_o` plateau 0.012-0.015 (campo nao penetra agar)
+  - `contrast_c_o` plateau 65-95 enganoso — alto so porque `mean_c_o` e diminuto
+  - `max_v` pico 1.34 em t=18.5s, `n_fast` 280 (alta atividade dirigida pelo influxo, nao pela quimiotaxia)
+  - `a_marangoni` 100-150 sustentado (motor cs OK, mas dominado pelo influxo)
+
+  **Pass L permanece BLOQUEADO.** Caminhos para Pass M-A.2 (a discutir):
+  - **Fix obrigatorio:** integrar massa com dt-scaling — `d_m += dt * Q0 * gate * grad_mag` ou via `d_am` (analogo a `BiomassGrowth.am`). Sem isso, qualquer ajuste de Q0 e dominado pelo bug de integracao.
+  - **Lever 1 — Inverter producao:** osmolitos NAO produzidos pelas bacterias mas **consumidos**, criando acumulo no agar virgem (mais analogo a Pass M-B nutriente consumivel).
+  - **Lever 2 — Difusao alta + confinamento bi-escala:** `D_o` 50-100× maior + `λ_o_ext` muito baixo no agar exterior (analogo a Pass J), permitindo `c_o` acumular nas baias entre dendritos onde fluxo difusivo lateral converge.
+  - **Lever 3 — Acoplamento via EOS atrativa em vez de massa:** `c_o` modula `B_tension` da EOS. Tips em `c_o` baixo → `B_tension` alta (agar puxa colonia para fora); baias em `c_o` alto → atrocao zerada. Evita o bug de integracao de massa e mantem balanco de massa fechado.
+  - **Reconsiderar Pass M-B (Mimura-Murray):** apesar de §3.0 T2/T5 indicarem que swarming P. aeruginosa e nutrient-rich, a logica "consumo cria gradiente que distingue baia de ponta" e geometricamente mais robusta que producao. M-B nao tem o problema de saturacao instantanea e cria assimetria natural via consumo localizado pelas bacterias na trajetoria do rim.
+
 **Invariantes morfologicos descobertos (K.5-K.14):**
 1. `smoothstep` em `[a,b]` satura em 1.0 no pico → **max(metric) e cego ao estreitamento do gate**. K.1, K.2 pareceram no-op por isso; diagnostico correto requer `n_active` e `mean_active`, nao `max`.
 2. Tip-boost via `|∇rho_b|` e **uniforme no rim** (pontas, baias e trechos retos tem magnitude similar). Nao discrimina pontas sozinho.
@@ -426,6 +451,10 @@ Calibracao pos-Passes A-I.7. **MARCO I.7:** Transicao blob→dendritico confirma
 12. **Reduzir `λ_ext` abaixo de `λ_int` destroi Pass J** (lição K.19): a drenagem que mantem `mean_cs` interior bounded depende do **gradiente de cs na fronteira biofilme-agar**. Quando `λ_ext > λ_int`, cs decai rapido no agar → `cs_ext ≈ 0` → gradiente alto → fluxo difusivo drena cs do interior. Quando `λ_ext = λ_int`, cs acumula no agar → gradiente cai → drenagem cessa → `mean_cs` interno explode. **A drenagem nao e via decaimento direto; e via gradiente que move massa para fora**. Lição metodologica: qualquer mudanca em `λ_ext` deve ser acompanhada de validacao do `cs_ext / cs_int` ratio em log; se subir > 0.3, drenagem comprometida.
 
 13. **Predicoes geometricas (Mullins-Sekerka) requerem bulk com cs bounded primeiro** (lição K.19): a tese "pontas roubam gradiente das baias via L_D_ext lateral" pressupoe que o cs interior e finito e localizado, nao saturado uniformemente. Com `mean_cs >> mean_cs(agar)`, todo o gradiente na borda e dominado pelo salto vertical biofilme-agar, **nao pela curvatura da interface**. Implicacao: bloqueio quimico (B) **deve** ser resolvido antes de qualquer ajuste em `D_ext`/`λ_ext` para focalizacao geometrica (C). Tentar resolver C antes de B (K.18, K.19) so gera predicoes invertidas.
+
+16. **Influxo isotropico no rim NAO seleciona pontas** (lição Pass M-A.1, 2026-05-05): qualquer mecanismo da forma `dm ∝ gate(rho_b) · |∇c_o|` aplicado por particula do rim falha em criar selecao competitiva, porque `|∇c_o|` na fronteira biomassa-agar e dominado pelo **salto vertical** entre interior saturado e exterior virgem — magnitude aproximadamente uniforme ao longo do perimetro, independentemente de a localizacao ser ponta ou baia. O resultado e expansao tipo balao com bumps todos crescendo igualmente. Para criar assimetria tip-baia o campo precisa de **estrutura azimutal no agar** (acumulo de `c_o` nas baias confinadas vs agar virgem nas pontas), o que exige `L_D_o ~ d_tip-tip` e mecanismo de confinamento (decaimento bi-escala ou reflexao em fronteiras). Sem isso, qualquer mecanismo de osmolito producao-acumulo gera borbulhamento ao inves de selecao. **Implicacao para Pass M-A.2:** `D_o` precisa ser comparable a `D_ext` de cs (~0.04-0.08), nao 1e-3.
+
+17. **Integracao de massa em SPH exige dt-scaling explicito** (lição Pass M-A.1, 2026-05-05): `d_m[d_idx] += termo` em `post_loop` SEM multiplicar por dt acumula a `1/dt` por segundo (com dt=5e-5, isso e 20 000×/s). Sintoma: `mass_total` runaway (em M-A.1, 11× em 30s). Padrao correto e (a) `d_m[d_idx] += dt * termo` ou (b) integrar via accumulator `d_am[d_idx]` analogo a `BiomassGrowth.am` que e somado ao `d_m` pelo `CustomEulerStep` com dt-scaling. Generalizacao: **toda equacao SPH que modifica diretamente `d_m`, `d_x`, `d_v` em `post_loop` precisa multiplicar por dt; equacoes que populam acumuladores (`d_au`, `d_am`, `d_a_c_s`) NAO multiplicam por dt** porque o integrador o faz no stage1.
 
 **Proximos diagnosticos obrigatorios (atualizado 2026-04-30 pos-K.21):**
 
@@ -662,6 +691,8 @@ Sequencia de intervencoes pos-K iniciada em 2026-04-20 com objetivo de produzir 
 ### Pass M — Substrato consumível `c_n` (Frente 6) — **PROXIMO PASSO OBRIGATORIO**
 
 > 🎯 **Diagnosticado em K.27 (2026-05-01):** calibracao parametrica esgotada. Os 8 dendritos formam corretamente (K.26-K.27), mas as baias entre dendritos NAO sao suprimidas — particulas no rim recebem push radial uniforme, gerando halo isotropico que sobrepoe ao padrao dendritico. **Mass flow das baias para os tips (esperado biologicamente) nao acontece sem mecanismo ativo de supressao das baias.**
+>
+> ⚠️ **Atualizacao 2026-05-05 (pos-Pass M-A.1):** primeira tentativa de Pass M-A (osmolito producao + influxo `dm`) FALHOU produzindo borbulhamento isotropico de ~30 bumps uniformes (frames 000-062). Tres falhas independentes diagnosticadas (ver §9 Pass M-A.1): (1) bug de integracao de massa sem dt-scaling causou `mass_total` runaway 11×; (2) `c_o` saturou globalmente em 2.86s; (3) **falha conceitual**: mecanismo `dm ∝ |∇c_o|` por particula do rim nao discrimina pontas de baias (lição #16). Implicacao: a proxima iteracao (Pass M-A.2 ou M-B) deve atacar primeiro a **assimetria geometrica do campo escalar entre baia e ponta**, nao a magnitude do influxo.
 
 **Justificativa biologica:** P. aeruginosa em ágar consome glicose/amino acidos do substrato. Bactérias na baia esgotaram o nutriente local; bactérias nos tips alcançaram ágar virgem com nutriente fresco. Resultado natural:
 - Baias param (sem combustivel para metabolismo / producao de surfactante)

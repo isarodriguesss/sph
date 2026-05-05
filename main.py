@@ -23,6 +23,13 @@ LOG_HEADER = [
     "max_cs",
     "mean_cs",
     "constrast_cs",
+    # Pass M-A — campo de osmolito c_o (Frente 6)
+    "min_c_o",
+    "max_c_o",
+    "mean_c_o",
+    "contrast_c_o",
+    "mass_total",  # ∫ ρ dV efetivo via soma de m — cresce pelo influxo Q0·|∇c_o|
+    "dm_influx",  # massa adicionada desde t=0 (proxy do influxo osmotico acumulado)
 ]
 
 x_dim, y_dim = 150, 150  # Pass I.8: resolucao aumentada (era 100x100, dx 0.06→0.04)
@@ -50,6 +57,14 @@ r_growth = 0.05  # K.21: 0.4→0.15 — estende vida do swarmer ring (~60s→~15
 rho_max = 1.0
 alpha_mon = 0.12  # K.23: I.2 revert parcial — previne instabilidade de tração SPH (I.2 era 0.06, pre-I.2 era 0.15)
 
+# Pass M-A (Frente 6): osmolito c_o secretado pelas bacterias.
+# Mecanismo: c_o satura nas baias (agar confinado entre dendritos), fica ~0
+# nas pontas (agar virgem). |∇c_o| dispara influxo de massa via van't Hoff.
+D_o = 1e-3  # difusao lenta (osmolito alto peso molecular ~ D_int)
+k_o = 0.5  # taxa de producao por bacteria
+lambda_o = 0.05  # decaimento lento (osmolitos persistem mais que cs)
+Q0 = 5e-4  # acoplamento influxo-massa: dm/dt = Q0 * |∇c_o| * gate(rho_b)
+
 dt_global = 0.001
 total_sim_time = 100.0
 print_freq = 200
@@ -66,6 +81,9 @@ class SwarmApp(Application):
     def initialize(self):
         with open(LOG_FILE, "w", newline="") as f:
             csv.writer(f).writerow(LOG_HEADER)
+        self._m_initial = (
+            None  # snapshot da massa total em t=0 (preenchido em post_step)
+        )
 
     def create_particles(self):
         fluid_solid = create_initial_state(
@@ -101,12 +119,25 @@ class SwarmApp(Application):
                 # gradiente do surfactante (usado por FlagellarForce)
                 pa.add_property("grad_cs_x")
                 pa.add_property("grad_cs_y")
+                # gradiente do osmolito c_o (Pass M-A — usado por OsmolyteProduction)
+                pa.add_property("grad_co_x")
+                pa.add_property("grad_co_y")
                 pa.add_property("ax_drag")
                 pa.add_property("ay_drag")
                 # flag
                 pa.add_property("au_flag")
                 pa.add_output_arrays(
-                    ["rho_b_grown", "cs", "u", "v", "p", "noise", "au_flag", "au_mar"]
+                    [
+                        "rho_b_grown",
+                        "cs",
+                        "c_o",
+                        "u",
+                        "v",
+                        "p",
+                        "noise",
+                        "au_flag",
+                        "au_mar",
+                    ]
                 )
             elif pa.name == "solid":
                 pa.add_property("p")
@@ -129,6 +160,10 @@ class SwarmApp(Application):
             rho_max=rho_max,
             c0=c0,
             alpha_mon=alpha_mon,
+            D_o=D_o,
+            k_o=k_o,
+            lambda_o=lambda_o,
+            Q0=Q0,
         )
 
     def create_solver(self):
@@ -186,10 +221,32 @@ class SwarmApp(Application):
             mean_cs = np.mean(fluid.cs)
             contrast_cs = (max_cs - min_cs) / (mean_cs + 1e-9)
 
+            # 4. Pass M-A — Estatísticas do osmólito c_o
+            # mean_c_o esperado: crescer ate ~0.8 conforme bacterias produzem.
+            # max_c_o esperado: saturar em ~1.0 nas baias confinadas.
+            # contrast_c_o esperado: alto enquanto pontas avancam em agar virgem
+            # (c_o≈0 nas pontas vs ~1 nas baias). Cai se gradiente colapsa.
+            min_c_o = np.min(fluid.c_o)
+            max_c_o = np.max(fluid.c_o)
+            mean_c_o = np.mean(fluid.c_o)
+            contrast_c_o = (max_c_o - min_c_o) / (mean_c_o + 1e-9)
+
+            # 5. Massa total (proxy do influxo osmotico acumulado)
+            # Q0·|∇c_o|·gate adiciona massa as pontas a cada timestep.
+            # mass_total - m_initial = integral do influxo desde t=0.
+            mass_total = float(np.sum(fluid.m))
+            if self._m_initial is None:
+                self._m_initial = mass_total
+            dm_influx = mass_total - self._m_initial
+
             print("-" * 50)
             print(f"Tempo: {solver.t:.2f}s | Iteração: {solver.count}")
             print(f"Velocidade Máx: {max_v:.4f}")
             print(f"Contraste CS: {contrast_cs:.4f}")
+            print(
+                f"c_o: mean={mean_c_o:.4f} max={max_c_o:.4f} contrast={contrast_c_o:.2f}"
+            )
+            print(f"Influxo osmotico Δm: {dm_influx:.4e}")
             print("Acelerações:")
             print(f"  > Marangoni (líq): {a_mar:.2f}")
             print(f"  > Drag:            {a_drag:.2f} (Freio)")
@@ -213,6 +270,12 @@ class SwarmApp(Application):
                         f"{max_cs:.4f}",
                         f"{mean_cs:.4f}",
                         f"{contrast_cs:.4f}",
+                        f"{min_c_o:.4f}",
+                        f"{max_c_o:.4f}",
+                        f"{mean_c_o:.4f}",
+                        f"{contrast_c_o:.4f}",
+                        f"{mass_total:.6e}",
+                        f"{dm_influx:.6e}",
                     ]
                 )
 

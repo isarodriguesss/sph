@@ -46,6 +46,7 @@ def create_initial_state(
     rho_b = np.clip(rho_b, 0, None)
     rho_b_grown_part = np.clip(rho_b.ravel(), 0, rho_max)
     cs_part = np.ones_like(x_part) * 1e-9
+    c_o_part = np.zeros_like(x_part)
 
     fluid = get_particle_array(
         name="fluid",
@@ -58,8 +59,10 @@ def create_initial_state(
         rho=rho_part,
         rho_b_grown=rho_b_grown_part,
         cs=cs_part,
+        c_o=c_o_part,
         a_rho_b_grown=np.zeros_like(x_part),
         a_c_s=np.zeros_like(x_part),
+        a_c_o=np.zeros_like(x_part),
         m0=m_part.copy(),
         am=np.zeros_like(x_part),
     )

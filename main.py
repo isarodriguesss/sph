@@ -23,13 +23,12 @@ LOG_HEADER = [
     "max_cs",
     "mean_cs",
     "constrast_cs",
-    # Pass M-A — campo de osmolito c_o (Frente 6)
-    "min_c_o",
-    "max_c_o",
-    "mean_c_o",
-    "contrast_c_o",
-    "mass_total",  # ∫ ρ dV efetivo via soma de m — cresce pelo influxo Q0·|∇c_o|
-    "dm_influx",  # massa adicionada desde t=0 (proxy do influxo osmotico acumulado)
+    # Pass M-B — campo de nutriente consumivel c_n (Frente 6)
+    "min_c_n",
+    "max_c_n",
+    "mean_c_n",
+    "contrast_c_n",
+    "mass_total",  # soma de m — cresce por BiomassGrowth (logistico)
 ]
 
 x_dim, y_dim = 150, 150  # Pass I.8: resolucao aumentada (era 100x100, dx 0.06→0.04)
@@ -49,7 +48,7 @@ dx = (x_max_domain - x_min_domain) / (x_dim - 1)
 mu = 0.020  # K.23: I.2 revert parcial — fortalecer coesão viscosa (I.2 era 0.012, pre-I.2 era 0.025)
 gamma = 60.0  # Drag: a_drag = gamma * v_term = 60 * 0.1 = 6
 beta = 1.0  # Marangoni (com gate de interface, só ~60% ativo em média)
-sigma = 1.2  # Pass I.7: boost +67% compensa drenagem por D_ext (era 1.2)
+sigma = 1.5  # Pass I.7: boost +67% compensa drenagem por D_ext (era 1.2)
 D = 1.5e-3  # Pass I.3: D_int dentro do biofilme — gradiente afiado na interface
 D_ext = 0.08  # K.18: 4x — L_D_ext=0.298 (~2x maior); habilita focalizacao Mullins-Sekerka pos-K.17
 lambda_ = 0.15  # Decaimento: confina cs mas permite penetracao de ~L_D_ext no exterior
@@ -60,10 +59,18 @@ alpha_mon = 0.12  # K.23: I.2 revert parcial — previne instabilidade de traç�
 # Pass M-A (Frente 6): osmolito c_o secretado pelas bacterias.
 # Mecanismo: c_o satura nas baias (agar confinado entre dendritos), fica ~0
 # nas pontas (agar virgem). |∇c_o| dispara influxo de massa via van't Hoff.
-D_o = 1e-3  # difusao lenta (osmolito alto peso molecular ~ D_int)
+D_o = 0.04  # Pass M-A.2: L_D_o = sqrt(0.04/0.05) = 0.894 ~ d_tip-tip (Mullins-Sekerka)
 k_o = 0.5  # taxa de producao por bacteria
 lambda_o = 0.05  # decaimento lento (osmolitos persistem mais que cs)
-Q0 = 5e-4  # acoplamento influxo-massa: dm/dt = Q0 * |∇c_o| * gate(rho_b)
+Q0 = 5.0  # Pass M-A.2: forca osmotica Darcy — a_osm_tip ~ Q0*gate*|grad_c_o| ~ 2.8
+
+# Pass M-B (Frente 6): nutriente consumivel c_n.
+# c_n inicia em 1.0 (agar virgem). Bacterias consomem na taxa k_n*rho_b.
+# Difusao tem que dominar consumo (tau_cons/tau_dif > 4) para evitar morte
+# quimica global. Lição da rodada inicial M-B (k_n=1.0, D_n=1e-3): consumo
+# dominava → motor cs morria em t<2s. Calibracao corrigida: razao = 25.
+D_n = 0.02  # difusao do nutriente no agar (~D_ext/4)
+k_n = 0.5  # taxa de consumo por unidade de biomassa
 
 dt_global = 0.001
 total_sim_time = 100.0
@@ -164,6 +171,8 @@ class SwarmApp(Application):
             k_o=k_o,
             lambda_o=lambda_o,
             Q0=Q0,
+            D_n=D_n,
+            k_n=k_n,
         )
 
     def create_solver(self):
@@ -221,32 +230,27 @@ class SwarmApp(Application):
             mean_cs = np.mean(fluid.cs)
             contrast_cs = (max_cs - min_cs) / (mean_cs + 1e-9)
 
-            # 4. Pass M-A — Estatísticas do osmólito c_o
-            # mean_c_o esperado: crescer ate ~0.8 conforme bacterias produzem.
-            # max_c_o esperado: saturar em ~1.0 nas baias confinadas.
-            # contrast_c_o esperado: alto enquanto pontas avancam em agar virgem
-            # (c_o≈0 nas pontas vs ~1 nas baias). Cai se gradiente colapsa.
-            min_c_o = np.min(fluid.c_o)
-            max_c_o = np.max(fluid.c_o)
-            mean_c_o = np.mean(fluid.c_o)
-            contrast_c_o = (max_c_o - min_c_o) / (mean_c_o + 1e-9)
+            # 4. Pass M-B — Estatísticas do nutriente c_n
+            # c_n inicia em 1.0 (agar virgem). Bacterias consomem na taxa k_n*rho_b.
+            # mean_c_n esperado: cair de 1.0 mas estabilizar em ~0.3-0.5 (difusao
+            # repoe nutriente do exterior). Se cai para <0.1, motor cs vai morrer.
+            # contrast_c_n alto = baias esgotadas vs pontas em agar virgem (selecao).
+            min_c_n = np.min(fluid.c_n)
+            max_c_n = np.max(fluid.c_n)
+            mean_c_n = np.mean(fluid.c_n)
+            contrast_c_n = (max_c_n - min_c_n) / (mean_c_n + 1e-9)
 
-            # 5. Massa total (proxy do influxo osmotico acumulado)
-            # Q0·|∇c_o|·gate adiciona massa as pontas a cada timestep.
-            # mass_total - m_initial = integral do influxo desde t=0.
+            # 5. Massa total
+            # Cresce por BiomassGrowth (logistico). Sem bug osmotico desde M-A.2.
             mass_total = float(np.sum(fluid.m))
-            if self._m_initial is None:
-                self._m_initial = mass_total
-            dm_influx = mass_total - self._m_initial
 
             print("-" * 50)
             print(f"Tempo: {solver.t:.2f}s | Iteração: {solver.count}")
             print(f"Velocidade Máx: {max_v:.4f}")
             print(f"Contraste CS: {contrast_cs:.4f}")
             print(
-                f"c_o: mean={mean_c_o:.4f} max={max_c_o:.4f} contrast={contrast_c_o:.2f}"
+                f"c_n: mean={mean_c_n:.4f} max={max_c_n:.4f} contrast={contrast_c_n:.2f} | massa: {mass_total:.2f}"
             )
-            print(f"Influxo osmotico Δm: {dm_influx:.4e}")
             print("Acelerações:")
             print(f"  > Marangoni (líq): {a_mar:.2f}")
             print(f"  > Drag:            {a_drag:.2f} (Freio)")
@@ -270,12 +274,11 @@ class SwarmApp(Application):
                         f"{max_cs:.4f}",
                         f"{mean_cs:.4f}",
                         f"{contrast_cs:.4f}",
-                        f"{min_c_o:.4f}",
-                        f"{max_c_o:.4f}",
-                        f"{mean_c_o:.4f}",
-                        f"{contrast_c_o:.4f}",
+                        f"{min_c_n:.4f}",
+                        f"{max_c_n:.4f}",
+                        f"{mean_c_n:.4f}",
+                        f"{contrast_c_n:.4f}",
                         f"{mass_total:.6e}",
-                        f"{dm_influx:.6e}",
                     ]
                 )
 

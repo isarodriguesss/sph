@@ -13,7 +13,7 @@ class BiomassGrowth(Equation):
     def loop(self, d_idx, d_rho_b_grown, d_a_rho_b_grown, d_m, d_am, d_rho):
         d_a_rho_b_grown[d_idx] = 0.0
         d_am[d_idx] = 0.0
-        if d_rho_b_grown[d_idx] > 1e-12:
+        if d_rho_b_grown[d_idx] > 1e-12 and d_rho_b_grown[d_idx] < 0.8:
             rate = self.r_growth * (1.0 - d_rho_b_grown[d_idx] / self.rho_max)
             d_a_rho_b_grown[d_idx] = rate * d_rho_b_grown[d_idx]
             d_am[d_idx] = rate * d_m[d_idx]
@@ -111,7 +111,16 @@ class SurfactantEquation(Equation):
         d_a_c_s[d_idx] += 2.0 * D_eff * term
 
     def post_loop(
-        self, d_idx, d_rho_b_grown, d_a_c_s, d_cs, d_noise, d_grad_rho_b_mag, d_u, d_v
+        self,
+        d_idx,
+        d_rho_b_grown,
+        d_a_c_s,
+        d_cs,
+        d_noise,
+        d_grad_rho_b_mag,
+        d_u,
+        d_v,
+        d_c_n,
     ):
         rho_b = d_rho_b_grown[d_idx]
         qs = rho_b * rho_b / (rho_b * rho_b + 0.01)
@@ -129,6 +138,8 @@ class SurfactantEquation(Equation):
             v_mag = 0.1
         motile_boost = 1.0 + 50.0 * v_mag  # 1x em estatico, 6x em v=0.1
 
+        c_n_factor = d_c_n[d_idx] / (d_c_n[d_idx] + 0.1)
+
         production = (
             self.sigma
             * qs
@@ -136,6 +147,7 @@ class SurfactantEquation(Equation):
             * d_noise[d_idx]
             * tip_boost
             * motile_boost
+            * c_n_factor
         )
 
         # Pass J: decaimento espacialmente dependente.
@@ -514,7 +526,8 @@ class OsmolyteProduction(Equation):
         d_rho_b_grown,
         d_grad_co_x,
         d_grad_co_y,
-        d_m,
+        d_au,
+        d_av,
     ):
         rho_b = d_rho_b_grown[d_idx]
 
@@ -528,8 +541,12 @@ class OsmolyteProduction(Equation):
 
         d_a_c_o[d_idx] += production - decay
 
-        # Influxo osmotico: V0 ∝ |∇c_o| · gate(rho_b)
-        # Gate smoothstep em rho_b ∈ [0.1, 0.6] com pico em rho_b = 0.35
+        # Forca osmotica de Darcy: F = -Q0 * gate * nabla(c_o)
+        # c_o alto dentro, baixo fora -> nabla(c_o) aponta para dentro.
+        # -nabla(c_o) aponta para fora (expansao do rim), mesmo sinal de FlagellarForce.
+        # Forma proporcional ao gradiente (nao normalizada): preserva diferenciacao
+        # tip/baia — pontas tem |nabla(c_o)| maior que baias confinadas (2x).
+        # Gate smoothstep em rho_b in [0.1, 0.6] com pico em rho_b = 0.35
         if rho_b < 0.1:
             gate = 0.0
         elif rho_b > 0.6:
@@ -543,12 +560,8 @@ class OsmolyteProduction(Equation):
                 envelope = 0.0
             gate *= envelope
 
-        grad_mag = (
-            d_grad_co_x[d_idx] * d_grad_co_x[d_idx]
-            + d_grad_co_y[d_idx] * d_grad_co_y[d_idx]
-        ) ** 0.5
-
-        d_m[d_idx] += self.Q0 * gate * grad_mag
+        d_au[d_idx] -= self.Q0 * gate * d_grad_co_x[d_idx]
+        d_av[d_idx] -= self.Q0 * gate * d_grad_co_y[d_idx]
 
 
 class FlagellarForce(Equation):
@@ -626,3 +639,45 @@ class FlagellarForce(Equation):
             d_au[d_idx] += acc_x
             d_av[d_idx] += acc_y
             d_au_flag[d_idx] = (acc_x * acc_x + acc_y * acc_y) ** 0.5
+
+
+class NutrientConsumption(Equation):
+    """Pass M-B (Frente 6): campo de nutriente consumivel c_n.
+
+    dc_n/dt = D_n * Laplacian(c_n) - k_n * rho_b * c_n
+
+    c_n inicia em 1.0 (agar virgem). Bacterias consomem na taxa k_n*rho_b,
+    nutriente difunde do agar com D_n. Acoplamento via Michaelis-Menten
+    (c_n/(c_n+K_n)) aplicado em SurfactantEquation modula producao de cs:
+    pontas em agar virgem produzem cs; baias com c_n esgotado nao.
+
+    Parametros calibrados:
+    - D_n grande relativo a k_n (razao tau_cons/tau_dif > 4) — evita morte
+      quimica por depleicao global. Lição da rodada inicial M-B (k_n=1.0,
+      D_n=1e-3): consumo dominava difusao, c_n caia para zero em t<2s,
+      motor cs morria, simulacao colapsava.
+    """
+
+    def __init__(self, dest, sources, D_n=0.02, k_n=0.5):
+        self.D_n = D_n
+        self.k_n = k_n
+        super(NutrientConsumption, self).__init__(dest, sources)
+
+    def initialize(self, d_idx, d_a_c_n):
+        d_a_c_n[d_idx] = 0.0
+
+    def loop(
+        self, d_idx, s_idx, d_c_n, s_c_n, d_a_c_n, s_rho, s_m, DWIJ, XIJ, RIJ, d_h
+    ):
+        # Difusao do nutriente (Brookshaw symmetric)
+        cn_ij = d_c_n[d_idx] - s_c_n[s_idx]
+        Vj = s_m[s_idx] / s_rho[s_idx]
+        rij_sq = RIJ**2 + 0.01 * d_h[d_idx] ** 2
+        dot_product = XIJ[0] * DWIJ[0] + XIJ[1] * DWIJ[1]
+
+        d_a_c_n[d_idx] += 2.0 * self.D_n * Vj * (cn_ij / rij_sq) * dot_product
+
+    def post_loop(self, d_idx, d_a_c_n, d_c_n, d_rho_b_grown):
+        # Consumo biomassa-dependente
+        consumption = self.k_n * d_rho_b_grown[d_idx] * d_c_n[d_idx]
+        d_a_c_n[d_idx] -= consumption

@@ -10,11 +10,17 @@ class BiomassGrowth(Equation):
 
         super(BiomassGrowth, self).__init__(dest, sources)
 
-    def loop(self, d_idx, d_rho_b_grown, d_a_rho_b_grown, d_m, d_am, d_rho):
+    def loop(self, d_idx, d_rho_b_grown, d_a_rho_b_grown, d_m, d_am, d_rho, d_c_n):
         d_a_rho_b_grown[d_idx] = 0.0
         d_am[d_idx] = 0.0
         if d_rho_b_grown[d_idx] > 1e-12 and d_rho_b_grown[d_idx] < 0.8:
-            rate = self.r_growth * (1.0 - d_rho_b_grown[d_idx] / self.rho_max)
+            # Pass M-B.3: crescimento gateado por c_n (Michaelis-Menten).
+            # Pontas (c_n~1) crescem normalmente; baias (c_n~0) param de madurar.
+            c_n = d_c_n[d_idx]
+            c_n_factor = c_n / (c_n + 0.1)
+            rate = (
+                self.r_growth * (1.0 - d_rho_b_grown[d_idx] / self.rho_max) * c_n_factor
+            )
             d_a_rho_b_grown[d_idx] = rate * d_rho_b_grown[d_idx]
             d_am[d_idx] = rate * d_m[d_idx]
 

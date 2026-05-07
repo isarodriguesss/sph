@@ -243,7 +243,7 @@ Mantem proposta Mimura-Murray. Pode ser apropriado se nosso regime experimental 
   production = sigma * qs(rho_b) * (1.2 - rho_b) * c_n / (c_n + K_n) * tip_boost * motile_boost
   ```
   Onde `K_n` e constante de Michaelis-Menten — quando c_n esta esgotado (baias), producao cai a zero; quando c_n esta fresco (tips), producao saturada.
-- **Acoplamento com crescimento (opcional):** `r_growth_eff = r_growth * c_n / (c_n + K_n)`. Bacterias na baia tambem param de crescer biomassa.
+- **Acoplamento com crescimento (CRITICO — nao opcional):** `r_growth_eff = r_growth * c_n / (c_n + K_n)`. Bacterias na baia tambem param de crescer biomassa. **Diagnosticado em M-B.3 (2026-05-07): sem este acoplamento, swarmers das baias (c_n esgotado) continuam crescendo rho_b ate atingir 0.8 e entrar para o nucleo, expandindo-o. O c_n acoplado apenas a surfactante e insuficiente — o bloqueio e na biomassa, nao no surfactante.** Ver licao #18.
 - **Resultado esperado:** baias suprimidas → halo radial desaparece → mass flui para tips → dendritos finos com agar limpo entre eles, matching reference.jpg.
 
 ### 3.3 Meta de superficies rugosas
@@ -304,7 +304,7 @@ conda install mpi4py -c conda-forge
 
 | Equacao | Descricao | Referencia |
 |---------|-----------|------------|
-| `BiomassGrowth` | Crescimento logistico `drho_b/dt = r * rho_b * (1 - rho_b/rho_max)` | [equations.py:4-18](src/equations.py#L4-L18) |
+| `BiomassGrowth` | Crescimento logistico gateado por `rho_b < 0.8` e `c_n` (M-B.3): `rate = r * (1 - rho_b/rho_max) * c_n/(c_n+0.1)` | [equations.py:4-22](src/equations.py#L4-L22) |
 | `BiomassGradient` | Gradiente SPH simetrico de biomassa; magnitude usada pelo gate Marangoni |[equations.py:21-49](src/equations.py#L21-L49) |
 | `SurfactantEquation` | Reacao-difusao: Hill QS + frente movel `(1 - rho_b)` + Brookshaw + decaimento | [equations.py:52-83](src/equations.py#L52-L83) |
 | `MarangoniForce` | `F = -beta * nabla_cs * gate(grad_rho_b)`, gradiente simetrico |[equations.py:86-150](src/equations.py#L86-L150) |
@@ -451,14 +451,33 @@ Calibracao pos-Passes A-I.7. **MARCO I.7:** Transicao blob→dendritico confirma
 
   **Problema remanescente — expansao radial do nucleo:** O nucleo (regiao branca rho_b ≥ 0.8) expande ao mesmo ritmo que os bracos crescem. Causas: `BiomassGrowth` cresce `rho_b` E `m` mesmo em particulas ja pinadas (rho_b >= 0.8) — swarmers na borda interna maturaram para biofilme, alargando o nucleo. Como resultado, AR dos bracos plateau em ~1:2.5-3 (nucleo e bracos crescem igualmente). `mass_total` cresce 36.5 → 547.6 (15×) em 100s — excessivo.
 
-  **Fix proposto (Pass M-B.3):** Limitar `BiomassGrowth` a particulas com `rho_b < 0.8` (adicionar condicao `and rho_b < 0.8` na equacao). Justificativa biologica: bacterias em fase de biofilme maduro (EPS, rho_b ≥ 0.8) estao em fase estacionaria — nao crescem biomassa. Apenas swarmers na borda crescem. Esta mudanca previne o alargamento do nucleo enquanto os bracos continuam avancando, aumentando AR ao longo do tempo.
+  **Diagnostico pos-M-B.2 (2026-05-07) — "Nucleus Maturation" — causa raiz da expansao do nucleo:**
 
-  **Estado atual (M-B.2):**
+  O gate `rho_b < 0.8` ja estava implementado em `BiomassGrowth` (impede que nucleo ja formado cresça mais). Porem a expansao persistia por **tres mecanismos independentes**, todos decorrentes da ausencia de c_n no `BiomassGrowth`:
+
+  1. **Swarmers das baias maturam para rho_b = 0.8 sem restricao:** quando c_n → 0 nas baias (acontece antes de t=10s, confirmado por `min_c_n → 0`), as bacterias das baias param de produzir surfactante (via `c_n_factor` em `SurfactantEquation`) mas **continuam crescendo rho_b** a taxa completa `r_growth = 0.05`. Um swarmer em rho_b=0.5 atinge 0.8 em ~9s e e pinado — mas estava fisicamente dentro da baia. A fronteira rho_b=0.8 avanca para dentro das baias, preenchendo-as.
+  2. **Massa cresce 15x sem controle:** `d_am ∝ rate * m` era aplicado a todos os swarmers (tips E baias). `mass_total` cresceu 36.5 → 547 em 100s — inflacao mecanica via pressao EOS uniforme.
+  3. **Interiores dos bracos engrossam:** swarmers atras das pontas (c_n esgotado, mas rho_b < 0.8) continuavam crescendo rho_b → bracos espessavam → AR nao melhorava apesar das pontas avancando.
+
+  **Fix implementado (Pass M-B.3, 2026-05-07):** acoplamento de c_n ao `BiomassGrowth` via fator Michaelis-Menten — ver [equations.py:16-21](src/equations.py#L16-L21):
+  ```python
+  c_n_factor = d_c_n[d_idx] / (d_c_n[d_idx] + 0.1)
+  rate = self.r_growth * (1.0 - d_rho_b_grown[d_idx] / self.rho_max) * c_n_factor
+  ```
+  Pontas (c_n ≈ 1.0) crescem normalmente. Baias (c_n ≈ 0) param de crescer biomassa e massa.
+
+  **Predicoes M-B.3:**
+  - `mass_total` em t=100s: cai de 547 para ≈ 80-120 (apenas pontas crescem)
+  - AR dos bracos: deve melhorar de ~1:3-4 para ≥ 1:5 (bracos nao engrossam mais)
+  - Baias: devem permanecer abertas (agar limpo visivel entre dendritos)
+  - Motor vivo: pontas avancam em c_n fresco, motor nao afetado
+
+  **Estado atual (M-B.3 — aguardando validacao):**
   - Bloqueio A (mecanico) ✅ K.17 hard pinning
   - Bloqueio B (quimico) ✅ k_consume=1.0
   - Bloqueio C (geometrico) ✓ parcial — D_ext=0.08, L_D_ext=0.327, baias parcialmente limpas
-  - Frente 6 M-B ✓ funcional — c_n ativo, gradiente crescente, motor vivo
-  - **Bloqueio novo: expansao do nucleo** — BiomassGrowth em particulas pinadas alarga core e limita AR
+  - Frente 6 M-B ✅ funcional — c_n ativo, gradiente crescente, motor vivo
+  - **Bloqueio D (nucleus maturation) → resolvido por M-B.3 — aguardando confirmacao por frames**
 
 **Invariantes morfologicos descobertos (K.5-K.14):**
 1. `smoothstep` em `[a,b]` satura em 1.0 no pico → **max(metric) e cego ao estreitamento do gate**. K.1, K.2 pareceram no-op por isso; diagnostico correto requer `n_active` e `mean_active`, nao `max`.
@@ -481,6 +500,8 @@ Calibracao pos-Passes A-I.7. **MARCO I.7:** Transicao blob→dendritico confirma
 16. **Influxo isotropico no rim NAO seleciona pontas** (lição Pass M-A.1, 2026-05-05): qualquer mecanismo da forma `dm ∝ gate(rho_b) · |∇c_o|` aplicado por particula do rim falha em criar selecao competitiva, porque `|∇c_o|` na fronteira biomassa-agar e dominado pelo **salto vertical** entre interior saturado e exterior virgem — magnitude aproximadamente uniforme ao longo do perimetro, independentemente de a localizacao ser ponta ou baia. O resultado e expansao tipo balao com bumps todos crescendo igualmente. Para criar assimetria tip-baia o campo precisa de **estrutura azimutal no agar** (acumulo de `c_o` nas baias confinadas vs agar virgem nas pontas), o que exige `L_D_o ~ d_tip-tip` e mecanismo de confinamento (decaimento bi-escala ou reflexao em fronteiras). Sem isso, qualquer mecanismo de osmolito producao-acumulo gera borbulhamento ao inves de selecao. **Implicacao para Pass M-A.2:** `D_o` precisa ser comparable a `D_ext` de cs (~0.04-0.08), nao 1e-3.
 
 17. **Integracao de massa em SPH exige dt-scaling explicito** (lição Pass M-A.1, 2026-05-05): `d_m[d_idx] += termo` em `post_loop` SEM multiplicar por dt acumula a `1/dt` por segundo (com dt=5e-5, isso e 20 000×/s). Sintoma: `mass_total` runaway (em M-A.1, 11× em 30s). Padrao correto e (a) `d_m[d_idx] += dt * termo` ou (b) integrar via accumulator `d_am[d_idx]` analogo a `BiomassGrowth.am` que e somado ao `d_m` pelo `CustomEulerStep` com dt-scaling. Generalizacao: **toda equacao SPH que modifica diretamente `d_m`, `d_x`, `d_v` em `post_loop` precisa multiplicar por dt; equacoes que populam acumuladores (`d_au`, `d_am`, `d_a_c_s`) NAO multiplicam por dt** porque o integrador o faz no stage1.
+
+18. **Acoplar c_n ao `BiomassGrowth` e CRITICO para suprimir baias — nao opcional** (lição M-B.3, 2026-05-07): o campo `c_n` acoplado apenas a `SurfactantEquation` e insuficiente para controlar a expansao do nucleo. O mecanismo de falha e o "nucleus maturation": swarmers das baias com c_n esgotado param de produzir surfactante, mas continuam crescendo biomassa (rho_b) a taxa completa. Eventualmente atingem rho_b=0.8 e sao congelados pelo hard pinning — fisicamente dentro da baia. O nucleo avanca para dentro das baias. Simultaneamente, a massa dessas particulas continua crescendo, gerando pressao EOS uniforme (`mass_total` cresce 15× em 100s). **Regra geral:** qualquer campo de recurso limitante (c_n, nutriente, osmolito) cujo esgotamento deva PARAR o crescimento celular PRECISA ser acoplado a `BiomassGrowth`, nao apenas a equacoes de sinalizacao (cs). O sinal (cs) pode ser localizado nas pontas enquanto o substrato (biomassa) continua crescendo uniformemente — os dois mecanismos sao ortogonais.
 
 **Proximos diagnosticos obrigatorios (atualizado 2026-04-30 pos-K.21):**
 
@@ -743,10 +764,12 @@ Sequencia de intervencoes pos-K iniciada em 2026-04-20 com objetivo de produzir 
    production = sigma * qs * (1.2 - rho_b) * noise * tip_boost * motile_boost * c_n_factor
    ```
 
-4. **Acoplamento em `BiomassGrowth.loop`** (opcional mas fisicamente correto):
+4. **Acoplamento em `BiomassGrowth.loop`** (✅ implementado em M-B.3 — NAO opcional, CRITICO):
    ```python
-   r_growth_eff = self.r_growth * d_c_n[d_idx] / (d_c_n[d_idx] + K_n)
+   c_n_factor = d_c_n[d_idx] / (d_c_n[d_idx] + 0.1)
+   rate = self.r_growth * (1.0 - rho_b / rho_max) * c_n_factor
    ```
+   Sem este acoplamento, swarmers das baias maturam para biofilme (rho_b → 0.8) independentemente de c_n, expandindo o nucleo e preenchendo as baias. Ver diagnostico M-B.3 em §9 e licao #18.
 
 5. **Integrar `c_n` em `CustomEulerStep.stage1`**:
    ```python

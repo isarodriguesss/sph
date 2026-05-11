@@ -50,7 +50,7 @@ class CustomEulerStep(EulerStep):
         d_c_o[d_idx] = max(0.0, min(d_c_o[d_idx], 1.0))
         d_c_n[d_idx] = max(1e-9, min(d_c_n[d_idx], 1.0))
 
-        if d_rho_b_grown[d_idx] >= 0.8:
+        if d_rho_b_grown[d_idx] >= 0.8 or d_c_n[d_idx] < 0.4:
             d_u[d_idx] = 0.0
             d_v[d_idx] = 0.0
         else:
@@ -93,6 +93,7 @@ class MyBiomassScheme(Scheme):
         lambda_o=0.05,
         Q0=5e-4,
         D_n=0.02,
+        D_n_int=1e-4,
         k_n=0.5,
     ):
         self.mu = mu
@@ -112,6 +113,7 @@ class MyBiomassScheme(Scheme):
         self.lambda_o = lambda_o
         self.Q0 = Q0
         self.D_n = D_n
+        self.D_n_int = D_n_int
         self.k_n = k_n
         super(MyBiomassScheme, self).__init__(fluids, solids, dim=dim)
 
@@ -168,6 +170,7 @@ class MyBiomassScheme(Scheme):
                     dest="fluid",
                     sources=["fluid"],
                     D_n=self.D_n,
+                    D_n_int=self.D_n_int,
                     k_n=self.k_n,
                 ),
                 # Pass M-A (Frente 6): osmolitos secretados pelas bacterias.

@@ -14,10 +14,21 @@ class BiomassGrowth(Equation):
         d_a_rho_b_grown[d_idx] = 0.0
         d_am[d_idx] = 0.0
         if d_rho_b_grown[d_idx] > 1e-12 and d_rho_b_grown[d_idx] < 0.8:
-            # Pass M-B.3: crescimento gateado por c_n (Michaelis-Menten).
-            # Pontas (c_n~1) crescem normalmente; baias (c_n~0) param de madurar.
+            # Pass M-B.6: rampa longa em c_n via smoothstep [0.2, 0.8].
+            # c_n < 0.2 (baias esgotadas) → crescimento ZERO.
+            # c_n > 0.8 (so agar genuinamente virgem) → taxa plena.
+            # Faixa de transicao [0.2, 0.8] em vez de [0.2, 0.5] (M-B.5):
+            # c_n=0.5 cresce a 50% (vs 100% M-B.5), c_n=0.7 a 93%.
+            # Corrige permissividade espuria de M-B.5 no regime c_n ∈ [0.5, 0.8]
+            # onde a maioria dos swarmers do rim vive.
             c_n = d_c_n[d_idx]
-            c_n_factor = c_n / (c_n + 0.1)
+            if c_n < 0.4:
+                c_n_factor = 0.0
+            elif c_n > 0.8:
+                c_n_factor = 1.0
+            else:
+                t = (c_n - 0.4) / 0.4
+                c_n_factor = t * t * (3.0 - 2.0 * t)
             rate = (
                 self.r_growth * (1.0 - d_rho_b_grown[d_idx] / self.rho_max) * c_n_factor
             )
@@ -142,7 +153,7 @@ class SurfactantEquation(Equation):
         v_mag = sqrt(d_u[d_idx] * d_u[d_idx] + d_v[d_idx] * d_v[d_idx])
         if v_mag > 0.1:
             v_mag = 0.1
-        motile_boost = 1.0 + 50.0 * v_mag  # 1x em estatico, 6x em v=0.1
+        motile_boost = 1.0 + 25.0 * v_mag  # 1x em estatico, 3.5x em v=0.1
 
         c_n_factor = d_c_n[d_idx] / (d_c_n[d_idx] + 0.1)
 
@@ -648,24 +659,26 @@ class FlagellarForce(Equation):
 
 
 class NutrientConsumption(Equation):
-    """Pass M-B (Frente 6): campo de nutriente consumivel c_n.
+    """Pass M-B.4 (Frente 6): campo de nutriente consumivel c_n com difusao bi-escala.
 
-    dc_n/dt = D_n * Laplacian(c_n) - k_n * rho_b * c_n
+    dc_n/dt = D_n_eff * Laplacian(c_n) - k_n * rho_b * c_n
 
-    c_n inicia em 1.0 (agar virgem). Bacterias consomem na taxa k_n*rho_b,
-    nutriente difunde do agar com D_n. Acoplamento via Michaelis-Menten
-    (c_n/(c_n+K_n)) aplicado em SurfactantEquation modula producao de cs:
-    pontas em agar virgem produzem cs; baias com c_n esgotado nao.
+    D_n_eff = D_n_int dentro do biofilme (EPS bloqueia transporte)
+            = D_n_ext no agar livre
+    Smoothstep em rho_b_avg [0.1, 0.5].
 
-    Parametros calibrados:
-    - D_n grande relativo a k_n (razao tau_cons/tau_dif > 4) — evita morte
-      quimica por depleicao global. Lição da rodada inicial M-B (k_n=1.0,
-      D_n=1e-3): consumo dominava difusao, c_n caia para zero em t<2s,
-      motor cs morria, simulacao colapsava.
+    A difusao bi-escala e o equivalente de Pass I.6 para c_n:
+    - D_n_int << D_n_ext cria L_D_n_int = sqrt(D_n_int/(k_n*rho_b)) ~ 0.018
+      (vs L_D_n = 0.258 com D_n uniforme).
+    - Transicao entre nucleo e baia e depletada em <2s: c_n_factor ~ 0 no interior.
+    - Baias geometricamente fechadas pelo biofilme nao recebem reabastecimento
+      de c_n do agar exterior — producao cs e crescimento rho_b parados.
+    - Tips em agar virgem (D_n_ext ativo) recebem c_n fresco — crescem normalmente.
     """
 
-    def __init__(self, dest, sources, D_n=0.02, k_n=0.5):
-        self.D_n = D_n
+    def __init__(self, dest, sources, D_n=0.02, D_n_int=1e-4, k_n=0.5):
+        self.D_n = D_n        # D_n_ext: difusao no agar livre
+        self.D_n_int = D_n_int  # difusao dentro do biofilme (EPS bloqueia)
         self.k_n = k_n
         super(NutrientConsumption, self).__init__(dest, sources)
 
@@ -673,15 +686,40 @@ class NutrientConsumption(Equation):
         d_a_c_n[d_idx] = 0.0
 
     def loop(
-        self, d_idx, s_idx, d_c_n, s_c_n, d_a_c_n, s_rho, s_m, DWIJ, XIJ, RIJ, d_h
+        self,
+        d_idx,
+        s_idx,
+        d_c_n,
+        s_c_n,
+        d_a_c_n,
+        s_rho,
+        s_m,
+        DWIJ,
+        XIJ,
+        RIJ,
+        d_h,
+        d_rho_b_grown,
+        s_rho_b_grown,
     ):
-        # Difusao do nutriente (Brookshaw symmetric)
+        # M-B.6: barreira EPS [0.05, 0.3]. Em rho_b=0.3 (baia tipica) D_eff = D_n_int.
+        # Transicao um pouco mais larga que M-B.5 [0.05, 0.25] — preserva blocking
+        # nas baias mas suaviza descontinuidade na fronteira agar/biofilme.
+        rho_b_avg = 0.5 * (d_rho_b_grown[d_idx] + s_rho_b_grown[s_idx])
+        if rho_b_avg < 0.05:
+            D_eff = self.D_n
+        elif rho_b_avg < 0.3:
+            t = (rho_b_avg - 0.05) / 0.25
+            gate = t * t * (3.0 - 2.0 * t)
+            D_eff = self.D_n + (self.D_n_int - self.D_n) * gate
+        else:
+            D_eff = self.D_n_int
+
         cn_ij = d_c_n[d_idx] - s_c_n[s_idx]
         Vj = s_m[s_idx] / s_rho[s_idx]
         rij_sq = RIJ**2 + 0.01 * d_h[d_idx] ** 2
         dot_product = XIJ[0] * DWIJ[0] + XIJ[1] * DWIJ[1]
 
-        d_a_c_n[d_idx] += 2.0 * self.D_n * Vj * (cn_ij / rij_sq) * dot_product
+        d_a_c_n[d_idx] += 2.0 * D_eff * Vj * (cn_ij / rij_sq) * dot_product
 
     def post_loop(self, d_idx, d_a_c_n, d_c_n, d_rho_b_grown):
         # Consumo biomassa-dependente

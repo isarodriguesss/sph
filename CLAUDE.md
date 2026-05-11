@@ -466,18 +466,190 @@ Calibracao pos-Passes A-I.7. **MARCO I.7:** Transicao blob→dendritico confirma
   ```
   Pontas (c_n ≈ 1.0) crescem normalmente. Baias (c_n ≈ 0) param de crescer biomassa e massa.
 
-  **Predicoes M-B.3:**
-  - `mass_total` em t=100s: cai de 547 para ≈ 80-120 (apenas pontas crescem)
-  - AR dos bracos: deve melhorar de ~1:3-4 para ≥ 1:5 (bracos nao engrossam mais)
-  - Baias: devem permanecer abertas (agar limpo visivel entre dendritos)
-  - Motor vivo: pontas avancam em c_n fresco, motor nao afetado
+  **Resultado M-B.3 (2026-05-11) — FALHA: gating ineficaz por reabastecimento difusivo:**
 
-  **Estado atual (M-B.3 — aguardando validacao):**
+  Frames e log confirmaram: expansao radial do nucleo e halo entre bracos **persistiram identicos a M-B.2**. `mass_total` cresceu 36.5 → ~550 em 100s (15×, igual a M-B.2). Causa raiz: o Michaelis-Menten funciona apenas se `c_n ~ 0` no local gateado. Com `D_n = 0.02` uniforme (sem bi-escala), o comprimento de penetracao do nutriente e:
+  ```
+  L_D_n = sqrt(D_n / (k_n · rho_b)) = sqrt(0.02 / 0.3) = 0.258
+  ```
+  Comparable ao raio da colonia (~1.5). O agar exterior age como reservatorio `c_n = 1.0` que reabastece livremente:
+  - **Fronteira do nucleo** (rho_b ≈ 0.6): steady-state `c_n ≈ 0.57` → `c_n_factor = 0.85` → nucleo avanca a 85% da taxa irrestrita.
+  - **Baias** (geometricamente abertas ao agar): c_n ≈ 0.3-0.5 → `c_n_factor_baia ≈ 0.80` vs `c_n_factor_tip ≈ 0.90` → seletividade 1.12× — insuficiente para suprimir baias.
+
+  Ambos os problemas tem a **mesma causa raiz**: `NutrientConsumption.loop` usa `D_n = 0.02` uniforme, tratando o biofilme EPS como agar livre para transporte de nutriente.
+
+- **Pass M-B.4 — difusao bi-escala para D_n (2026-05-11, IMPLEMENTADO — aguardando validacao):**
+
+  Analogia direta com Pass I.6 (que resolveu o mesmo problema para cs): a matriz EPS bloqueia o transporte de nutriente dentro do biofilme, assim como bloqueia a difusao de ramnolipideo. Fix implementado em [equations.py](src/equations.py) `NutrientConsumption.loop`:
+  ```python
+  rho_b_avg = 0.5 * (d_rho_b_grown[d_idx] + s_rho_b_grown[s_idx])
+  if rho_b_avg < 0.1:
+      D_eff = D_n        # agar livre: 0.02
+  elif rho_b_avg < 0.5:
+      gate = smoothstep(...)
+      D_eff = D_n + (D_n_int - D_n) * gate
+  else:
+      D_eff = D_n_int    # biofilme EPS: 1e-4
+  ```
+  Novo parametro: `D_n_int = 1e-4` em [main.py](main.py) e [scheme.py](src/scheme.py).
+
+  **Efeito calculado:**
+  ```
+  L_D_n_int = sqrt(1e-4 / 0.3) = 0.018  (vs 0.258 antes)
+  ```
+  Com `L_D_n_int << h` (kernel radius), o nutriente fica confinado ao agar exterior — o biofilme e uma barreira real para o campo `c_n`. A transicao entre nucleo e baia e depletada em `tau ~ h²/D_n_int = 0.072²/1e-4 ≈ 52s` (mas consumo ativo acelera isso).
+
+  **Predicoes M-B.4:**
+  - `mass_total` em t=100s: cai para ≈ 50-80 (apenas pontas crescem, baias paradas)
+  - Baias: c_n ≈ 0 apos ~5-10s (barreira EPS impede reabastecimento) → suprimidas
+  - Nucleo: fronteira permanece fixada no hard pinning (c_n_factor ≈ 0 no interior) → sem expansao radial
+  - Motor vivo: tips em agar virgem recebem D_n_ext = 0.02 → c_n ≈ 1.0 → taxa plena
+  - AR esperado: ≥ 1:5 (bracos nao engrossam, nucleo nao expande)
+
+  **Resultado M-B.4 (2026-05-11, t=0→79s) — AVANCO MORFOLOGICO REAL + halo residual:**
+
+  Frames 090-110 (t=40-50s) mostram **a melhor morfologia ja vista no projeto**: ~10-12 dendritos longos e finos com bifurcacoes secundarias emergentes (estilo PA14 conforme reference.jpg). `mass_total` cresceu 4.36× em 79s (vs 15× em M-B.3 — melhoria de 3.4×). `mean_c_n` plateau em 0.86 — agar exterior preservado virgem ✅. Motor vivo (`a_marangoni` 16-45, `n_fast` pico 196 em t=50s).
+
+  **Problemas remanescentes diagnosticados (sugestao do usuario validada):**
+  1. **Anel interno entre nucleo e dendritos:** baias com `rho_b ∈ [0.2, 0.4]` na smoothstep `[0.1, 0.5]` ainda tem `D_eff ≈ 0.014` (apenas 31% reducao vs agar livre). Reabastecimento difusivo de c_n nas baias persiste.
+  2. **Michaelis-Menten suave permite crescimento residual:** `c_n_factor = c_n/(c_n+0.1)` da 50% growth em c_n=0.1, 33% em c_n=0.05. Baias **desaceleram** mas nao param.
+  3. **Inflacao mecanica de massa (sintoma):** mass cresceu 4.36× → area 4× → expansao radial mecanica via SPH. Sintoma das causas 1 e 2.
+
+- **Pass M-B.5 — barreira EPS antecipada + cutoff estrito de crescimento (2026-05-11, IMPLEMENTADO — aguardando validacao):**
+
+  Duas correcoes ortogonais aplicadas em conjunto:
+
+  **Fix 1 — antecipar barreira EPS** em [equations.py](src/equations.py) `NutrientConsumption.loop`:
+  ```python
+  if rho_b_avg < 0.05:   D_eff = D_n          # agar livre
+  elif rho_b_avg < 0.25: D_eff = smoothstep(...)
+  else:                  D_eff = D_n_int      # ja e biofilme/baia
+  ```
+  Em `rho_b=0.25` (baia tipica), `D_eff = 1e-4` (eliminacao total do reabastecimento).
+
+  **Fix 2 — cutoff estrito de crescimento** em [equations.py](src/equations.py) `BiomassGrowth.loop`:
+  ```python
+  if c_n < 0.2:    c_n_factor = 0.0          # baia esgotada → crescimento ZERO
+  elif c_n < 0.5:  c_n_factor = smoothstep(...)
+  else:            c_n_factor = 1.0          # ponta em agar fresco → taxa plena
+  ```
+  Substitui Michaelis-Menten suave. Garante que baias param de crescer rho_b E ganhar massa.
+
+  **Predicoes M-B.5:**
+  - `mass_total` em t=80s: cai de 159 (M-B.4) para ≈ 60-80 (so pontas crescem)
+  - Anel interno entre nucleo e dendritos: desaparece (baias param de maturar rho_b)
+  - Dendritos preservam morfologia M-B.4 (frames 090-110) — pontas em c_n>0.5 inalteradas
+  - AR esperado: ≥ 1:6 (bracos finos, nucleo fixo, baias vazias)
+
+  **Resultado M-B.5 (2026-05-11, t=0→98s) — FALHA POR PERMISSIVIDADE INVERTIDA:**
+
+  `mass_total` cresceu 14.1× (36.5 → 516 em 98s) — **PIOR que M-B.4 (4.36×)**. Frames 150-229 mostram dendritos visiveis mas anel interno engordou massivamente, colonia preencheu quase todo o dominio.
+
+  **Causa raiz:** smoothstep `[0.2, 0.5]` substituiu Michaelis-Menten `c_n/(c_n+0.1)` na intencao de ser mais estrito, mas a faixa curta saturou em 1.0 para c_n ≥ 0.5 — **mais permissivo** que MM em todo regime c_n ∈ [0.5, 1.0]:
+
+  | c_n | M-B.4 MM | M-B.5 [0.2,0.5] |
+  |-----|----------|------------------|
+  | 0.9 | 0.90 | **1.00** (+11%) |
+  | 0.7 | 0.875 | **1.00** (+14%) |
+  | 0.5 | 0.833 | **1.00** (+20%) |
+
+  Como `mean_c_n` plateau em 0.89, a maioria dos swarmers do rim esta em c_n > 0.5 e cresce a **100%**. Inflacao mecanica acelerada.
+
+- **Pass M-B.6 — rampa longa de crescimento [0.2, 0.8] + EPS [0.05, 0.3] (2026-05-11, IMPLEMENTADO):**
+
+  **Fix 1** ([equations.py](src/equations.py) `BiomassGrowth.loop`) — alargar faixa de transicao:
+  ```python
+  if c_n < 0.2:    c_n_factor = 0.0
+  elif c_n > 0.8:  c_n_factor = 1.0
+  else:            t = (c_n - 0.2)/0.6; c_n_factor = smoothstep(t)
+  ```
+  Agora c_n=0.5 cresce a 50% (vs 100% M-B.5, 83% M-B.4) — finalmente mais estrito que MM em todo regime.
+
+  **Fix 2** ([equations.py](src/equations.py) `NutrientConsumption.loop`) — EPS [0.05, 0.3]:
+  Transicao ligeiramente mais larga que M-B.5, full block em rho_b=0.3.
+
+  **Predicoes M-B.6:**
+  - `mass_total` em t=100s: ≈ 50-80 (faixa de transicao longa freia rim significativamente)
+  - Dendritos M-B.4 preservados, anel interno desaparece
+  - mean_v previsto: 0.001-0.003 sustentado
+
+  **Resultado M-B.6 (2026-05-11, t=0→99.5s) — MELHOR MORFOLOGIA + tip pumping remanescente:**
+
+  **Frames 090-150 (t=40-60s): a melhor morfologia ja produzida no projeto.** ~15 dendritos longos e finos com bifurcacoes secundarias visiveis, nucleo compacto, baias livres. Padrao reconhecivel vs reference.jpg (PA14).
+
+  Quantitativo: `mass_total` 36.5 → 354 em 99.5s (9.7× — **31% menos** que M-B.5 com 14×). Motor saudavel ate t=72s, depois degrada. `n_fast` 101 (t=48s) → 1 (t=99s). `mean_v` 0.002 → 0.001. `a_pressure` plateau 2.6-3.1 ✓ no orcamento §8 (exceto pico transitorio 20.4 em t=30s — ajuste inicial).
+
+  **Frame 272 (t=99s) — DEGRADACAO:** nucleo expandiu radialmente, dendritos absorvidos pela massa central inflada, morfologia final e blob com extensoes marginais.
+
+  **Causa raiz remanescente — "Tip Pumping":**
+  - Pontas em agar virgem: `c_n ≈ 1.0` → `c_n_factor = 1.0` → growth a taxa plena `r_growth = 0.05`
+  - `mean_v → 0.001` mas `mass_total` continua crescendo 236 → 354 nos ultimos 16s
+  - Massa vem de `BiomassGrowth.d_am`, nao de movimento — pontas em c_n alto ganham massa mesmo sem motor flagellar ativo
+  - Pontas eventualmente saturam (rho_b → 0.8) → K.17 pinning ativa → ponta para mas swarmers adjacentes maduram → nucleo radial expande
+
+  **Pinning quimico (proposta intermediaria) NAO ataca tip pumping:** baias ja sao quasi-estaticas em M-B.6 (mean_v = 0.001 sem pinning quimico) porque growth zerou e Marangoni morre sem gradiente cs nas baias. Pinning de baias e redundante. Mass cresce nas pontas, nao nas baias.
+
+- **Pass M-B.7 — reduzir `r_growth: 0.05 → 0.02` (2026-05-11, IMPLEMENTADO — aguardando validacao):**
+
+  Ataque direto ao tip pumping. Alavanca unica em [main.py:55](main.py#L55).
+
+  **Predicoes M-B.7:**
+  - Taxa de bombeamento de massa nas pontas: 2.5× menor
+  - `mass_total` em t=100s: ≈ 140 (vs 354 em M-B.6) — extrapolacao linear
+  - Vida util dos swarmers em rho_b intermediario: estende 2.5× → mais tempo na zona ativa de growth+motilidade
+  - Risco: motor de producao cs pode enfraquecer (mais swarmers em rho_b baixo, qs Hill abaixo de saturacao)
+  - Morfologia esperada: frames M-B.6 (090-150) preservados ate t=100s
+
+  **Resultado M-B.7 (2026-05-11, t=0→99.8s) — RECORDE HISTORICO DE CONTROLE DE MASSA:**
+
+  `mass_total` cresceu 36.5 → 61.4 em 99.8s (**1.68× — minimo absoluto do projeto**, vs 9.7× em M-B.6, 15× em M-B.3). Motor **acelerando** no final do run: `n_fast` 37 (t=78s) → 189 (t=99.8s), `mean_v` 0.0016 → 0.0036, `a_marangoni` 17-35 sustentado. `mean_cs` 0.267 (alvo [0.15, 0.45] ✅), `contrast_cs` 62.5, `mean_c_n` 0.893 (agar exterior preservado ✅), `min_c_n` = 0 (core depletado ✅), `a_pressure` 2.9-5.0 (orcamento <10 ✅).
+
+  **Bloqueio E (tip pumping) RESOLVIDO ✅:** predicao era `mass_total ≈ 140 em t=100s` — resultado real foi 61.4 (2.3× melhor que predicao). A combinacao `r_growth=0.02 + bi-scale D_n + smoothstep [0.2, 0.8]` conteve o bombeamento de massa nas pontas com eficacia superior ao esperado.
+
+  **Dois problemas residuais identificados pelo usuario (2026-05-11):**
+
+  1. **Halo radial (rim fantasma):** anel de particulas com ρ_b≈0.15 na borda externa da colonia nunca atinge c_n < 0.2 (threshold atual de starvation). Causa: consumo lento (`k_n × 0.15 × c_n ≈ 0.07/s`) + D_n_ext=0.02 reabastece mais rapido que o consumo. O rim continua movendo (Marangoni/flagelar ativo), criando halo isotropico sobre o padrao dendritico.
+
+  2. **Dendritos extrapolando o dominio:** dominio [-3,3]² muito pequeno. Dendritos com v≈0.2-0.3 alcancam a fronteira em t≈40-50s. Paredes solidas sao invisiveis para as equacoes fluidas (`sources=["fluid"]` apenas) — dendritos atravessam sem resistencia, gerando artefatos pos-t=50s.
+
+- **Pass M-B.8 — threshold starvation 0.2→0.4 + chemical pinning c_n<0.4 + total_sim_time=50 (2026-05-11, IMPLEMENTADO — aguardando validacao):**
+
+  **Fix 1 — BiomassGrowth gate** ([src/equations.py](src/equations.py) linha ~25): threshold `c_n < 0.2 → 0.0` alterado para `c_n < 0.4 → 0.0`, faixa de transicao `[0.4, 0.8]` (era `[0.2, 0.8]`). Particulas com ρ_b≈0.15 no rim que tinham c_n≈0.3-0.4 agora tem c_n_factor=0 → crescimento zero.
+
+  **Fix 2 — Pinning quimico** ([src/scheme.py](src/scheme.py) linha 53): `if d_rho_b_grown[d_idx] >= 0.8:` → `if d_rho_b_grown[d_idx] >= 0.8 or d_c_n[d_idx] < 0.4:`. Mecanismo biologico: motor flagelar requer ATP; sem nutriente (c_n < 0.4), flagelo para literalmente. Complementa o pinning mecanico (rho_b >= 0.8). Particulas do halo (c_n esgotado) ficam imobilizadas — continuam existindo no SPH mas nao se movem.
+
+  **Fix 3 — total_sim_time=50** ([main.py](main.py)): captura apenas a fase limpa antes de colisao com fronteira. Evita artefatos de paredes invisiveis. Ativar paredes solidas (Pass L) requer nova fisica de reflexao e contorno — pertence a Pass L, nao agora.
+
+  **Predicoes M-B.8:**
+  - Halo radial desaparece — particulas do rim com c_n < 0.4 ficam imobilizadas
+  - Motor nas pontas preservado — tips em agar virgem tem c_n ≈ 0.9-1.0 >> 0.4
+  - `mass_total` em t=50s: ≈ 45-50 (crescimento confinado as pontas em c_n > 0.4)
+  - Morfologia esperada: dendritos M-B.7 sem o anel externo fantasma; AR mais pronunciado
+  - Risco: se threshold 0.4 for alto demais, alguns swarmers de borda legitimos (c_n=0.5) em transicao ficam congelados; monitorar n_fast em t=10-20s
+
+  **Resultado M-B.8 (2026-05-11, t=0→50s) — MELHOR MORFOLOGIA DO PROJETO:**
+
+  Frames 015-016 (t≈48-52s) mostram **8-10 bracos dendriticos distintos com ramificacao secundaria emergindo**, nucleo compacto ancorado, cs altamente concentrado em spots nos tips (nao halo uniforme). Esta e a morfologia mais proxima de reference.jpg produzida ate agora.
+
+  **Aviso de diagnostico enganoso:** metricas de log (n_fast=0, mean_cs declining) pareceram indicar "motor morto" mas eram enganosas:
+  - `max_v=0.294` a t=35.9s → partículas rapidas existem
+  - `a_flag=2.9993` → flagellar force na amplitude maxima, constantemente
+  - `a_marangoni=10.5` → Marangoni ainda ativo
+  - `mean_cs` recuperou apos t=27s: 0.024 → 0.032 → 0.040 (crescendo)
+  - n_fast=0 = sem particulas acima de 0.1, mas 4 tips com v≈0.05-0.3 — CORRETO e DESEJAVEL
+
+  **Mecanismo novo identificado (Tip-Only Swarming):** pinning quimico `c_n<0.4` produziu o efeito biologicamente correto: colonia dormindo + poucos tips ativos. Em M-B.7 havia 100-200 particulas em movimento difuso; em M-B.8 ha 4 tips em movimento concentrado — mais proximo da biologia P. aeruginosa (nucleo estatico, so dendrite tips avancam).
+
+  **Licao #21:** n_fast=0 e mean_v baixo NAO implicam motor morto quando: (a) a_flag e a_marangoni permanecem acima de 5, (b) max_v ainda tem picos 0.1-0.3, (c) frames mostram morfologia saudavel. A interpretacao de "motor colapso" baseada so em n_fast e INCORRETA quando a simulacao esta num regime de tip-only activation. SEMPRE validar morfologia por frames antes de diagnosticar falha.
+
+  **Estado atual (M-B.8 validado):**
   - Bloqueio A (mecanico) ✅ K.17 hard pinning
   - Bloqueio B (quimico) ✅ k_consume=1.0
-  - Bloqueio C (geometrico) ✓ parcial — D_ext=0.08, L_D_ext=0.327, baias parcialmente limpas
-  - Frente 6 M-B ✅ funcional — c_n ativo, gradiente crescente, motor vivo
-  - **Bloqueio D (nucleus maturation) → resolvido por M-B.3 — aguardando confirmacao por frames**
+  - Bloqueio C (geometrico) ✓ parcial — D_ext=0.08, L_D_ext=0.327
+  - Frente 6 M-B ✅ rampa longa + EPS [0.05, 0.3]
+  - Bloqueio E (tip pumping) ✅ M-B.7 r_growth=0.02
+  - Bloqueio F (halo radial) ✓ parcialmente resolvido — halo reduzido vs M-B.7, mas residual visivel
+  - **Proximo objetivo: estender total_sim_time=100 para validar sustentabilidade pos-t=50s**
 
 **Invariantes morfologicos descobertos (K.5-K.14):**
 1. `smoothstep` em `[a,b]` satura em 1.0 no pico → **max(metric) e cego ao estreitamento do gate**. K.1, K.2 pareceram no-op por isso; diagnostico correto requer `n_active` e `mean_active`, nao `max`.
@@ -502,6 +674,10 @@ Calibracao pos-Passes A-I.7. **MARCO I.7:** Transicao blob→dendritico confirma
 17. **Integracao de massa em SPH exige dt-scaling explicito** (lição Pass M-A.1, 2026-05-05): `d_m[d_idx] += termo` em `post_loop` SEM multiplicar por dt acumula a `1/dt` por segundo (com dt=5e-5, isso e 20 000×/s). Sintoma: `mass_total` runaway (em M-A.1, 11× em 30s). Padrao correto e (a) `d_m[d_idx] += dt * termo` ou (b) integrar via accumulator `d_am[d_idx]` analogo a `BiomassGrowth.am` que e somado ao `d_m` pelo `CustomEulerStep` com dt-scaling. Generalizacao: **toda equacao SPH que modifica diretamente `d_m`, `d_x`, `d_v` em `post_loop` precisa multiplicar por dt; equacoes que populam acumuladores (`d_au`, `d_am`, `d_a_c_s`) NAO multiplicam por dt** porque o integrador o faz no stage1.
 
 18. **Acoplar c_n ao `BiomassGrowth` e CRITICO para suprimir baias — nao opcional** (lição M-B.3, 2026-05-07): o campo `c_n` acoplado apenas a `SurfactantEquation` e insuficiente para controlar a expansao do nucleo. O mecanismo de falha e o "nucleus maturation": swarmers das baias com c_n esgotado param de produzir surfactante, mas continuam crescendo biomassa (rho_b) a taxa completa. Eventualmente atingem rho_b=0.8 e sao congelados pelo hard pinning — fisicamente dentro da baia. O nucleo avanca para dentro das baias. Simultaneamente, a massa dessas particulas continua crescendo, gerando pressao EOS uniforme (`mass_total` cresce 15× em 100s). **Regra geral:** qualquer campo de recurso limitante (c_n, nutriente, osmolito) cujo esgotamento deva PARAR o crescimento celular PRECISA ser acoplado a `BiomassGrowth`, nao apenas a equacoes de sinalizacao (cs). O sinal (cs) pode ser localizado nas pontas enquanto o substrato (biomassa) continua crescendo uniformemente — os dois mecanismos sao ortogonais.
+
+19. **Gate Michaelis-Menten falha se o campo nao estiver realmente esgotado no local gateado** (lição M-B.3→M-B.4, 2026-05-11): `c_n_factor = c_n/(c_n+K_n)` so suprime crescimento quando `c_n << K_n` (ou seja, `c_n` genuinamente perto de zero). Se a difusao reabastece o campo mais rapido que o consumo, `c_n` nunca cai o suficiente. Com `D_n` uniforme em 0.02, `L_D_n = sqrt(0.02/0.3) = 0.258` — comparavel ao raio da colonia — o agar exterior reabastece nucleus boundary com `c_n ≈ 0.57` e baias com `c_n ≈ 0.3-0.5`. O gate produz apenas 1.12× seletividade tip/baia — insuficiente. **Regra:** antes de implementar qualquer gate por campo escalar, verificar se `L_D = sqrt(D/(consumo*rho_b))` e pequeno comparado ao comprimento caracteristico que se quer criar. Se `L_D` e comparavel ao raio, difusao bi-escala (D_int << D_ext) e necessaria para criar a barreira real. Aplicavel a qualquer campo (c_n, osmolito, nutriente) onde EPS deve funcionar como barreira fisica.
+
+20. **Smoothstep com faixa curta e MAIS permissivo que Michaelis-Menten no regime alto** (lição M-B.5→M-B.6, 2026-05-11): substituir MM `c_n/(c_n+K)` por smoothstep `[a, b]` parece "mais estrito" porque tem cutoff hard em c_n<a, mas **satura em 1.0 para c_n > b** — enquanto MM nunca chega a 1.0 (assintotico). Se a maioria das particulas vive na regiao c_n > b, o smoothstep deixa todas crescerem a 100% vs MM que limitaria a ~b/(b+K). Em M-B.5 (smoothstep [0.2, 0.5] vs MM K=0.1), c_n=0.5 cresceu a 100% vs 83% em MM; com `mean_c_n ≈ 0.89`, mass cresceu 14× em vez de 4×. **Regra:** ao substituir MM por smoothstep com cutoff estrito, verificar o valor de smoothstep no `mean(c_n)` operacional — se for ≈ 1.0, a faixa esta curta demais. Faixa de transicao deve cobrir a maior parte do regime onde as particulas vivem, nao so o regime de cutoff baixo. Em M-B.6 a faixa foi alargada para [0.2, 0.8] cobrindo o regime de operacao.
 
 **Proximos diagnosticos obrigatorios (atualizado 2026-04-30 pos-K.21):**
 

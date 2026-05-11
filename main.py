@@ -34,8 +34,8 @@ LOG_HEADER = [
 x_dim, y_dim = 150, 150  # Pass I.8: resolucao aumentada (era 100x100, dx 0.06→0.04)
 
 # Domínio 6×6 centrado na origem
-x_min_domain, x_max_domain = -3.0, 3.0
-y_min_domain, y_max_domain = -3.0, 3.0
+x_min_domain, x_max_domain = -4.0, 4.0
+y_min_domain, y_max_domain = -4.0, 4.0
 
 dx = (x_max_domain - x_min_domain) / (x_dim - 1)
 
@@ -52,7 +52,7 @@ sigma = 1.5  # Pass I.7: boost +67% compensa drenagem por D_ext (era 1.2)
 D = 1.5e-3  # Pass I.3: D_int dentro do biofilme — gradiente afiado na interface
 D_ext = 0.08  # K.18: 4x — L_D_ext=0.298 (~2x maior); habilita focalizacao Mullins-Sekerka pos-K.17
 lambda_ = 0.15  # Decaimento: confina cs mas permite penetracao de ~L_D_ext no exterior
-r_growth = 0.05  # K.21: 0.4→0.15 — estende vida do swarmer ring (~60s→~150s) evitando trap K.17 quando rho_b satura globalmente
+r_growth = 0.02  # M-B.7: 0.05→0.02 — reduz tip pumping (mass cresceu 9.7× em M-B.6 via growth nas pontas com c_n>0.8 a taxa plena)
 rho_max = 1.0
 alpha_mon = 0.12  # K.23: I.2 revert parcial — previne instabilidade de tração SPH (I.2 era 0.06, pre-I.2 era 0.15)
 
@@ -69,8 +69,9 @@ Q0 = 5.0  # Pass M-A.2: forca osmotica Darcy — a_osm_tip ~ Q0*gate*|grad_c_o| 
 # Difusao tem que dominar consumo (tau_cons/tau_dif > 4) para evitar morte
 # quimica global. Lição da rodada inicial M-B (k_n=1.0, D_n=1e-3): consumo
 # dominava → motor cs morria em t<2s. Calibracao corrigida: razao = 25.
-D_n = 0.02  # difusao do nutriente no agar (~D_ext/4)
-k_n = 0.5  # taxa de consumo por unidade de biomassa
+D_n = 0.02      # difusao do nutriente no agar (D_n_ext — livre)
+D_n_int = 1e-4  # M-B.4: difusao dentro do biofilme (EPS bloqueia transporte)
+k_n = 0.5       # taxa de consumo por unidade de biomassa
 
 dt_global = 0.001
 total_sim_time = 100.0
@@ -172,6 +173,7 @@ class SwarmApp(Application):
             lambda_o=lambda_o,
             Q0=Q0,
             D_n=D_n,
+            D_n_int=D_n_int,
             k_n=k_n,
         )
 

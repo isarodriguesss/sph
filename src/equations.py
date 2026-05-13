@@ -10,11 +10,28 @@ class BiomassGrowth(Equation):
 
         super(BiomassGrowth, self).__init__(dest, sources)
 
-    def loop(self, d_idx, d_rho_b_grown, d_a_rho_b_grown, d_m, d_am, d_rho):
+    def loop(self, d_idx, d_rho_b_grown, d_a_rho_b_grown, d_m, d_am, d_rho, d_c_n):
         d_a_rho_b_grown[d_idx] = 0.0
         d_am[d_idx] = 0.0
-        if d_rho_b_grown[d_idx] > 1e-12:
-            rate = self.r_growth * (1.0 - d_rho_b_grown[d_idx] / self.rho_max)
+        if d_rho_b_grown[d_idx] > 1e-12 and d_rho_b_grown[d_idx] < 0.8:
+            # Pass M-B.6: rampa longa em c_n via smoothstep [0.2, 0.8].
+            # c_n < 0.2 (baias esgotadas) → crescimento ZERO.
+            # c_n > 0.8 (so agar genuinamente virgem) → taxa plena.
+            # Faixa de transicao [0.2, 0.8] em vez de [0.2, 0.5] (M-B.5):
+            # c_n=0.5 cresce a 50% (vs 100% M-B.5), c_n=0.7 a 93%.
+            # Corrige permissividade espuria de M-B.5 no regime c_n ∈ [0.5, 0.8]
+            # onde a maioria dos swarmers do rim vive.
+            c_n = d_c_n[d_idx]
+            if c_n < 0.4:
+                c_n_factor = 0.0
+            elif c_n > 0.8:
+                c_n_factor = 1.0
+            else:
+                t = (c_n - 0.4) / 0.4
+                c_n_factor = t * t * (3.0 - 2.0 * t)
+            rate = (
+                self.r_growth * (1.0 - d_rho_b_grown[d_idx] / self.rho_max) * c_n_factor
+            )
             d_a_rho_b_grown[d_idx] = rate * d_rho_b_grown[d_idx]
             d_am[d_idx] = rate * d_m[d_idx]
 
@@ -111,7 +128,16 @@ class SurfactantEquation(Equation):
         d_a_c_s[d_idx] += 2.0 * D_eff * term
 
     def post_loop(
-        self, d_idx, d_rho_b_grown, d_a_c_s, d_cs, d_noise, d_grad_rho_b_mag, d_u, d_v
+        self,
+        d_idx,
+        d_rho_b_grown,
+        d_a_c_s,
+        d_cs,
+        d_noise,
+        d_grad_rho_b_mag,
+        d_u,
+        d_v,
+        d_c_n,
     ):
         rho_b = d_rho_b_grown[d_idx]
         qs = rho_b * rho_b / (rho_b * rho_b + 0.01)
@@ -127,7 +153,9 @@ class SurfactantEquation(Equation):
         v_mag = sqrt(d_u[d_idx] * d_u[d_idx] + d_v[d_idx] * d_v[d_idx])
         if v_mag > 0.1:
             v_mag = 0.1
-        motile_boost = 1.0 + 50.0 * v_mag  # 1x em estatico, 6x em v=0.1
+        motile_boost = 1.0 + 25.0 * v_mag  # 1x em estatico, 3.5x em v=0.1
+
+        c_n_factor = d_c_n[d_idx] / (d_c_n[d_idx] + 0.1)
 
         production = (
             self.sigma
@@ -136,6 +164,7 @@ class SurfactantEquation(Equation):
             * d_noise[d_idx]
             * tip_boost
             * motile_boost
+            * c_n_factor
         )
 
         # Pass J: decaimento espacialmente dependente.
@@ -454,6 +483,104 @@ class OsmoticForce(Equation):
             d_au_osm[d_idx] += (acc_x * acc_x + acc_y * acc_y) ** 0.5
 
 
+class OsmolyteProduction(Equation):
+    """
+    Pass M-A — Campo de osmolito c_o produzido pelas bacterias (Frente 6).
+
+    Mecanismo (Srinivasan 2019, Bru 2023): bacterias secretam LPS/EPS que
+    funcionam como osmolitos. c_o satura nas baias (agar confinado entre
+    dois dendritos) e fica ~0 nas pontas (agar virgem). |∇c_o| pequeno
+    nas baias → influxo zero. |∇c_o| grande nas pontas → influxo de massa
+    via van't Hoff (V0 ∝ |∇c_o|). Resultado: pontas incham, baias estagnam.
+
+    Loop: difusao SPH (Brookshaw) + acumulo de gradiente simetrico.
+    Post_loop: producao biomassa-dependente, decaimento, e influxo de massa
+    proporcional a |∇c_o| · gate(rho_b).
+    """
+
+    def __init__(self, dest, sources, D_o=1e-3, k_o=0.5, lambda_o=0.05, Q0=5e-4):
+        self.D_o = D_o
+        self.k_o = k_o
+        self.lambda_o = lambda_o
+        self.Q0 = Q0
+        super(OsmolyteProduction, self).__init__(dest, sources)
+
+    def initialize(self, d_idx, d_a_c_o, d_grad_co_x, d_grad_co_y):
+        d_a_c_o[d_idx] = 0.0
+        d_grad_co_x[d_idx] = 0.0
+        d_grad_co_y[d_idx] = 0.0
+
+    def loop(
+        self,
+        d_idx,
+        s_idx,
+        d_c_o,
+        s_c_o,
+        d_a_c_o,
+        d_grad_co_x,
+        d_grad_co_y,
+        s_rho,
+        s_m,
+        DWIJ,
+        XIJ,
+        RIJ,
+    ):
+        co_ij = s_c_o[s_idx] - d_c_o[d_idx]
+        Vj = s_m[s_idx] / s_rho[s_idx]
+
+        d_grad_co_x[d_idx] += Vj * co_ij * DWIJ[0]
+        d_grad_co_y[d_idx] += Vj * co_ij * DWIJ[1]
+
+        if RIJ > 1e-12:
+            eij_dot_dwij = (XIJ[0] * DWIJ[0] + XIJ[1] * DWIJ[1]) / (RIJ * RIJ)
+            d_a_c_o[d_idx] += 2.0 * self.D_o * Vj * co_ij * eij_dot_dwij
+
+    def post_loop(
+        self,
+        d_idx,
+        d_a_c_o,
+        d_c_o,
+        d_rho_b_grown,
+        d_grad_co_x,
+        d_grad_co_y,
+        d_au,
+        d_av,
+    ):
+        rho_b = d_rho_b_grown[d_idx]
+
+        # Producao: bacterias secretam osmolito (proporcional a densidade)
+        # qs = Hill QS, satura em c_o=1 via (1 - c_o)
+        qs = rho_b * rho_b / (rho_b * rho_b + 0.01)
+        production = self.k_o * qs * (1.0 - d_c_o[d_idx])
+
+        # Decaimento lento (osmolitos persistem mais que cs)
+        decay = self.lambda_o * d_c_o[d_idx]
+
+        d_a_c_o[d_idx] += production - decay
+
+        # Forca osmotica de Darcy: F = -Q0 * gate * nabla(c_o)
+        # c_o alto dentro, baixo fora -> nabla(c_o) aponta para dentro.
+        # -nabla(c_o) aponta para fora (expansao do rim), mesmo sinal de FlagellarForce.
+        # Forma proporcional ao gradiente (nao normalizada): preserva diferenciacao
+        # tip/baia — pontas tem |nabla(c_o)| maior que baias confinadas (2x).
+        # Gate smoothstep em rho_b in [0.1, 0.6] com pico em rho_b = 0.35
+        if rho_b < 0.1:
+            gate = 0.0
+        elif rho_b > 0.6:
+            gate = 0.0
+        else:
+            t = (rho_b - 0.1) / 0.5
+            gate = t * t * (3.0 - 2.0 * t)
+            t2 = (rho_b - 0.35) / 0.25
+            envelope = 1.0 - t2 * t2
+            if envelope < 0.0:
+                envelope = 0.0
+            gate *= envelope
+
+        d_au[d_idx] -= self.Q0 * gate * d_grad_co_x[d_idx]
+        d_av[d_idx] -= self.Q0 * gate * d_grad_co_y[d_idx]
+
+
 class FlagellarForce(Equation):
     """
     Pass K — Motilidade flagelar orientada por gradiente (Frente 5, CLAUDE.md).
@@ -529,3 +656,72 @@ class FlagellarForce(Equation):
             d_au[d_idx] += acc_x
             d_av[d_idx] += acc_y
             d_au_flag[d_idx] = (acc_x * acc_x + acc_y * acc_y) ** 0.5
+
+
+class NutrientConsumption(Equation):
+    """Pass M-B.4 (Frente 6): campo de nutriente consumivel c_n com difusao bi-escala.
+
+    dc_n/dt = D_n_eff * Laplacian(c_n) - k_n * rho_b * c_n
+
+    D_n_eff = D_n_int dentro do biofilme (EPS bloqueia transporte)
+            = D_n_ext no agar livre
+    Smoothstep em rho_b_avg [0.1, 0.5].
+
+    A difusao bi-escala e o equivalente de Pass I.6 para c_n:
+    - D_n_int << D_n_ext cria L_D_n_int = sqrt(D_n_int/(k_n*rho_b)) ~ 0.018
+      (vs L_D_n = 0.258 com D_n uniforme).
+    - Transicao entre nucleo e baia e depletada em <2s: c_n_factor ~ 0 no interior.
+    - Baias geometricamente fechadas pelo biofilme nao recebem reabastecimento
+      de c_n do agar exterior — producao cs e crescimento rho_b parados.
+    - Tips em agar virgem (D_n_ext ativo) recebem c_n fresco — crescem normalmente.
+    """
+
+    def __init__(self, dest, sources, D_n=0.02, D_n_int=1e-4, k_n=0.5):
+        self.D_n = D_n        # D_n_ext: difusao no agar livre
+        self.D_n_int = D_n_int  # difusao dentro do biofilme (EPS bloqueia)
+        self.k_n = k_n
+        super(NutrientConsumption, self).__init__(dest, sources)
+
+    def initialize(self, d_idx, d_a_c_n):
+        d_a_c_n[d_idx] = 0.0
+
+    def loop(
+        self,
+        d_idx,
+        s_idx,
+        d_c_n,
+        s_c_n,
+        d_a_c_n,
+        s_rho,
+        s_m,
+        DWIJ,
+        XIJ,
+        RIJ,
+        d_h,
+        d_rho_b_grown,
+        s_rho_b_grown,
+    ):
+        # M-B.6: barreira EPS [0.05, 0.3]. Em rho_b=0.3 (baia tipica) D_eff = D_n_int.
+        # Transicao um pouco mais larga que M-B.5 [0.05, 0.25] — preserva blocking
+        # nas baias mas suaviza descontinuidade na fronteira agar/biofilme.
+        rho_b_avg = 0.5 * (d_rho_b_grown[d_idx] + s_rho_b_grown[s_idx])
+        if rho_b_avg < 0.05:
+            D_eff = self.D_n
+        elif rho_b_avg < 0.3:
+            t = (rho_b_avg - 0.05) / 0.25
+            gate = t * t * (3.0 - 2.0 * t)
+            D_eff = self.D_n + (self.D_n_int - self.D_n) * gate
+        else:
+            D_eff = self.D_n_int
+
+        cn_ij = d_c_n[d_idx] - s_c_n[s_idx]
+        Vj = s_m[s_idx] / s_rho[s_idx]
+        rij_sq = RIJ**2 + 0.01 * d_h[d_idx] ** 2
+        dot_product = XIJ[0] * DWIJ[0] + XIJ[1] * DWIJ[1]
+
+        d_a_c_n[d_idx] += 2.0 * D_eff * Vj * (cn_ij / rij_sq) * dot_product
+
+    def post_loop(self, d_idx, d_a_c_n, d_c_n, d_rho_b_grown):
+        # Consumo biomassa-dependente
+        consumption = self.k_n * d_rho_b_grown[d_idx] * d_c_n[d_idx]
+        d_a_c_n[d_idx] -= consumption

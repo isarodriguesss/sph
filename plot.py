@@ -20,11 +20,12 @@ for i in indices:
     x, y = fluid.x, fluid.y
     rho_b = fluid.rho_b_grown
     cs = fluid.cs
+    c_o = fluid.c_o
     au_flag = fluid.au_flag
 
-    fig, axes = plt.subplots(1, 3, figsize=(24, 8))
+    fig, axes = plt.subplots(1, 4, figsize=(32, 8))
 
-    # Left: rho_b
+    # 1: rho_b (biomassa)
     sc1 = axes[0].scatter(x, y, c=rho_b, cmap="viridis", s=1.5, vmin=0, vmax=1)
     axes[0].set_xlim(-3, 3)
     axes[0].set_ylim(-3, 3)
@@ -32,7 +33,7 @@ for i in indices:
     axes[0].set_title(f"rho_b — {os.path.basename(files[i])}")
     plt.colorbar(sc1, ax=axes[0])
 
-    # Middle: cs (surfactant)
+    # 2: cs (surfactante)
     sc2 = axes[1].scatter(
         x, y, c=cs, cmap="hot", s=1.5, vmin=0, vmax=max(np.percentile(cs, 99.5), 0.1)
     )
@@ -42,14 +43,24 @@ for i in indices:
     axes[1].set_title(f"cs (surfactant) — {os.path.basename(files[i])}")
     plt.colorbar(sc2, ax=axes[1])
 
-    # Right: au_flag (flagellar force magnitude)
-    # vmax=2.0 = f0, para ver diretamente se o gate esta saturando
-    sc3 = axes[2].scatter(x, y, c=au_flag, cmap="plasma", s=1.5, vmin=0, vmax=2.0)
+    # 3: c_o (Pass M-A — osmolito / pressao osmotica via van't Hoff)
+    # Pi = i·C·R·T → c_o e proporcional a pressao osmotica.
+    # Esperado: alto nas baias (agar entre dendritos), ~0 nas pontas (agar virgem).
+    sc3 = axes[2].scatter(x, y, c=c_o, cmap="cividis", s=1.5, vmin=0, vmax=1)
     axes[2].set_xlim(-3, 3)
     axes[2].set_ylim(-3, 3)
     axes[2].set_aspect("equal")
-    axes[2].set_title(f"|a_flag| — {os.path.basename(files[i])}")
+    axes[2].set_title(f"c_o (osmolito ∝ Π) — {os.path.basename(files[i])}")
     plt.colorbar(sc3, ax=axes[2])
+
+    # 4: au_flag (motilidade flagelar)
+    # vmax=3.0 = f0 (K.22), para ver diretamente se o gate esta saturando
+    sc4 = axes[3].scatter(x, y, c=au_flag, cmap="plasma", s=1.5, vmin=0, vmax=3.0)
+    axes[3].set_xlim(-3, 3)
+    axes[3].set_ylim(-3, 3)
+    axes[3].set_aspect("equal")
+    axes[3].set_title(f"|a_flag| — {os.path.basename(files[i])}")
+    plt.colorbar(sc4, ax=axes[3])
 
     plt.tight_layout()
     plt.savefig(f"main_output/movie/frame_i7_{i:03d}.png", dpi=120, bbox_inches="tight")

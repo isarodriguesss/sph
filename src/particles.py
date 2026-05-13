@@ -25,27 +25,20 @@ def create_initial_state(
     rho_part = np.ones_like(x_part) * 1.0
     center_x = (x.min() + x.max()) / 2.0
     center_y = (y.min() + y.max()) / 2.0
-    rho_b = np.exp(-((X_grid - center_x) ** 2 + (Y_grid - center_y) ** 2) / 0.05)
     dist = np.sqrt((X_grid - center_x) ** 2 + (Y_grid - center_y) ** 2)
     theta = np.arctan2(Y_grid - center_y, X_grid - center_x)
-    # Inject 16-mode azimuthal symmetry-breaking perturbation
-    azimuthal_perturb = 0.8 * np.cos(8 * theta) * np.exp(-((dist - 0.15) ** 2) / 0.01)
-    rho_b += azimuthal_perturb
-    noise = 0.01 * np.random.randn(*X_grid.shape)
+
+    R_theta = 0.15 + 0.06 * np.cos(8 * theta)
+    rho_b = np.exp(-(dist / R_theta) ** 4)
+
+    noise = 0.10 * np.random.randn(*X_grid.shape)
     rho_b += rho_b * noise
-
-    """ initial_rho_b_radius = 0.25
-    dist_from_center = np.sqrt((X_grid - center_x) ** 2 + (Y_grid - center_y) ** 2)
-    seed_mask = dist_from_center < initial_rho_b_radius
-    rho_b = rho_b * seed_mask """
-
-    """ max_initial_rho_b = np.max(rho_b)
-    if max_initial_rho_b > 0:
-        rho_b = (rho_b / max_initial_rho_b) * 0.2 * rho_max """
-
     rho_b = np.clip(rho_b, 0, None)
     rho_b_grown_part = np.clip(rho_b.ravel(), 0, rho_max)
-    cs_part = np.ones_like(x_part) * 1e-9
+
+    cs_part = np.clip(rho_b_grown_part * 0.1, 1e-9, None)
+    c_o_part = np.zeros_like(x_part)
+    c_n_part = np.clip(1.0 - 0.8 * rho_b_grown_part, 1e-9, 1.0)
 
     fluid = get_particle_array(
         name="fluid",
@@ -58,8 +51,12 @@ def create_initial_state(
         rho=rho_part,
         rho_b_grown=rho_b_grown_part,
         cs=cs_part,
+        c_o=c_o_part,
+        c_n=c_n_part,
         a_rho_b_grown=np.zeros_like(x_part),
         a_c_s=np.zeros_like(x_part),
+        a_c_o=np.zeros_like(x_part),
+        a_c_n=np.zeros_like(x_part),
         m0=m_part.copy(),
         am=np.zeros_like(x_part),
     )

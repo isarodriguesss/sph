@@ -23,13 +23,19 @@ LOG_HEADER = [
     "max_cs",
     "mean_cs",
     "constrast_cs",
+    # Pass M-B — campo de nutriente consumivel c_n (Frente 6)
+    "min_c_n",
+    "max_c_n",
+    "mean_c_n",
+    "contrast_c_n",
+    "mass_total",  # soma de m — cresce por BiomassGrowth (logistico)
 ]
 
 x_dim, y_dim = 150, 150  # Pass I.8: resolucao aumentada (era 100x100, dx 0.06→0.04)
 
 # Domínio 6×6 centrado na origem
-x_min_domain, x_max_domain = -3.0, 3.0
-y_min_domain, y_max_domain = -3.0, 3.0
+x_min_domain, x_max_domain = -4.0, 4.0
+y_min_domain, y_max_domain = -4.0, 4.0
 
 dx = (x_max_domain - x_min_domain) / (x_dim - 1)
 
@@ -42,13 +48,30 @@ dx = (x_max_domain - x_min_domain) / (x_dim - 1)
 mu = 0.020  # K.23: I.2 revert parcial — fortalecer coesão viscosa (I.2 era 0.012, pre-I.2 era 0.025)
 gamma = 60.0  # Drag: a_drag = gamma * v_term = 60 * 0.1 = 6
 beta = 1.0  # Marangoni (com gate de interface, só ~60% ativo em média)
-sigma = 1.2  # Pass I.7: boost +67% compensa drenagem por D_ext (era 1.2)
+sigma = 1.5  # Pass I.7: boost +67% compensa drenagem por D_ext (era 1.2)
 D = 1.5e-3  # Pass I.3: D_int dentro do biofilme — gradiente afiado na interface
 D_ext = 0.08  # K.18: 4x — L_D_ext=0.298 (~2x maior); habilita focalizacao Mullins-Sekerka pos-K.17
 lambda_ = 0.15  # Decaimento: confina cs mas permite penetracao de ~L_D_ext no exterior
-r_growth = 0.05  # K.21: 0.4→0.15 — estende vida do swarmer ring (~60s→~150s) evitando trap K.17 quando rho_b satura globalmente
+r_growth = 0.02  # M-B.7: 0.05→0.02 — reduz tip pumping (mass cresceu 9.7× em M-B.6 via growth nas pontas com c_n>0.8 a taxa plena)
 rho_max = 1.0
 alpha_mon = 0.12  # K.23: I.2 revert parcial — previne instabilidade de tração SPH (I.2 era 0.06, pre-I.2 era 0.15)
+
+# Pass M-A (Frente 6): osmolito c_o secretado pelas bacterias.
+# Mecanismo: c_o satura nas baias (agar confinado entre dendritos), fica ~0
+# nas pontas (agar virgem). |∇c_o| dispara influxo de massa via van't Hoff.
+D_o = 0.04  # Pass M-A.2: L_D_o = sqrt(0.04/0.05) = 0.894 ~ d_tip-tip (Mullins-Sekerka)
+k_o = 0.5  # taxa de producao por bacteria
+lambda_o = 0.05  # decaimento lento (osmolitos persistem mais que cs)
+Q0 = 5.0  # Pass M-A.2: forca osmotica Darcy — a_osm_tip ~ Q0*gate*|grad_c_o| ~ 2.8
+
+# Pass M-B (Frente 6): nutriente consumivel c_n.
+# c_n inicia em 1.0 (agar virgem). Bacterias consomem na taxa k_n*rho_b.
+# Difusao tem que dominar consumo (tau_cons/tau_dif > 4) para evitar morte
+# quimica global. Lição da rodada inicial M-B (k_n=1.0, D_n=1e-3): consumo
+# dominava → motor cs morria em t<2s. Calibracao corrigida: razao = 25.
+D_n = 0.02      # difusao do nutriente no agar (D_n_ext — livre)
+D_n_int = 1e-4  # M-B.4: difusao dentro do biofilme (EPS bloqueia transporte)
+k_n = 0.5       # taxa de consumo por unidade de biomassa
 
 dt_global = 0.001
 total_sim_time = 100.0
@@ -66,6 +89,9 @@ class SwarmApp(Application):
     def initialize(self):
         with open(LOG_FILE, "w", newline="") as f:
             csv.writer(f).writerow(LOG_HEADER)
+        self._m_initial = (
+            None  # snapshot da massa total em t=0 (preenchido em post_step)
+        )
 
     def create_particles(self):
         fluid_solid = create_initial_state(
@@ -101,12 +127,25 @@ class SwarmApp(Application):
                 # gradiente do surfactante (usado por FlagellarForce)
                 pa.add_property("grad_cs_x")
                 pa.add_property("grad_cs_y")
+                # gradiente do osmolito c_o (Pass M-A — usado por OsmolyteProduction)
+                pa.add_property("grad_co_x")
+                pa.add_property("grad_co_y")
                 pa.add_property("ax_drag")
                 pa.add_property("ay_drag")
                 # flag
                 pa.add_property("au_flag")
                 pa.add_output_arrays(
-                    ["rho_b_grown", "cs", "u", "v", "p", "noise", "au_flag", "au_mar"]
+                    [
+                        "rho_b_grown",
+                        "cs",
+                        "c_o",
+                        "u",
+                        "v",
+                        "p",
+                        "noise",
+                        "au_flag",
+                        "au_mar",
+                    ]
                 )
             elif pa.name == "solid":
                 pa.add_property("p")
@@ -129,6 +168,13 @@ class SwarmApp(Application):
             rho_max=rho_max,
             c0=c0,
             alpha_mon=alpha_mon,
+            D_o=D_o,
+            k_o=k_o,
+            lambda_o=lambda_o,
+            Q0=Q0,
+            D_n=D_n,
+            D_n_int=D_n_int,
+            k_n=k_n,
         )
 
     def create_solver(self):
@@ -186,10 +232,27 @@ class SwarmApp(Application):
             mean_cs = np.mean(fluid.cs)
             contrast_cs = (max_cs - min_cs) / (mean_cs + 1e-9)
 
+            # 4. Pass M-B — Estatísticas do nutriente c_n
+            # c_n inicia em 1.0 (agar virgem). Bacterias consomem na taxa k_n*rho_b.
+            # mean_c_n esperado: cair de 1.0 mas estabilizar em ~0.3-0.5 (difusao
+            # repoe nutriente do exterior). Se cai para <0.1, motor cs vai morrer.
+            # contrast_c_n alto = baias esgotadas vs pontas em agar virgem (selecao).
+            min_c_n = np.min(fluid.c_n)
+            max_c_n = np.max(fluid.c_n)
+            mean_c_n = np.mean(fluid.c_n)
+            contrast_c_n = (max_c_n - min_c_n) / (mean_c_n + 1e-9)
+
+            # 5. Massa total
+            # Cresce por BiomassGrowth (logistico). Sem bug osmotico desde M-A.2.
+            mass_total = float(np.sum(fluid.m))
+
             print("-" * 50)
             print(f"Tempo: {solver.t:.2f}s | Iteração: {solver.count}")
             print(f"Velocidade Máx: {max_v:.4f}")
             print(f"Contraste CS: {contrast_cs:.4f}")
+            print(
+                f"c_n: mean={mean_c_n:.4f} max={max_c_n:.4f} contrast={contrast_c_n:.2f} | massa: {mass_total:.2f}"
+            )
             print("Acelerações:")
             print(f"  > Marangoni (líq): {a_mar:.2f}")
             print(f"  > Drag:            {a_drag:.2f} (Freio)")
@@ -213,6 +276,11 @@ class SwarmApp(Application):
                         f"{max_cs:.4f}",
                         f"{mean_cs:.4f}",
                         f"{contrast_cs:.4f}",
+                        f"{min_c_n:.4f}",
+                        f"{max_c_n:.4f}",
+                        f"{mean_c_n:.4f}",
+                        f"{contrast_c_n:.4f}",
+                        f"{mass_total:.6e}",
                     ]
                 )
 

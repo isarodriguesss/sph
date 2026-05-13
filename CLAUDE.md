@@ -326,20 +326,26 @@ Calibracao pos-Passes A-I.7. **MARCO I.7:** Transicao blob→dendritico confirma
 | Arrasto (base) | `gamma` | 60.0 | `a_drag` = `gamma*v_term` = 6 em v=0.1 |
 | Arrasto (nucleo) | `gamma_mature` (scheme) | `1.5*gamma` | Pass I.4: razao core/edge 2.5x (era 0.3*gamma) |
 | Coef. Marangoni | `beta` | **1.0** | Pass K.5: 4→1 (4x reduzido para domar feedback amplificado por K.6/K.7) |
-| Producao surfactante | `sigma` | **1.2** | Pass K.15: 0.8→1.2 (restaura amplitude; K.20 k_consume=2.0 controla saturacao) |
+| Producao surfactante | `sigma` | **1.5** | M-B.2 atual: K.15 0.8→1.2, M-B.2 1.2→1.5; K.20 k_consume controla saturacao |
 | Forca flagelar | `f0` | **3.0** | K.22: 0.5→3.0 — alvo teorico §8 (f0~γ·v_term/2=3); K.21 diagnosticou regime subcritico |
 | Difusao (biofilme) | `D` (`D_int`) | 1.5e-3 | Pass I.3: gradiente afiado na interface (`L_D_int`=0.93h) |
-| Difusao (agar) | `D_ext` | **0.04** | K.18: 0.01→0.04; `L_D_ext=0.231`; nao confundir com janela [0.008,0.012] de K.10 (valida so pre-K.17) |
+| Difusao (agar) | `D_ext` | **0.08** | K.18 0.01→0.04; M-B.2 0.04→0.08; `L_D_ext=0.327`; habilita focalizacao Mullins-Sekerka |
 | Decaimento | `lambda_` | 0.15 | Manter — confina `cs` mas permite penetracao de `L_D_ext` |
-| Sumidouro enzimatico | `k_consume` | **2.0** | K.20: 0.5→2.0 — resolve Bloqueio B; cs_∞(interior)≈0.10 |
-| Taxa crescimento | `r_growth` | **0.15** | K.21: 0.4→0.15 — elimina K.17 Trap; swarmer ring ate t>140s |
-| Modelo producao | `sigma*qs*(1.2-rho_b)*noise*tip_boost*motile_boost` | — | K.6 adicionou `tip_boost = 1+3*grad_rho_b_mag`; K.7 adicionou `motile_boost = 1+50*min(|v|,0.1)` |
+| Sumidouro enzimatico | `k_consume` | **1.0** | K.20 0.5→2.0; revisado M-B para 1.0; cs_∞(interior)≈0.10 |
+| Taxa crescimento | `r_growth` | **0.02** | M-B.7: K.21 0.15 → 0.02 — elimina tip pumping (bloqueio E) |
+| Modelo producao | `sigma*qs*(1.2-rho_b)*noise*tip_boost*motile_boost*c_n_factor` | — | K.6 adicionou `tip_boost`, K.7 adicionou `motile_boost`, M-B.2 adicionou `c_n_factor` |
 | Visc. artificial Monaghan | `alpha_mon` | **0.12** | K.23: I.2 revert parcial — previne instabilidade de tração SPH (I.2=0.06, pre-I.2=0.15) |
-| Vel. som (EOS) | `c0` | 0.8 | B ~ 0.09; tensao `tension_ratio=0.02` (Pass I.5) |
+| Vel. som (EOS) | `c0` | 0.8 | B ~ 0.09; tensao `tension_ratio=0.08` (M-B.9b) |
+| Tensao superficial EOS | `tension_ratio` | **0.08** | M-B.9b: I.5 0.02 → 0.08 (4×) — `B_tension`=0.00275; lição §23 |
+| Nutriente (consumo) | `k_n` | 0.5 | M-B.2: taxa consumo bacteriano de c_n |
+| Nutriente (D agar) | `D_n` | 0.02 | M-B.2: difusao no agar livre |
+| Nutriente (D biofilme) | `D_n_int` | **1e-4** | M-B.4: bi-escala — EPS bloqueia nutriente; `L_D_n_int=0.018` |
+| Gate BiomassGrowth | `c_n` | smoothstep [0.4, 0.8] | M-B.6/M-B.8: cresce 0 em c_n<0.4, 1 em c_n>0.8 |
+| Pinning quimico | `c_n` | hard cutoff < 0.4 | M-B.8 [scheme.py:58]; M-B.9a confirmou — pinning rigido protege coesao (lição §22) |
 | Smoothing kernel | `h_factor` | 1.8*dx | ~35 vizinhos por particula |
 | Timestep | `dt` | 5e-5 | Adaptivo, CFL=0.4 |
-| Grade | `x_dim, y_dim` | 150x150 | Pass I.8: resolucao aumentada |
-| Dominio | `x/y_min/max` | [-3, 3]^2 | 6x6 centrado na origem |
+| Grade | `x_dim, y_dim` | **187x187** | M-B.10: 150→187 para preservar dx≈0.054 em dominio expandido |
+| Dominio | `x/y_min/max` | **[-5, 5]^2** | M-B.10: 8x8 → 10x10 — evita colisao de dendritos com fronteira |
 | Perturbacao inicial (rho_b) | `azimuthal_perturb` | `0.8*cos(8*theta)` | Pass K.12: N unificado em 8 (K.4 era N=5, K.11 N=10) |
 | Perturbacao inicial (noise) | `noise` | `1.0 + 0.6*sin(8*theta) + 0.01*rand()` | Pass K.12: N=8 coerente com rho_b |
 
@@ -651,6 +657,62 @@ Calibracao pos-Passes A-I.7. **MARCO I.7:** Transicao blob→dendritico confirma
   - Bloqueio F (halo radial) ✓ parcialmente resolvido — halo reduzido vs M-B.7, mas residual visivel
   - **Proximo objetivo: estender total_sim_time=100 para validar sustentabilidade pos-t=50s**
 
+- **Pass M-B.8 validacao t=100s (2026-05-13) — degradacao pos-t=50s diagnosticada:** estendido `total_sim_time=100`. Frame t=50s reconfirmou melhor morfologia do projeto (8-10 dendritos finos com bifurcacao secundaria). Porem frame t=100s exibiu **fragmentacao interna dos bracos**: dendritos com buracos/fraturas no meio, picos anomalos de `a_drag=56` e `a_pressure=8.7` (rogue particles, lição §9 #6), `mass_total` taxa cresceu 2.4× na segunda metade (+6.6% em t=50-100s vs +2.7% em t=0-50s), `mean_cs` subiu monotonicamente 0.038 → 0.061. Tres causas hipoteticadas: (1) pinning quimico `c_n<0.4` cria descontinuidade dentro de bracos longos → brittle neck (lição §15); (2) tip pumping residual; (3) rogue particles. Causa #1 identificada como principal.
+
+- **Pass M-B.9a — soft chemical pin via drag implicito (2026-05-13, FALHA MORFOLOGICA — fragmentacao distribuida):** removido cutoff `c_n < 0.4` do integrador, substituido por starvation drag suave em `LinearDrag.loop`. Tentativa 1 (drag explicito) explodiu numericamente — `a_drag` atingiu 138 000 com `max_v=25.5` em t=0.5s, pq adaptive dt do PySPH escala para ~2e-3 quando `v_max` baixa, violando `dt·γ_max < 2` com `γ_eff` ate 15000. Tentativa 2 (drag IMPLICITO no integrador — `v_new = v_inertial / (1 + dt·γ_eff)`, incondicionalmente estavel) completou os 100s em 307s wall-time.
+
+  **Metricas Tentativa 2:** `contrast_cs=119` (+24% vs M-B.8), `mean_cs=0.047` (-22% vs M-B.8, melhor localizacao), `a_pressure=21` (alto), `a_marangoni=15.9` (+30%), `mass_total=71.18` (igual M-B.8). **Sem spikes anomalos de a_drag** (regime numerico mais limpo).
+
+  **Frame t≈98s (Protocolo §11):** dendritos visiveis mas **piores que M-B.8** — halo grande de **particulas individuais soltas** orbitando a colonia, "trilhas" de particulas detachadas seguindo os bracos. Fragmentacao **distribuida** ao inves de localizada (M-B.8 tinha fraturas internas, M-B.9a tem particulas soltas pelo dominio inteiro).
+
+  **Causa raiz (lição #22):** hard pin rigido mascarava fragilidade da coesao SPH. Substituir `u=v=0` por drag forte (mesmo com γ_eff=5000-15000) permite mobilidade marginal v_term ~ 0.001. Vizinhos com c_n diferente tem v_term diferentes → abre gap → coesao `B_tension=0.00069` nao segura → particula se solta. Pin cinematico era nao-fisico mas estruturalmente protetor. **Reverter para M-B.8 baseline e atacar coesao diretamente (Hipotese 3 obrigatoria).**
+
+- **Pass M-B.9b — revert pin quimico + `tension_ratio: 0.02 → 0.08` (2026-05-13, SUCESSO PARCIAL — melhor frame absoluto do projeto):** mantida toda a config M-B.8; unica alavanca `BiomassEOS(tension_ratio=0.08)` em [src/scheme.py](src/scheme.py). `B_tension` sobe de 0.00069 → 0.00275 (4×).
+
+  **Metricas (t≈97s):**
+  - `contrast_cs = 283.3` — **3× MELHOR que M-B.8** (96.4), 2.4× melhor que M-B.9a (119)
+  - `max_cs = 13.7` — 2.4× M-B.8 (5.84), cs altamente localizado nas pontas
+  - `a_pressure = 2.99` — **dentro do orcamento §8** (vs picos 8.7 M-B.8, 21 M-B.9a)
+  - `mass_total = 71.0` — identico a M-B.8
+  - `mean_cs = 0.0485` — controle quimico preservado
+  - `mean_c_n = 0.944` — agar exterior preservado
+
+  **Frame 010 (t≈50s) — MELHOR FRAME DO PROJETO:** ~15 dendritos finos coerentes com bifurcacao secundaria incipiente, nucleo compacto, cs em pontos discretos nas pontas (red spots nitidos), **sem fragmentacao visivel**. Mais limpo que M-B.8 t=50s.
+
+  **Frame 023 (t≈97s):** ainda apresenta dispersao de particulas dispersas em halo radial — atribuida a **colisao com fronteira do dominio** [-4,4]² (dendritos com `v_term~0.1` alcancam fronteira em t≈40-50s, paredes invisiveis ao fluido `sources=["fluid"]`). Fragmentacao interna dos bracos (M-B.8) e fragmentacao distribuida (M-B.9a) **resolvidas**.
+
+  **Hipotese 3 (coesao reforcada) validada com qualificacoes.** Reforco do `tension_ratio` reduz fraturas internas E melhora dramaticamente localizacao do cs (mecanismo plausivel: braços mais coesos mantem swarmers no rim por mais tempo, sustentando producao localizada). Predicao de risco (re-aparecer halo nas baias) **invalidada** — pinning quimico hard ainda controla baias.
+
+- **Pass M-B.10 — expansao do dominio `[-4,4]² → [-5,5]²` (2026-05-13, SUCESSO — primeira morfologia sustentavel ate t=100s):** unica alavanca em [main.py:34-42](main.py#L34-L42). `x_dim, y_dim: 150→187` para preservar `dx≈0.054`. Wall time 582s (vs 387s M-B.9b) — proporcional ao aumento de particulas (~35k vs 22.5k).
+
+  **Metricas (t≈97s):**
+  - `mass_total = 107.47` (vs 71.0 M-B.9b — diferenca de baseline, dominio maior tem mais particulas iniciais)
+  - `contrast_cs = 148.4` (vs 283 M-B.9b — reducao proporcional ao espalhamento)
+  - `max_cs = 6.31` (vs 13.7 M-B.9b — cs distribuido em mais area)
+  - `a_pressure = 2.99` — orcamento §8 ✓
+  - `a_marangoni = 11.86` — identico M-B.9b
+  - `mean_c_n = 0.965` (vs 0.944 — mais agar virgem disponivel, esperado em dominio maior)
+  - `n_fast = 52` — sustentado (vs 31 M-B.9b)
+
+  **Frame 010 (t≈50s):** 8-9 dendritos limpos radiando do nucleo compacto, cs concentrado em red spots nos tips, **sem halo radial de particulas dispersas** — primeira vez no projeto.
+
+  **Frame 023 (t≈97s):** ~10-12 bracos com **AR ~1:6-1:8** (vs ~1:4 truncado em M-B.9b), ramificacao secundaria visivel, baias limpas. **Halo de particulas soltas dramaticamente reduzido vs M-B.9b**. Padrao starfish radial reconhecivel vs reference.jpg.
+
+  **Diagnostico:** confirmado que a fragmentacao pos-t=50s em M-B.8/M-B.9b era **dominada por colisao com fronteira do dominio**, NAO por brittle neck residual. Paredes invisiveis ao fluido (sources=["fluid"]) deixavam dendritos atravessarem a fronteira [-4,4]² em t≈40-50s, gerando halo isotropico de particulas dispersas como artefato numerico. M-B.10 e a primeira morfologia sustentavelmente dendritica ate t=100s do projeto.
+
+  **Estado atual pos-M-B.10:**
+  - Bloqueio A (mecanico) ✅ K.17 hard pinning
+  - Bloqueio B (quimico) ✅ k_consume=1.0
+  - Bloqueio C (geometrico Mullins-Sekerka) ✓ avancado — `D_ext=0.08`, `L_D_ext=0.327`, contraste ~150 sustentado
+  - Bloqueio E (tip pumping) ✅ r_growth=0.02
+  - Bloqueio F (halo radial baias) ✅ M-B.8 pinning quimico
+  - Bloqueio G (brittle neck) ✅ M-B.9b `tension_ratio=0.08`
+  - Bloqueio H (colisao fronteira) ✅ M-B.10 dominio [-5,5]²
+
+  **Gaps vs reference.jpg:** dendritos ainda nao tao finos (largura ~3-4 particulas vs 1-2 PA14), tip-splitting incipiente mas nao fractal. **Pass L (rugosidade) agora desbloqueado em principio** — morfologia base esta validada por 100s sem artefatos. Porem considerar primeiro:
+  - **Pass M-B.11 (opcional):** `tension_ratio: 0.08 → 0.12` para ganhar marginal contra largura excessiva (lição §23 caminho seguro).
+  - **Pass M-B.12 (opcional):** explorar tip-splitting via β/f0 ratio ou ruido estocastico.
+
 **Invariantes morfologicos descobertos (K.5-K.14):**
 1. `smoothstep` em `[a,b]` satura em 1.0 no pico → **max(metric) e cego ao estreitamento do gate**. K.1, K.2 pareceram no-op por isso; diagnostico correto requer `n_active` e `mean_active`, nao `max`.
 2. Tip-boost via `|∇rho_b|` e **uniforme no rim** (pontas, baias e trechos retos tem magnitude similar). Nao discrimina pontas sozinho.
@@ -678,6 +740,10 @@ Calibracao pos-Passes A-I.7. **MARCO I.7:** Transicao blob→dendritico confirma
 19. **Gate Michaelis-Menten falha se o campo nao estiver realmente esgotado no local gateado** (lição M-B.3→M-B.4, 2026-05-11): `c_n_factor = c_n/(c_n+K_n)` so suprime crescimento quando `c_n << K_n` (ou seja, `c_n` genuinamente perto de zero). Se a difusao reabastece o campo mais rapido que o consumo, `c_n` nunca cai o suficiente. Com `D_n` uniforme em 0.02, `L_D_n = sqrt(0.02/0.3) = 0.258` — comparavel ao raio da colonia — o agar exterior reabastece nucleus boundary com `c_n ≈ 0.57` e baias com `c_n ≈ 0.3-0.5`. O gate produz apenas 1.12× seletividade tip/baia — insuficiente. **Regra:** antes de implementar qualquer gate por campo escalar, verificar se `L_D = sqrt(D/(consumo*rho_b))` e pequeno comparado ao comprimento caracteristico que se quer criar. Se `L_D` e comparavel ao raio, difusao bi-escala (D_int << D_ext) e necessaria para criar a barreira real. Aplicavel a qualquer campo (c_n, osmolito, nutriente) onde EPS deve funcionar como barreira fisica.
 
 20. **Smoothstep com faixa curta e MAIS permissivo que Michaelis-Menten no regime alto** (lição M-B.5→M-B.6, 2026-05-11): substituir MM `c_n/(c_n+K)` por smoothstep `[a, b]` parece "mais estrito" porque tem cutoff hard em c_n<a, mas **satura em 1.0 para c_n > b** — enquanto MM nunca chega a 1.0 (assintotico). Se a maioria das particulas vive na regiao c_n > b, o smoothstep deixa todas crescerem a 100% vs MM que limitaria a ~b/(b+K). Em M-B.5 (smoothstep [0.2, 0.5] vs MM K=0.1), c_n=0.5 cresceu a 100% vs 83% em MM; com `mean_c_n ≈ 0.89`, mass cresceu 14× em vez de 4×. **Regra:** ao substituir MM por smoothstep com cutoff estrito, verificar o valor de smoothstep no `mean(c_n)` operacional — se for ≈ 1.0, a faixa esta curta demais. Faixa de transicao deve cobrir a maior parte do regime onde as particulas vivem, nao so o regime de cutoff baixo. Em M-B.6 a faixa foi alargada para [0.2, 0.8] cobrindo o regime de operacao.
+
+22. **Pinning rigido pode mascarar coesao SPH insuficiente** (lição M-B.9a, 2026-05-13): substituir `u=v=0` (pin cinematico, nao-fisico mas estruturalmente protetor) por drag forte com γ_eff~5000-15000 (fisicamente correto, v_term ~ 0.001) NAO preserva integridade estrutural se a coesao SPH (`B_tension`) e baixa. Pin rigido transforma um problema mecanico (separacao de vizinhos) em um problema sem fisica (vizinhos nao mexem); drag deixa o problema mecanico ativo, mas com forcas pequenas. Quando vizinhos tem `c_n` diferentes, seus γ_eff sao diferentes, suas v_term sao diferentes, abre gap, e com `B_tension=0.00069` (M-B.8 baseline) nada segura. **Sintoma**: fragmentacao distribuida (particulas individuais soltas em halo) ao inves de fragmentacao localizada (fraturas internas dos bracos). **Regra geral**: ao remover pin rigido, verificar se `B_tension` consegue resistir ao diferencial de v_term tipico no rim. Se `(γ_max - γ_min)·v_typical / B_tension > 1`, e necessario reforcar coesao simultaneamente. Implicacao: **drag suave so e viavel apos coesao SPH ser proporcional aos diferenciais de mobilidade que ele cria**.
+
+23. **Cohesao SPH e tradeoff direto contra fragmentacao interna** (lição M-B.9b, 2026-05-13): quadruplicar `tension_ratio` (0.02→0.08, `B_tension` 0.00069→0.00275) em `BiomassEOS` reduziu fraturas internas dos bracos E melhorou dramaticamente a localizacao do cs (`contrast_cs` 96→283, **3×**). Mecanismo plausivel: bracos mais coesos mantem swarmers do rim em movimento agrupado por mais tempo, sustentando producao localizada de cs nas pontas (motile_boost via |v| coerente) em vez de difundir lateralmente. Confirma que **lição #15 (brittle neck) era o mecanismo dominante de fragmentacao**, e que a coesao 0.02 (legado de I.5 quando o objetivo era "permitir estiramento") era subóptima por margem ampla pos-introducao de hard pinning. Predicao de risco — "atracao extra puxa material das baias e re-introduz halo" — **invalidada** porque pinning quimico hard ainda controla baias. **Regra:** sempre que motor flagelar/Marangoni for amplificado (lição §15) OU pin quimico for usado em conjunto com motor forte, re-avaliar `tension_ratio` no mesmo passo. Caminho seguro de teste pos-M-B.9b: `tension_ratio = 0.12` em M-B.11+ para extrair ganho marginal.
 
 **Proximos diagnosticos obrigatorios (atualizado 2026-04-30 pos-K.21):**
 
@@ -752,6 +818,8 @@ Resultado: pulsacoes episodicas (n_fast pico=114 em t=1.5s via perturbacao inici
 - **Nao sugerir implementar rugosidade (Pass L) enquanto a morfologia nao reproduzir `reference.jpg`.** Rugosidade e extensao fisica, nao remedio para motor insuficiente ou selecao competitiva ausente. Se Marangoni + Flagelar + EOS nao geram dendritos finos separados (`AR >= 1:5`), a causa-raiz esta em um desses mecanismos — investigar e refinar antes de adicionar nova fisica.
 - **Nao mudar parametros de surfactante (`σ`, `k_consume`, `D_ext`, `λ_ext`) sem verificar criterios duplos §2.4.** Bloqueio mecanico (A) resolvido por K.17. Bloqueio quimico (B) ATIVO — alavanca permitida atual: `k_consume` (lever direta sobre sumidouro). Nao mexer em `D_ext` e `λ_ext` simultaneamente (lição K.18-K.19). Nao reduzir `λ_ext` abaixo de `λ_int` enquanto motile_boost ativo (destroi Pass J).
 - **Nao sugerir Pass L (rugosidade)** enquanto morfologia nao reproduzir `reference.jpg` (dendritos AR ≥ 1:5, baias estacionarias, tip-splitting visivel). Bloqueio C (Mullins-Sekerka geometrico) provavelmente requer abordagem apos B resolvido.
+- **Nao remover hard pinning mecanico `rho_b>=0.8`** (K.17). Confirmado nao negociavel por K.25a (falha catastrofica) e M-B.9a (fragmentacao distribuida quando substituido por drag forte, lição §22). Pin cinematico e estruturalmente protetor — coesao SPH atual `B_tension≈0.0028` nao resiste ao diferencial de v_term ~ 0.1 entre core e tip sem o pin.
+- **Ao introduzir mecanismo que aumenta tracao no rim** (f0 maior, motile_boost maior, etc), **re-avaliar `tension_ratio` no mesmo passo** (lição §23). Cohesao SPH deve escalar com motor — ignorar isso reproduz brittle neck (lição §15).
 
 ---
 

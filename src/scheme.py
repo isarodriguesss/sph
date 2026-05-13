@@ -10,7 +10,7 @@ from .equations import (
     BiomassGrowth,
     FlagellarForce,
     MarangoniForce,
-    NutrientConsumption,
+    OxigenConsumption,
     SurfactantEquation,
     LinearDrag,
     ViscousForce,
@@ -50,6 +50,11 @@ class CustomEulerStep(EulerStep):
         d_c_o[d_idx] = max(0.0, min(d_c_o[d_idx], 1.0))
         d_c_n[d_idx] = max(1e-9, min(d_c_n[d_idx], 1.0))
 
+        # M-B.9b: revert ao pin quimico hard de M-B.8 (c_n<0.4) — M-B.9a
+        # demonstrou que drag suave + coesao baixa gera fragmentacao
+        # distribuida (lição §22). Esta versao testa se reforcar coesao
+        # (tension_ratio 0.02→0.08 em BiomassEOS) reduz a fragmentacao
+        # interna pos-t=50s observada com pin hard. Mantem K.17 mecanico.
         if d_rho_b_grown[d_idx] >= 0.8 or d_c_n[d_idx] < 0.4:
             d_u[d_idx] = 0.0
             d_v[d_idx] = 0.0
@@ -121,7 +126,15 @@ class MyBiomassScheme(Scheme):
         equations_pre = Group(
             equations=[
                 SummationDensity(dest="fluid", sources=["fluid"]),
-                BiomassEOS(dest="fluid", sources=None, rho0=1.0, c0=self.c0),
+                BiomassEOS(
+                    dest="fluid",
+                    sources=None,
+                    rho0=1.0,
+                    c0=self.c0,
+                    tension_ratio=0.08,  # M-B.9b: 0.02 → 0.08 (4x) — coesao reforcada
+                    # contra fragmentacao interna pos-t=50s (lição §15/§22). B_tension
+                    # sobe de 0.00069 → 0.00275. Risco: re-aparecer halo nas baias.
+                ),
             ],
             real=False,
         )
@@ -166,7 +179,7 @@ class MyBiomassScheme(Scheme):
                     lambda_ext_ratio=5.0,  # K.20: revertido de K.19 (que destruiu Pass J). Mantem drenagem por gradiente de borda agar-biofilme
                     k_consume=1.0,  # K.20: 0.5→2.0 (4x) — sumidouro biomassa-dependente. Steady-state cs_int ≈ 0.10 (vs 0.85). Resolve bloqueio quimico §2.4-B
                 ),
-                NutrientConsumption(
+                OxigenConsumption(
                     dest="fluid",
                     sources=["fluid"],
                     D_n=self.D_n,

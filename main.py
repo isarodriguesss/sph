@@ -31,11 +31,13 @@ LOG_HEADER = [
     "mass_total",  # soma de m — cresce por BiomassGrowth (logistico)
 ]
 
-x_dim, y_dim = 150, 150  # Pass I.8: resolucao aumentada (era 100x100, dx 0.06→0.04)
+x_dim, y_dim = 187, 187  # M-B.10: expandido para preservar dx≈0.054 em dominio 10x10
 
-# Domínio 6×6 centrado na origem
-x_min_domain, x_max_domain = -4.0, 4.0
-y_min_domain, y_max_domain = -4.0, 4.0
+# Domínio 10×10 centrado na origem (M-B.10: era 8x8 [-4,4]; ampliado para
+# evitar colisao de dendritos com paredes invisiveis em t>50s — diagnosticado
+# em M-B.9b como mecanismo dominante de fragmentacao pos-50s)
+x_min_domain, x_max_domain = -5.0, 5.0
+y_min_domain, y_max_domain = -5.0, 5.0
 
 dx = (x_max_domain - x_min_domain) / (x_dim - 1)
 
@@ -74,7 +76,7 @@ D_n_int = 1e-4  # M-B.4: difusao dentro do biofilme (EPS bloqueia transporte)
 k_n = 0.5  # taxa de consumo por unidade de biomassa
 
 dt_global = 0.001
-total_sim_time = 50.0
+total_sim_time = 100.0
 print_freq = 200
 
 trajectory_store_interval = 20

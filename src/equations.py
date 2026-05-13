@@ -658,8 +658,8 @@ class FlagellarForce(Equation):
             d_au_flag[d_idx] = (acc_x * acc_x + acc_y * acc_y) ** 0.5
 
 
-class NutrientConsumption(Equation):
-    """Pass M-B.4 (Frente 6): campo de nutriente consumivel c_n com difusao bi-escala.
+class OxigenConsumption(Equation):
+    """Pass M-B.4 (Frente 6): campo de nutriente/oxigenio consumivel c_n com difusao bi-escala.
 
     dc_n/dt = D_n_eff * Laplacian(c_n) - k_n * rho_b * c_n
 
@@ -680,7 +680,7 @@ class NutrientConsumption(Equation):
         self.D_n = D_n  # D_n_ext: difusao no agar livre
         self.D_n_int = D_n_int  # difusao dentro do biofilme (EPS bloqueia)
         self.k_n = k_n
-        super(NutrientConsumption, self).__init__(dest, sources)
+        super(OxigenConsumption, self).__init__(dest, sources)
 
     def initialize(self, d_idx, d_a_c_n):
         d_a_c_n[d_idx] = 0.0

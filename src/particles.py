@@ -28,8 +28,8 @@ def create_initial_state(
     dist = np.sqrt((X_grid - center_x) ** 2 + (Y_grid - center_y) ** 2)
     theta = np.arctan2(Y_grid - center_y, X_grid - center_x)
 
-    R_theta = 0.15 + 0.06 * np.cos(8 * theta)
-    rho_b = np.exp(-(dist / R_theta) ** 4)
+    R_theta = 0.30 + 0.06 * np.cos(8 * theta)
+    rho_b = np.exp(-((dist / R_theta) ** 4))
 
     noise = 0.10 * np.random.randn(*X_grid.shape)
     rho_b += rho_b * noise

@@ -677,7 +677,7 @@ class NutrientConsumption(Equation):
     """
 
     def __init__(self, dest, sources, D_n=0.02, D_n_int=1e-4, k_n=0.5):
-        self.D_n = D_n        # D_n_ext: difusao no agar livre
+        self.D_n = D_n  # D_n_ext: difusao no agar livre
         self.D_n_int = D_n_int  # difusao dentro do biofilme (EPS bloqueia)
         self.k_n = k_n
         super(NutrientConsumption, self).__init__(dest, sources)

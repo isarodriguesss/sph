@@ -69,12 +69,12 @@ Q0 = 5.0  # Pass M-A.2: forca osmotica Darcy — a_osm_tip ~ Q0*gate*|grad_c_o| 
 # Difusao tem que dominar consumo (tau_cons/tau_dif > 4) para evitar morte
 # quimica global. Lição da rodada inicial M-B (k_n=1.0, D_n=1e-3): consumo
 # dominava → motor cs morria em t<2s. Calibracao corrigida: razao = 25.
-D_n = 0.02      # difusao do nutriente no agar (D_n_ext — livre)
+D_n = 0.02  # difusao do nutriente no agar (D_n_ext — livre)
 D_n_int = 1e-4  # M-B.4: difusao dentro do biofilme (EPS bloqueia transporte)
-k_n = 0.5       # taxa de consumo por unidade de biomassa
+k_n = 0.5  # taxa de consumo por unidade de biomassa
 
 dt_global = 0.001
-total_sim_time = 100.0
+total_sim_time = 50.0
 print_freq = 200
 
 trajectory_store_interval = 20

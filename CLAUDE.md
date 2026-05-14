@@ -1043,6 +1043,82 @@ Sequencia de intervencoes pos-K iniciada em 2026-04-20 com objetivo de produzir 
 
 ---
 
+### Pass N — Refinamento adaptativo de particulas (preenchimento de gaps em tips) — **EM DISCUSSAO**
+
+> **Status (2026-05-14):** etapa de discussao — escolha de mecanismo em aberto. Implementacao bloqueada ate definicao dos itens 1-5 abaixo.
+
+**Objetivo:** preencher espacos vazios entre particulas — detectados via baixa densidade SPH — gerando novas particulas com propriedades interpoladas dos vizinhos. Apenas em zona de tips ativos.
+
+**Motivacao biologica:** P. aeruginosa em swarming se divide ativamente nas pontas dos dendritos onde encontra agar fresco. No modelo SPH atual as particulas iniciais sao apenas advectadas; nenhuma nova particula e gerada. Em M-B.10 os dendritos sao de 1-2 particulas de largura no rim, propensas a se descolar (lição §22) ou criar gaps onde a coesao SPH falha (lição §15 "brittle neck"). Analogia direta: gap espacial = espaco para divisao celular.
+
+**Motivacao numerica:** `rho < rho0` localmente quebra a hipotese fundamental da EOS quase-incompressivel. Preencher gaps restaura o suporte do kernel SPH (cada particula deve ter ~35 vizinhos com `h_factor=1.8`). Lições §22-§23 demonstraram que coesao por `tension_ratio` sozinha nao resolve gaps emergentes em dendritos esticados.
+
+**Decisoes preliminares (Q&A 2026-05-14):**
+- **Criterio de gap:** densidade SPH abaixo do alvo — `rho < 0.7·rho0`. Aproveita campo ja computado por `SummationDensity` (zero custo adicional de calculo).
+- **Localizacao:** apenas em swarmers de tip ativo — `rho_b ∈ [0.1, 0.6]`. Preserva nucleo pinado (`rho_b ≥ 0.8`, K.17) e agar virgem (`rho_b < 0.1`) intactos.
+- **Propriedades da nova particula:** media SPH (Shepard) dos vizinhos no kernel — `phi_new = Σ_j W_ij·phi_j / Σ_j W_ij` para `rho_b_grown`, `cs`, `c_o`, `c_n`, `u`, `v`. Suave, conservativo.
+
+**Questoes em aberto (precisam decisao antes de implementar):**
+
+1. **Posicionamento da nova particula:**
+   - (a) Offset aleatorio dentro de `dx` do parent (estrategia ja usada em `use_splitting` existente, [main.py:339-341](main.py#L339-L341)).
+   - (b) Direcao de maior gap — `n̂_gap = -mean(unit_vec_to_neighbors)`, particula nasce no vetor que aponta longe dos vizinhos existentes.
+   - (c) Centro do "buraco" estimado por celula de Voronoi maior que o padrao (`area_voronoi > 1.5·dx²`).
+
+2. **Massa da nova particula (TENSAO CRITICA com Bloqueio E):**
+   - (a) Massa fresca `m_new = dx² = 0.00289`. Cria massa, **aumenta `mass_total`**. Risco: re-abrir tip pumping resolvido em M-B.7 (que ganhou ao reduzir `r_growth` 0.05→0.02 justamente para conter mass cresc).
+   - (b) Roubar do parent: `m_parent /= 2, m_new = m_parent/2`. **Conserva massa** mas gap nao e realmente preenchido — fica meia-particula no lugar.
+   - (c) Roubar dos vizinhos no kernel: cada vizinho doa `m_new/N`. Conserva massa global, distribui custo, mas pode criar descontinuidade local de massa.
+
+3. **Frequencia de chamada:**
+   - (a) A cada 500 iter (mesmo intervalo de `use_splitting`). Sincronizado com diagnosticos, baixo overhead.
+   - (b) A cada step. Mais responsivo a gaps emergentes, mas pode introduzir oscilacoes numericas (cria-remove-cria).
+   - (c) Adaptativo — quando `n_gaps_detected > threshold`. Custo proporcional a fragilidade do estado.
+
+4. **Rate limit (max_new_per_call):**
+   - Sem limite: arrisca explosao se muitas particulas entram simultaneamente no gate (e.g., apos seeding inicial).
+   - Limite fixo N=50 por call (proposta inicial). Baseado em ~15 dendritos × 3 particulas/tip = 45.
+   - Limite proporcional ao estado: `min(50, 0.1·n_fast)`.
+
+5. **Interacao com `use_splitting` existente** ([main.py:289](main.py#L289)):
+   - Coexistir: mass-doubling em qualquer particula + gap-fill em tips, mecanismos independentes.
+   - Substituir: Pass N e mais biologicamente fundamentado; remover `use_splitting`.
+   - Hibridizar: mass-doubling so dispara se houver gap detectado.
+
+**Riscos a monitorar:**
+- **Bloqueio E (tip pumping):** Pass M-B.7 ganhou via massa controlada (`mass_total = 61` em t=50s). Pass N pode regredir. **Criterio de aceitacao: `mass_total` em t=50s < 100** (limite admissivel, +64% sobre M-B.7).
+- **Patch numerico mascarando fisica:** se gap e instabilidade SPH legitima (brittle neck), preencher trata sintoma e nao causa. Causa-raiz e coesao SPH baixa (lição §23) e/ou diferencial de mobilidade no rim (lição §22). Pass N deve **coexistir** com `tension_ratio` calibrado (M-B.9b=0.08), nao substituir.
+- **Discontinuidade de campos quimicos:** particula nova nasce com `c_n` medio dos vizinhos; vizinhos podem ter `c_n=0` (depletado pela bacteria parent) ou `c_n=1` (agar adjacente). Media de [0, 1] = 0.5 nao representa estado real do espaco recem-preenchido.
+- **Oscilacao numerica ("gap migration"):** particula nova adiciona pressao SPH que pode empurrar vizinhos, criando NOVO gap em outro lugar. Possivel ciclo cria-empurra-cria-empurra.
+- **Custo computacional:** KDTree query a cada `gap_freq` iter — estimar overhead antes de habilitar.
+
+**Criterio de sucesso Pass N:**
+- Frames mostram dendritos visivelmente mais coesos (sem particulas isoladas a flutuar entre tip e nucleo).
+- `contrast_cs` aumenta (dendritos coerentes => producao localizada).
+- `mass_total` em t=50s < 100 (limite admissivel sobre M-B.7=61).
+- Sem regressao do Bloqueio E (motor vivo, `n_fast` sustentado, `mean_v` > 0.001 em t > 30s).
+- Sem oscilacao numerica visivel em frames sequenciais (`max_v` < 1.0 em todo t).
+
+**Alinhamento com objetivos §1:**
+- Objetivo 1 (rugosidade): nao bloqueia. Particulas de tips se adaptam tanto a paredes planas quanto rugosas.
+- Objetivo 2 (osmotica): nao conflita. Particulas geradas herdam `c_o` medio dos vizinhos.
+- Objetivo 3 (motilidade flagelar): nao conflita. Particulas geradas herdam velocidade media; ja entram no gate flagelar se `rho_b ∈ [0.1, 0.6]`.
+
+**Predicoes quantitativas (provisorias, depende de itens 1-5):**
+
+| Metrica | M-B.7 (atual) | Predicao Pass N |
+|---------|:---:|:---:|
+| `mass_total` em t=50s | 61 | 70-95 |
+| `n_total` (fluid) | 34 969 | 36 000-39 000 |
+| `mean_v` em t=40-50s | 0.0036 | 0.002-0.003 |
+| `contrast_cs` em t=40-50s | 62 | 80-150 |
+| AR dendritos | ~1:3 | 1:4-1:6 |
+| Wall time t=0→50s | 307s | 320-360s |
+
+**Status para decisao:** definir items 1-5 antes de iniciar implementacao. Implementacao via hook em `SwarmApp.post_step` (mesmo pattern de `use_splitting`).
+
+---
+
 ### Pass L — Superficies rugosas (Objetivo 1) — **BLOQUEADO ate Pass M**
 
 > ⚠️ **PRE-REQUISITO ATUALIZADO (2026-05-01):** Pass L agora requer **Pass M (substrato consumivel) implementado e validado primeiro**. So apos a simulacao reproduzir a morfologia de [reference.jpg](reference.jpg) com **dendritos finos AR≥1:5 + agar limpo entre eles** (Pass M criterio), iniciar Pass L. Ver §1 Objetivo 1, §2.2 e §10 Proibicoes.

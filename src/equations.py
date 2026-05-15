@@ -163,7 +163,7 @@ class SurfactantEquation(Equation):
             * growth_headroom
             * d_noise[d_idx]
             * tip_boost
-            * motile_boost
+            # * motile_boost
             * c_n_factor
         )
 

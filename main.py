@@ -76,7 +76,7 @@ D_n_int = 1e-4  # M-B.4: difusao dentro do biofilme (EPS bloqueia transporte)
 k_n = 0.5  # taxa de consumo por unidade de biomassa
 
 dt_global = 0.001
-total_sim_time = 50.0
+total_sim_time = 80.0
 print_freq = 200
 
 trajectory_store_interval = 20

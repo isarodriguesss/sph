@@ -49,8 +49,8 @@ dx = (x_max_domain - x_min_domain) / (x_dim - 1)
 #                (d) kernel com ~35 vizinhos (h_factor=1.8).
 mu = 0.020  # K.23: I.2 revert parcial — fortalecer coesão viscosa (I.2 era 0.012, pre-I.2 era 0.025)
 gamma = 60.0  # Drag: a_drag = gamma * v_term = 60 * 0.1 = 6
-beta = 1.0  # Marangoni (com gate de interface, só ~60% ativo em média)
-sigma = 1.5  # Pass I.7: boost +67% compensa drenagem por D_ext (era 1.2)
+beta = 5.0  # Pass T2d: T1 β=10 → 5 (reduz tracao amplificada na fronteira); razao |F_mar|/B_tension ~4800×
+sigma = 20.0  # Pass T2d: T1 σ=5 → 20 (acelera saturacao em cs_max=0.5); |F_mar| final depende de β·|∇cs|, nao de σ
 D = 1.5e-3  # Pass I.3: D_int dentro do biofilme — gradiente afiado na interface
 D_ext = 0.08  # K.18: 4x — L_D_ext=0.298 (~2x maior); habilita focalizacao Mullins-Sekerka pos-K.17
 lambda_ = 0.15  # Decaimento: confina cs mas permite penetracao de ~L_D_ext no exterior
@@ -76,7 +76,7 @@ D_n_int = 1e-4  # M-B.4: difusao dentro do biofilme (EPS bloqueia transporte)
 k_n = 0.5  # taxa de consumo por unidade de biomassa
 
 dt_global = 0.001
-total_sim_time = 80.0
+total_sim_time = 100.0  # Validacao T2d ate t=100s antes de aplicar Pass N (pre-requisito morfologia base)
 print_freq = 200
 
 trajectory_store_interval = 20

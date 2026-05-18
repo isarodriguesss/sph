@@ -1,4 +1,3 @@
-from numpy import sqrt
 from pysph.sph.equation import Equation
 
 
@@ -10,27 +9,40 @@ class BiomassGrowth(Equation):
 
         super(BiomassGrowth, self).__init__(dest, sources)
 
-    def loop(self, d_idx, d_rho_b_grown, d_a_rho_b_grown, d_m, d_am, d_rho, d_c_n):
+    def loop(
+        self, d_idx, d_rho_b_grown, d_a_rho_b_grown, d_m, d_am, d_rho, d_c_n, d_u, d_v
+    ):
         d_a_rho_b_grown[d_idx] = 0.0
         d_am[d_idx] = 0.0
         if d_rho_b_grown[d_idx] > 1e-12 and d_rho_b_grown[d_idx] < 0.8:
-            # Pass M-B.6: rampa longa em c_n via smoothstep [0.2, 0.8].
-            # c_n < 0.2 (baias esgotadas) → crescimento ZERO.
-            # c_n > 0.8 (so agar genuinamente virgem) → taxa plena.
-            # Faixa de transicao [0.2, 0.8] em vez de [0.2, 0.5] (M-B.5):
-            # c_n=0.5 cresce a 50% (vs 100% M-B.5), c_n=0.7 a 93%.
-            # Corrige permissividade espuria de M-B.5 no regime c_n ∈ [0.5, 0.8]
-            # onde a maioria dos swarmers do rim vive.
             c_n = d_c_n[d_idx]
-            if c_n < 0.4:
+            if c_n < 0.6:
                 c_n_factor = 0.0
-            elif c_n > 0.8:
+            elif c_n > 0.9:
                 c_n_factor = 1.0
             else:
-                t = (c_n - 0.4) / 0.4
+                t = (c_n - 0.6) / 0.3
                 c_n_factor = t * t * (3.0 - 2.0 * t)
+
+            # Gate por motilidade: so swarmers ativos (|v| ~ v_term=f0/gamma=0.05)
+            # crescem rho_b. Rim parado da casca (|v|~0.001 por Marangoni anulado
+            # radialmente) nao cresce. Discrimina tip avancando em agar virgem
+            # vs rim mature em torno do nucleo — ambos tem c_n~0.9, mas so o tip
+            # se move. Smoothstep [0.01, 0.05] = [v_pinned, v_term].
+            v_mag = (d_u[d_idx] * d_u[d_idx] + d_v[d_idx] * d_v[d_idx]) ** 0.5
+            if v_mag < 0.01:
+                motility_gate = 0.0
+            elif v_mag > 0.05:
+                motility_gate = 1.0
+            else:
+                tv = (v_mag - 0.01) / 0.04
+                motility_gate = tv * tv * (3.0 - 2.0 * tv)
+
             rate = (
-                self.r_growth * (1.0 - d_rho_b_grown[d_idx] / self.rho_max) * c_n_factor
+                self.r_growth
+                * (1.0 - d_rho_b_grown[d_idx] / self.rho_max)
+                * c_n_factor
+                * motility_gate
             )
             d_a_rho_b_grown[d_idx] = rate * d_rho_b_grown[d_idx]
             d_am[d_idx] = rate * d_m[d_idx]
@@ -77,7 +89,8 @@ class SurfactantEquation(Equation):
         D,
         D_ext=0.03,
         lambda_ext_ratio=5.0,
-        k_consume=0.5,
+        k_consume=0.0,
+        cs_max=0.5,
     ):
         self.D = D
         self.D_ext = D_ext
@@ -85,6 +98,7 @@ class SurfactantEquation(Equation):
         self.lambda_ = lambda_
         self.lambda_ext = lambda_ * lambda_ext_ratio
         self.k_consume = k_consume
+        self.cs_max = cs_max
         super(SurfactantEquation, self).__init__(dest, sources)
 
     def initialize(self, d_idx, d_a_c_s):
@@ -134,62 +148,44 @@ class SurfactantEquation(Equation):
         d_a_c_s,
         d_cs,
         d_noise,
-        d_grad_rho_b_mag,
-        d_u,
-        d_v,
         d_c_n,
     ):
         rho_b = d_rho_b_grown[d_idx]
         qs = rho_b * rho_b / (rho_b * rho_b + 0.01)
-        growth_headroom = 1.2 - rho_b
-        grad_mag = d_grad_rho_b_mag[d_idx]
-        if grad_mag > 1.0:
-            grad_mag = 1.0
-        tip_boost = 1.0 + 3.0 * grad_mag
 
-        # Pass K.7: motility-coupled production.
-        # Swarmers em movimento (pontas avancando) produzem cs; imoveis (bulk, baias) nao.
-        # Identifica pontas pela informacao que ja existe: velocidade local.
-        v_mag = sqrt(d_u[d_idx] * d_u[d_idx] + d_v[d_idx] * d_v[d_idx])
-        if v_mag > 0.1:
-            v_mag = 0.1
-        motile_boost = 1.0 + 25.0 * v_mag  # 1x em estatico, 3.5x em v=0.1
+        # Pass T1 (Trinschek-like, §3.0 [T1] painel (b)): producao satura
+        # localmente em cs_max via (1 - cs/cs_max). Substitui a combinacao
+        # growth_headroom + tip_boost + motile_boost + c_n_factor + k_consume
+        # por uma unica forma analoga a Trinschek 2018 eq. para Γ.
+        # Resultado esperado (validado §3.3.6): cs uniforme = cs_max em rho_b>0.5,
+        # decai monotonicamente no rim+agar — perfil §3.3-compliant.
+        saturation = 1.0 - d_cs[d_idx] / self.cs_max
+        if saturation < 0.0:
+            saturation = 0.0
 
         c_n_factor = d_c_n[d_idx] / (d_c_n[d_idx] + 0.1)
 
-        production = (
-            self.sigma
-            * qs
-            * growth_headroom
-            * d_noise[d_idx]
-            * tip_boost
-            # * motile_boost
-            * c_n_factor
-        )
+        # Pontas rápidas produzem mais surfactante
+        # Problema: os dendritos correm mais rápido do que a química conseguiu acompanhar.
+        # Splitting resolveria o problema
+        # v_mag = sqrt(d_u[d_idx] * d_u[d_idx] + d_v[d_idx] * d_v[d_idx])
+        # if v_mag > 0.1:
+        #     v_mag = 0.1
+        # motile_boost = 1.0 + 100.0 * v_mag  # 1x em estatico, 3.5x em v=0.1
 
-        # Pass J: decaimento espacialmente dependente.
-        # lambda_ext (3x lambda) no agar exterior — remove cs rapidamente fora da colonia,
-        # mantendo gradiente afiado na borda. lambda normal no interior — preserva
-        # reservatorio de cs. Justificativa biologica: ramnolipideo no agar livre e
-        # degradado mais rapido que dentro da matriz EPS do biofilme.
+        # revisar: qual diferença com e sem c_n_factor?
+        production = self.sigma * qs * saturation * d_noise[d_idx] * c_n_factor
+
+        # Decaimento somente no agar (rho_b < 0.1). No biofilme a saturacao
+        # via (1-cs/cs_max) ja limita cs em cs_max — nao precisa de sumidouro.
+        # Isto reproduz a forma de Γ uniforme em Trinschek (b): biomassa cheia,
+        # halo no agar com decaimento finito.
         if rho_b < 0.1:
-            lambda_eff = self.lambda_ext
-        elif rho_b < 0.5:
-            t = (rho_b - 0.1) / 0.4
-            gate = t * t * (3.0 - 2.0 * t)
-            lambda_eff = self.lambda_ext + (self.lambda_ - self.lambda_ext) * gate
+            lambda_eff = self.lambda_ * 2.0  # Decaimento LENTO no ágar (gera o halo)
         else:
-            lambda_eff = self.lambda_
+            lambda_eff = self.lambda_ * 1.0
 
-        # Pass K.14: consumo biomassa-dependente (sumidouro de cs).
-        # Ramnolipideo e adsorvido/degradado por bacterias em alta densidade
-        # (acao enzimatica rhlE/rhlB + adsorcao membranar). Previne saturacao
-        # global do interior — essencial para sustentar gradiente.
-        # Interior (rho_b=1): decaimento efetivo = lambda + k_consume = 0.65 (era 0.15)
-        # Exterior (rho_b=0): consumo zerado, so difusao+decaimento preservam L_D_ext.
-        consumption = self.k_consume * d_rho_b_grown[d_idx] * d_cs[d_idx]
-
-        d_a_c_s[d_idx] += production - lambda_eff * d_cs[d_idx] - consumption
+        d_a_c_s[d_idx] += production - lambda_eff * d_cs[d_idx]
 
 
 class MarangoniForce(Equation):

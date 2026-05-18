@@ -248,7 +248,107 @@ Mantem proposta Mimura-Murray. Pode ser apropriado se nosso regime experimental 
 - **Acoplamento com crescimento (CRITICO — nao opcional):** `r_growth_eff = r_growth * c_n / (c_n + K_n)`. Bacterias na baia tambem param de crescer biomassa. **Diagnosticado em M-B.3 (2026-05-07): sem este acoplamento, swarmers das baias (c_n esgotado) continuam crescendo rho_b ate atingir 0.8 e entrar para o nucleo, expandindo-o. O c_n acoplado apenas a surfactante e insuficiente — o bloqueio e na biomassa, nao no surfactante.** Ver licao #18.
 - **Resultado esperado:** baias suprimidas → halo radial desaparece → mass flui para tips → dendritos finos com agar limpo entre eles, matching reference.jpg.
 
-### 3.3 Meta de superficies rugosas
+### 3.3 Fundamentacao das direcoes de forca quimiotatica (FUNDAMENTAL — NAO VIOLAR)
+
+Esta secao codifica uma confusao recorrente sobre a direcao das forcas `MarangoniForce` e `FlagellarForce`. Toda mudanca em qualquer fator de producao/sumidouro de cs (`c_n_factor`, `growth_headroom`, `sigma`, `tip_boost`, `motile_boost`, `qs`, `k_consume`, `lambda`) DEVE passar pela analise prescrita abaixo antes de ser proposta.
+
+#### 3.3.1 Convencao de sinal — derivada diretamente do codigo
+
+**`MarangoniForce.loop`** ([src/equations.py:217](src/equations.py#L217), [:254](src/equations.py#L254)):
+```python
+self.beta = -beta            # input beta=+1.0 → self.beta = -1.0
+cs_ij = s_cs - d_cs          # cs_j - cs_d
+acc_x = gate * self.beta * vol_j * cs_ij * DWIJ[0]
+# = -gate × Σ_j vol_j × (cs_j - cs_d) × DWIJ
+# = -gate × ∇cs|_d (forma SPH symmetric gather)
+```
+Portanto: **F_marangoni / m = −gate · ∇cs**
+
+**`FlagellarForce.post_loop`** ([src/equations.py:662](src/equations.py#L662)):
+```python
+acc_x = -self.f0 * gate * gx / mag   # gx = ∇cs_x (acumulado no loop)
+```
+Portanto: **F_flag / m = −f0 · gate · n̂(∇cs)**
+
+**Ambas as forcas apontam na direcao `−∇cs` — de regioes de ALTO cs para regioes de BAIXO cs.**
+
+#### 3.3.2 Condicao para push outward (expansao da colonia)
+
+Para que a borda da colonia seja empurrada para fora (em direcao ao agar), `−∇cs` deve apontar para fora nas particulas com biomassa. Equivalentemente: o **gradiente cs deve apontar para dentro**, ou seja, **cs deve DECRESCER monotonicamente para fora** ao longo de uma regiao com biomassa contigua.
+
+```
+Perfil cs radial OUTWARD-DRIVING (correto):     Perfil PEAK-AT-EDGE (patologico):
+
+cs ┤██                                          cs ┤        ██
+   │  ██                                            │      ██  ██
+   │    ██  biomassa aqui                           │    ██      ██
+   │      ██  recebe push outward                   │  ██          ██
+   │        ██     ✓                                │██  push inward  ██  push outward
+   │          ██___                                 │  em toda a       └────── (mas e agar
+   └─────────────────── r                           │  biomassa antes           sem biomassa)
+   interior   rim   agar                            └────────────────── r
+   alto      baixo  ~0                              interior  pico   agar
+                                                    (baixo) (alto)  (zero)
+```
+
+**O push outward acontece APENAS em particulas POSTERIORES (radialmente) ao pico de cs.** Particulas ANTERIORES ao pico (interior do pico) recebem push INWARD (compactacao).
+
+#### 3.3.3 Onde o pico de cs cai em funcao do c_n_factor
+
+A escolha do `c_n_factor` determina onde no perfil radial o cs e produzido e portanto onde o pico se forma:
+
+| `c_n_factor` | Producao maxima em | Pico cs em | Particulas com push outward |
+|---|---|---|---|
+| `c_n/(c_n+0.1)` (direto) | c_n alto = borda/agar adjacente | mid-arm ou outer rim (depende de qs·(1.2-ρ)) | depende exato do pico — ver tabela 3.3.4 |
+| `(1−c_n)/((1−c_n)+0.1)` (Xavier/CCR) | c_n baixo = interior depletado | interior profundo (rho_b≈1) | toda a colonia exceto o centro — **expansao uniforme isotropica** |
+
+#### 3.3.4 Posicao do pico × morfologia esperada
+
+| Pico de cs em zona | Biomassa com push outward | Biomassa com push inward | Morfologia |
+|---|---|---|---|
+| `rho_b ≈ 1.0` (interior profundo) | rho_b < 1 (~99% da colonia) | Apenas centro geometrico | Expansao isotropica uniforme, **sem seletividade dendrítica** |
+| `rho_b ≈ 0.5` (mid-arm, swarmer zone) | rho_b < 0.5 (rim externo) | rho_b > 0.5 (compacta nucleo) | **Dendrítica seletiva** quando localizado azimutalmente por motile_boost |
+| `rho_b ≈ 0.2-0.3` (outer rim) | Apenas particulas em rho_b < 0.2 ou agar | Maior parte da colonia | Predominio de push inward — colonia comprime |
+| `rho_b ≈ 0` (agar virgem, externa) | Nenhuma (so agar sem biomassa) | TODA a colonia | **Patologica** — colonia colapsa |
+
+**Caso M-B.10 (melhor morfologia ate o momento):** `c_n_factor` direto × `(1.2 − rho_b)` × motile_boost × qs(rho_b) → pico em mid-arm (rho_b ≈ 0.5) com localizacao azimutal pelos swarmers ativos. Outer rim (rho_b < 0.5) recebe push outward, nucleo (rho_b > 0.5) recebe push inward (compactacao do nucleo + extensao dos dendritos).
+
+**Caso Xavier puro (atual, K.27→N=6):** `c_n_factor` invertido × `growth_headroom=1.0` × qs → pico em interior profundo (rho_b ≈ 1). Toda a colonia recebe push outward de magnitude similar — expansao isotropica sem seletividade (~25 bumps uniformes, `contrast_cs` em queda).
+
+#### 3.3.5 Erro de raciocinio recorrente (CASO DOCUMENTADO PARA NAO REPETIR)
+
+**Falacia:** "Os red spots de cs nas pontas observados em frames significam que cs concentrado na borda externa puxa a colonia para fora."
+
+**Por que e falsa:** A forca calculada pelo codigo e `−∇cs`. Um pico de cs no rim externo empurra apenas o que esta IMEDIATAMENTE APOS o pico no sentido radial. Se este "apos" e agar virgem (sem biomassa), a forca atua em particulas SPH sem biomassa e nao impulsiona o swarming. Por outro lado, particulas ANTES do pico (a maior parte da colonia) recebem push INWARD.
+
+**Como evitar:** sempre calcular cs_∞ (produção / decaimento total) em 4-5 zonas representativas e identificar onde o maximo cai ANTES de propor qualquer alteracao em fator de producao ou sumidouro de cs.
+
+#### 3.3.6 Protocolo obrigatorio — analise pre-mudanca de fator de producao/sumidouro de cs
+
+Antes de propor mudanca em `c_n_factor`, `growth_headroom`, `sigma`, `tip_boost`, `motile_boost`, `qs`, `k_consume` ou `lambda`:
+
+1. **Calcular `cs_∞` em 4 zonas representativas:**
+   - Interior profundo (rho_b=1, c_n=0)
+   - Mid-arm (rho_b=0.5, c_n=0.4)
+   - Outer rim (rho_b=0.2, c_n=0.8)
+   - Agar (rho_b=0, c_n=1)
+
+   `cs_∞ = (sigma × qs × growth_headroom × c_n_factor) / (lambda_eff + k_consume × rho_b)`
+
+2. **Identificar a zona com maior `cs_∞`** (= localizacao do pico de cs no perfil radial).
+
+3. **Verificar se ha biomassa contigua (rho_b > 0.1)** entre o pico e a fronteira com o agar.
+
+4. **Validar o sinal do push esperado:**
+   - Se a biomassa "apos o pico" e desprezivel (caso patologico) → REJEITAR a mudanca.
+   - Se o pico cai no interior profundo e cs satura uniformemente → push outward uniforme, sem seletividade dendritica → mudanca pode ajudar o motor mas nao a morfologia.
+   - Se o pico cai em mid-arm/swarmer zone E e localizavel azimutalmente (por motile_boost ou equivalente) → caminho para seletividade dendritica.
+
+5. **Documentar a predicao**: incluir tabela `cs_∞` por zona antes e depois da mudanca, e marcar explicitamente em qual zona o pico se moveu.
+
+**Esta analise e obrigatoria mesmo (especialmente) para mudancas "biologicamente motivadas".** A coerencia biologica nao implica push outward correto — a direcao do push e definida exclusivamente pelo perfil espacial de cs, nao pelo significado biologico do termo de producao.
+
+### 3.4 Meta de superficies rugosas
 
 Partículas de contorno (`solid` em [particles.py](src/particles.py)) atualmente formam paredes planas de 2 camadas. O objetivo e substituí-las por:
 - Topografias irregulares (rugosidade controlada por amplitude e comprimento de onda).
@@ -327,8 +427,10 @@ Calibracao pos-Passes A-I.7. **MARCO I.7:** Transicao blob→dendritico confirma
 | Viscosidade | `mu` | **0.020** | K.23: I.2 revert parcial — coesão viscosa (I.2=0.012, pre-I.2=0.025) |
 | Arrasto (base) | `gamma` | 60.0 | `a_drag` = `gamma*v_term` = 6 em v=0.1 |
 | Arrasto (nucleo) | `gamma_mature` (scheme) | `1.5*gamma` | Pass I.4: razao core/edge 2.5x (era 0.3*gamma) |
-| Coef. Marangoni | `beta` | **1.0** | Pass K.5: 4→1 (4x reduzido para domar feedback amplificado por K.6/K.7) |
-| Producao surfactante | `sigma` | **1.5** | M-B.2 atual: K.15 0.8→1.2, M-B.2 1.2→1.5; K.20 k_consume controla saturacao |
+| Coef. Marangoni | `beta` | **5.0** | Pass T2d: T1 10→5 — reduz tracao amplificada na fronteira pela metade; razao `|F_mar|/B_tension` ~3000× |
+| Producao surfactante | `sigma` | **20.0** | Pass T2d: T1 5→20 — acelera saturacao em cs_max=0.5 (4× taxa); compensa β reduzido por aumentar fracao temporal em gradiente maximo |
+| Saturacao cs (T1) | `cs_max` | **0.5** | Pass T1: substitui growth_headroom+tip_boost+motile_boost+c_n_factor+k_consume por `(1-cs/cs_max)` |
+| Decaimento (agar) | `lambda_eff` (T1) | `0.5*lambda` = 0.075 | Pass T1: decay LENTO no agar (gera halo); `2*lambda`=0.30 no biofilme |
 | Forca flagelar | `f0` | **3.0** | K.22: 0.5→3.0 — alvo teorico §8 (f0~γ·v_term/2=3); K.21 diagnosticou regime subcritico |
 | Difusao (biofilme) | `D` (`D_int`) | 1.5e-3 | Pass I.3: gradiente afiado na interface (`L_D_int`=0.93h) |
 | Difusao (agar) | `D_ext` | **0.08** | K.18 0.01→0.04; M-B.2 0.04→0.08; `L_D_ext=0.327`; habilita focalizacao Mullins-Sekerka |
@@ -338,7 +440,7 @@ Calibracao pos-Passes A-I.7. **MARCO I.7:** Transicao blob→dendritico confirma
 | Modelo producao | `sigma*qs*(1.2-rho_b)*noise*tip_boost*motile_boost*c_n_factor` | — | K.6 adicionou `tip_boost`, K.7 adicionou `motile_boost`, M-B.2 adicionou `c_n_factor` |
 | Visc. artificial Monaghan | `alpha_mon` | **0.12** | K.23: I.2 revert parcial — previne instabilidade de tração SPH (I.2=0.06, pre-I.2=0.15) |
 | Vel. som (EOS) | `c0` | 0.8 | B ~ 0.09; tensao `tension_ratio=0.08` (M-B.9b) |
-| Tensao superficial EOS | `tension_ratio` | **0.08** | M-B.9b: I.5 0.02 → 0.08 (4×) — `B_tension`=0.00275; lição §23 |
+| Tensao superficial EOS | `tension_ratio` | **0.30** | Pass T2b: 0.20 → 0.30 — otimo local da alavanca (T2c=0.40 regrediu spikes +53/75% sem ganho morfologico); plateau de retornos atingido |
 | Nutriente (consumo) | `k_n` | 0.5 | M-B.2: taxa consumo bacteriano de c_n |
 | Nutriente (D agar) | `D_n` | 0.02 | M-B.2: difusao no agar livre |
 | Nutriente (D biofilme) | `D_n_int` | **1e-4** | M-B.4: bi-escala — EPS bloqueia nutriente; `L_D_n_int=0.018` |
@@ -715,6 +817,163 @@ Calibracao pos-Passes A-I.7. **MARCO I.7:** Transicao blob→dendritico confirma
   - **Pass M-B.11 (opcional):** `tension_ratio: 0.08 → 0.12` para ganhar marginal contra largura excessiva (lição §23 caminho seguro).
   - **Pass M-B.12 (opcional):** explorar tip-splitting via β/f0 ratio ou ruido estocastico.
 
+- **Pass T1 — Trinschek-like saturation (2026-05-18, SUCESSO TRANSITORIO + FALHA POS-25s):** substitui combinacao `growth_headroom · tip_boost · motile_boost · c_n_factor` + `k_consume` por mecanismo unico tipo Trinschek 2018 ([T1] §3.0): `production = σ · qs · (1 - cs/cs_max) · noise` com `cs_max=0.5`, e decaimento bi-modal `λ_eff = 0.5·λ` no agar (gera halo lento) / `2·λ` no biofilme (mantem contraste). Parametros: `σ: 1.5 → 5.0`, `β: 1.0 → 10.0` (compensa cs_max=0.5 que e ~10× menor que pico antigo).
+
+  **Predicoes ex-ante (analise §3.3.6):** cs deve uniformizar em `cs_max` em todo `rho_b > 0.1` (saturacao local), gradiente apenas radial na fronteira biomassa-agar. Risco identificado: sem `motile_boost`, perda de assimetria azimutal de cs → expansao isotropica em vez de fingering.
+
+  **Resultado (t=0→49s, 13 frames):**
+
+  **Frame 005 (t≈21s) — MELHOR MORFOLOGIA TRANSITORIA JA PRODUZIDA:** 12-15 dendritos finos perfeitos radiando de nucleo coeso, halo cs nitido extendendo-se alem da biomassa. **Visualmente quase identica ao painel (b) Fingering de Trinschek 2018 ([reference_result.png](reference_result.png)).** Primeira vez no projeto que essa morfologia foi atingida.
+
+  **Frames 010-012 (t≈40-45s) — DEGRADACAO CATASTROFICA:** dendritos perdem coesao e viram **linhas de particulas individuais** (single-particle radial streaks), nucleo COLAPSA (centro essencialmente vazio em t=45s), particulas ejetadas radialmente como halo de fragmentacao distribuida (sintoma lição §22).
+
+  **Metricas log.csv (t=0→49.4s):**
+  - `max_cs` cravado em `cs_max = 0.4904` desde t=3.8s — saturacao funcionando ✓
+  - `mean_cs` 0.002 → 0.076 monotonico (transitorio de saturacao ainda em curso aos 49s)
+  - `contrast_cs` colapso monotonico **348 → 6.4** (54×) — sintoma classico §2.4 / lição §8
+  - `mean_v` baixissimo (pico 0.0013) — **2.8× menor que M-B.10 (0.0036)**. Colonia praticamente parada apos ejecao radial inicial.
+  - `n_fast` pulsando 0-50 — particulas individuais escapando, NAO swarmers organizados nas pontas
+  - `a_marangoni` 4.6 → 13.7 (orcamento §8 ✓), `a_pressure` 3.0 estavel (hard pinning OK), `mass_total` 101 → 103 (controlado ✓)
+
+  **Causa raiz da degradacao pos-t=25s — falha de coesao escalada (lição §22 + §23):** com `β=10` + `σ=5.0` + cs saturando em 0.5 no biofilme, o gradiente cs **na fronteira biofilme-agar** e brutalmente afiado (cs cai de 0.5 → 0.075·cs_agar em ~2h kernel). Marangoni resultante na borda e gigantesca (`|∇cs|/h ~ 5`, `a_marangoni_borda ~ β·|∇cs| ~ 50` no kernel). As particulas do rim sao ejetadas radialmente; a coesao EOS atual (`tension_ratio=0.08`, `B_tension≈0.0028`) NAO segura essa tracao amplificada. Cenario direto lição §23: motor amplificado sem reforco proporcional de coesao reproduz brittle neck distribuido.
+
+  **Diagnostico §3.3 (perfil radial cs):** o pico de cs cai **uniformemente em todo o corpo** (`rho_b > 0.5` satura em `cs_max=0.5` por construcao). Nao ha pico LOCALIZADO em mid-arm como em M-B.10 (que tinha `motile_boost` discriminando swarmers ativos). Implicacao: a forca outward atua em **toda a fronteira biomassa-agar simultaneamente** — explica expansao radial uniforme em t=0-20s, sem selecao competitiva. Os 12-15 dendritos perfeitos do frame 005 sao gerados pela **perturbacao inicial cos(8θ)** (modos azimutais) amplificada pelo motor super-criticos antes da degradacao por fragmentacao.
+
+  **Conclusao Pass T1:** mecanismo Trinschek REALMENTE PRODUZ a morfologia certa transitoriamente (revelacao importante — valida teoricamente a abordagem do painel (b)), mas a amplificacao σ=5/β=10 esta acima do que a coesao SPH atual suporta. Tres caminhos para Pass T2 (a decidir):
+  - **T2a (mais provavel — caminho seguro):** preservar T1 + reforcar coesao `tension_ratio: 0.08 → 0.20-0.30` para domar tracao na fronteira. Risco: extrair material do agar para dentro da colonia, re-aparecer halo nas baias.
+  - **T2b (revisao do motor):** reduzir `β: 10 → 5` ou `σ: 5 → 2.5` para diminuir gradiente cs amplificado. Risco: motor sub-critico, regredir para M-B.10-like.
+  - **T2c (hibrido com M-B.10):** restaurar `motile_boost` (localiza cs em swarmers) ATUANDO em conjunto com saturacao `(1-cs/cs_max)`. Combinaria selecao azimutal (M-B.10) com perfil radial saturado (T1). Mais complexo, requer recalibracao de σ/β.
+
+- **Pass T2a — `tension_ratio: 0.08 → 0.20` (2026-05-18, SUCESSO PARCIAL — direcao validada, gap residual):** unica alavanca em [src/scheme.py:134](src/scheme.py#L134). Preserva T1 (σ=5, β=10, cs_max=0.5). Predicao ex-ante (lição #24): razao `|F_mar_borda|/B_tension` cai de ~23000× para ~9000× — ainda acima do limiar (~10×) mas suficiente para reduzir fragmentacao distribuida.
+
+  **Resultado (t=0→48.7s, 13 frames):**
+
+  **Metricas (T2 vs T1, valores em t=49s):**
+  - `mass_total` 101.0 → **101.7 (+0.7%)** vs T1 +2.0% — coesao segura material ✅
+  - `mean_v` pico 0.0008 vs T1 0.0013 (-38%) — colonia mais "presa" pela coesao maior
+  - `n_fast` pico 16 vs T1 50 (-68%) — menos particulas escapando ✅
+  - `a_marangoni` pico 10.3 vs T1 13.7 (-25%) — gradiente cs menor (menos drenagem)
+  - **`contrast_cs` ESTABILIZOU em 13.0** vs T1 colapso 348→6.4 — **primeira evidencia de plateau** ✅
+  - `a_pressure` spikes **6.2 em t=44s** (vs T1 3.0 estavel) — regressao: rogue particles isoladas
+  - `max_v` spike **0.52 em t=44s** (vs T1 0.31) — particula isolada com alta v
+
+  **Frames (Protocolo §11):**
+  - **T2 frame 005 (t≈20s):** 12-15 dendritos com bordas mais definidas que T1 — nucleo coeso, halo cs nitido.
+  - **T2 frame 010 (t≈40s):** dendritos persistem como linhas radiais 1-2 particulas de largura com **nucleo ainda visivel**. T1 nesse momento ja tinha colapso central completo.
+  - **T2 frame 012 (t≈48s):** **nucleo AINDA presente** (small green/yellow center), dendritos preservados. T1 frame 012 mostrava centro essencialmente vazio.
+
+  **Diagnostico:** direcao validada (coesao maior preserva nucleo + estabiliza contrast_cs), porem **nao e o ponto de operacao**:
+  - ❌ Dendritos ainda finos demais (1-2 particulas vs 3-4 em M-B.10) — coesao reduziu fragmentacao mas nao restaurou bracos solidos.
+  - ❌ Rogue particles persistentes (`a_pressure` 6.2, `max_v` 0.52) — escape pontual sem ruptura sistemica.
+  - ❌ `mean_v` muito baixo (0.0008) — `tension_ratio=0.20` comeca a se opor ao motor; risco de estagnacao.
+
+  **Caminho de continuidade (uma alavanca por vez):**
+  - **T2b:** `tension_ratio: 0.20 → 0.30-0.40` para fechar gap. Risco: motor estagna (mean_v ja cai 38%).
+  - **T2c:** se T2b estagnar, reduzir `β=10 → 6-7` + `tension_ratio=0.25` — tradeoff amplitude/coesao.
+  - **T2d (audacioso):** restaurar `motile_boost` (lição #3) localizando cs em swarmers, COMBINADO com `(1-cs/cs_max)` — fundir selecao azimutal (M-B.10) com perfil radial Trinschek.
+
+- **Pass T2b — `tension_ratio: 0.20 → 0.30` (2026-05-18, MELHOR PONTO DE OPERACAO DA SEQUENCIA T1):** unica alavanca em [src/scheme.py:134](src/scheme.py#L134). Predicao ex-ante: razao `|F_mar|/B_tension` cai de ~9000× (T2a) → ~6000× — ainda acima do alvo (~10×) mas tendencia consistente.
+
+  **Metricas (T2b vs T2a, valores em t=49.8s):**
+  - `mass_total` 101.7 → **101.67** — ≈ identico (+0.7% total, Bloqueio E preservado ✅)
+  - `mean_v` pico 0.0008 → 0.00076 (-5%) — coesao maior continua a se opor ao motor, queda marginal
+  - `a_marangoni` pico 10.3 → **10.7 (+4%)** — motor preservado ✅
+  - **`contrast_cs` (t=49s) 13.0 → 14.3 (+10%) — plateau visivel 14.0-14.7 desde t=37s** ✅ (primeira vez sustentado >15s sob motor T1)
+  - **Spikes atenuados drasticamente:**
+    - `a_pressure` pico 6.2 → **3.84 (-38%)** ✅
+    - `max_v` pico 0.52 → **0.24 (-54%)** ✅
+    - `a_drag` pico 40.4 → 29.4 (-27%) ✅
+
+  **Frames (Protocolo §11):**
+  - **Frame 005 (t≈20s) — MELHOR FRAME 005 DA SEQUENCIA T1/T2:** 15-18 dendritos com largura **2-3 particulas** (vs 1-2 em T2a), nucleo claramente coeso, halo cs uniformemente distribuido.
+  - **Frame 010 (t≈40s):** nucleo CLARAMENTE PRESERVADO (centro green/yellow visivel). Dendritos persistem mas algumas pontas afinam para 1-2 particulas. Sem colapso central.
+  - **Frame 013 (t≈50s):** nucleo ainda presente. Algumas pontas mostram **curvaturas terminais** (acumulo de material).
+
+  **Diagnostico:**
+  - ✅ Spikes de fragmentacao distribuida atenuados 38-54% — rogue particles em menor quantidade
+  - ✅ `contrast_cs` plateau sustentado primeira vez sob motor T1
+  - ✅ Massa quasi-constante, Bloqueio E preservado
+  - ⚠️ Dendritos voltam a afinar para 1-2 particulas pos-t=30s — coesao insuficiente para manter espessura conforme elongam
+  - ⚠️ `mean_v` 0.00076 — abaixo do alvo Pass N (>0.001), queda marginal mas persistente
+
+  **Pass N continua bloqueado** (mean_v < 0.001, dendritos ainda 1-2 particulas em t>30s), porem T2b esta mais perto do baseline que Pass N requer.
+
+  **Caminho de continuidade:**
+  - **T2c:** `tension_ratio: 0.30 → 0.40`. Predicao: se mean_v cair <5% adicional, espaco para fechar gap. Se cair >15%, motor comeca estagnar — parar e ir para T2d.
+  - **T2d:** reduzir `β: 10 → 7` mantendo `tension_ratio=0.30` — reduz forca amplificada na fronteira proporcionalmente.
+
+- **Pass T2c — `tension_ratio: 0.30 → 0.40` (2026-05-18, PLATEAU DE RETORNOS — REGRESSAO DOS SPIKES):** unica alavanca em [src/scheme.py:134](src/scheme.py#L134). Predicao ex-ante: razao `|F_mar|/B_tension` cai de 6000× (T2b) → 4500× — fechamento adicional do gap; risco de estagnacao do motor (mean_v ja cai).
+
+  **Metricas (T2c vs T2b, valores em t=46s):**
+  - `mass_total` 101.66 → **101.63** — ≈ identico (Bloqueio E preservado ✅)
+  - **`mean_v` pico 0.00076 → 0.00079 (+4%) — refuta risco de estagnacao** ✅
+  - `a_marangoni` pico 10.7 → 10.0 (-7%) — motor preservado mas marginalmente
+  - `contrast_cs` (t=46s) 14.0 → 14.0 — **plateau identico**, sem ganho
+  - **`a_pressure` spike 3.84 → 5.89 (t=33s) — REGRESSAO +53%** ❌
+  - **`max_v` spike 0.24 → 0.42 (t=33s) — REGRESSAO +75%** ❌
+  - `a_drag` spike 29.4 → 24.9 (-15%)
+
+  **Frames (Protocolo §11):** dendritos "petala-formato" 2-3 particulas (frame 005), nucleo preservado em frame 012 (t≈48s). **Visualmente quase identicos a T2b** — sem ganho morfologico mensuravel.
+
+  **Diagnostico — PLATEAU DE RETORNOS DA ALAVANCA `tension_ratio`:**
+  - ✅ `mean_v` parou de cair (recuperou 4%) — refuta risco estagnacao
+  - ❌ Spikes regrediram significativamente (a_pressure +53%, max_v +75%)
+  - ⚠️ Frames identicos a T2b — sem ganho morfologico visivel
+
+  **Interpretacao fisica:** coesao extra introduziu **novo modo de instabilidade** — zonas internas com coesao muito alta acumulam energia elastica (analogia mola comprimida) que libera violentamente em eventos esparsos (`a_pressure` 5.89 em t=33s). Fratura discreta ao inves de fragmentacao distribuida. **Função morfologia(tension_ratio) atingiu plateau** — ganho marginal ≈ 0, custo marginal positivo.
+
+  **Decisao: T2b (`tension_ratio=0.30`) e o otimo local desta alavanca isolada.** Reverter para T2b e avancar para T2d (`β: 10 → 7`) para atacar a outra ponta do problema — reduzir tracao amplificada na fronteira em vez de continuar reforcando coesao. Predicao T2d: razao `|F_mar|/B_tension` cai 6000× → ~4200× (proporcional a β); menos energia para gerar rogue particles.
+
+- **Pass T2d — `β: 10 → 5` + `σ: 5 → 20` mantendo `tension_ratio=0.30` (2026-05-18, EQUIVALENTE A T2b — trade-off AR vs mean_v):** mudanca dupla em [main.py:53-54](main.py#L53-L54). β reduzido pela metade (reduz tracao amplificada), σ quadruplicado (acelera saturacao em cs_max). Predicao ex-ante: `|F_mar|/B_tension` cai de ~6000× (T2b) → ~3000× (T2d).
+
+  **Resultado contraintuitivo:** `a_marangoni` caiu apenas 8% (vs predicao -50%). Razao: σ=20 acelera saturacao `cs→cs_max`, aumentando a fracao temporal em que gradiente esta no maximo. Gate `grad_rho_b` ativou em mais particulas (campo cs mais difundido azimutalmente). **Motor operacional preservado apesar de tracao de pico reduzida.**
+
+  **Metricas (T2d vs T2b, valores em t=49.7s):**
+  - `mass_total` 101.167 → **101.163** ≈ identico ✅
+  - `mean_v` 0.000721 → **0.000638 (-12%)** ⚠️ — colonia mais presa globalmente
+  - `a_marangoni` pico 10.75 → 9.93 (-8%) — preservado ✅
+  - `contrast_cs` 14.25 → **14.68 (+3%)** ligeiramente melhor ✅
+  - `n_fast` 16 → 18 (+13%)
+  - `a_pressure` pico 3.84 → **3.56 (-7%)** ≈ similar
+  - `max_v` pico 0.24 (t=12s, unico) → **0.31 (t=24s) + 0.21 (t=49s) — dois eventos** ⚠️
+  - `a_drag` 29.4 (t=49s) → 21.35 (t=24s) + 19.87 (t=49s) — spike final novo
+
+  **Frames (Protocolo §11):**
+  - Frame 005 (t≈20s): 16-18 dendritos similares a T2b mas mais compactos
+  - **Frame 010 (t≈40s): dendritos VISIVELMENTE MAIS LONGOS (~r=2.5 vs T2b r=2.0) — extensao radial +25%**
+  - Frame 013 (t≈49s): pontas alongadas, nucleo presente, spike final coincide com pontas alcancando ~r=2.8
+
+  **Diagnostico:**
+  - ✅ **Primeira melhora de AR pela calibracao T-series** (+25% extensao radial em t=40s)
+  - ✅ Spikes intermedios reduzidos
+  - ⚠️ mean_v cai 12% — colonia mais "presa" globalmente apesar de pontas alongadas
+  - ⚠️ Novo spike terminal (t=49s) — pontas alongadas comecando a fragmentar
+  - ⚠️ Largura dendritos nao melhorou (ainda 1-2 particulas)
+
+  **Pass N continua bloqueado:** `mean_v=0.000638 << 0.001` (alvo Pass N). Dendritos ainda 1-2 particulas largura.
+
+  **Conclusao:** T2d e **equivalente a T2b em estabilidade global** com **trade-off bem definido**: dendritos +25% mais longos vs mean_v -12% e novo spike terminal. O σ=20+β=5 mudou regime de "motor forte mas instavel" para "motor difundido com extensao prolongada".
+
+  **Caminhos:**
+  - **T2e:** combinar T2d (β=5, σ=20) com `tension_ratio: 0.30 → 0.40` — testa se o plateau de coesao de T2c se devia ao motor T1 amplificado; sob motor T2d reduzido, espaco extra de coesao pode suprimir o spike final.
+  - **T2f:** restaurar `motile_boost` mantendo T2d — adiciona localizacao azimutal para tentar engrossar dendritos (1-2 → 2-3 particulas). **Risco documentado** ([feedback_motility_is_tip_discriminator.md]): contradicao com Marangoni physics (inverte gradiente cs) e Xavier/rhlAB CCR (producao deveria ser inversa a c_n).
+
+- **Pass T2d — extensao para validacao em t=100s (2026-05-18, EM ANDAMENTO):** decisao estrategica antes de aplicar Pass N — `total_sim_time: 50 → 100` em [main.py:79](main.py#L79). Justificativa: T2d e o melhor candidato a baseline para Pass N (morfologia extendida +25%, nucleo preservado, massa controlada, contrast_cs plateau), mas o spike terminal em t=49.7s (`max_v=0.21, a_drag=19.87`) sugere que t=100s pode revelar modo de falha tardio. Aplicar Pass N sobre baseline nao-validado em t=100s reproduziria armadilha lição §22 ("Pass N deve coexistir com tension_ratio calibrado, nao substituir") — Pass N estaria mascarando fragmentacao residual em vez de refinar morfologia estavel.
+
+  **Criterios de aceitacao para desbloquear Pass N pos-validacao:**
+  - `mean_v` t=50-100s sustentado ≥ 0.0006 (relaxado de 0.001 — gap chicken-and-egg: mean_v baixo PORQUE dendritos finos; Pass N pode resolver)
+  - `mass_total` t=100s < 105 (ideal 102-103) — Bloqueio E preservado
+  - `contrast_cs` t=50-100s plateau ~14-16 — sem afogamento global
+  - `max_v` spikes pos-50s ≤ 0.21 (T2d t=49s spike, nao deve acelerar)
+  - `a_pressure` pos-50s < 5 — sem brittle neck novo
+  - Frames 14-26: nucleo preservado, dendritos AR ≥ 1:5, sem colisao com fronteira (r < 4 em dominio [-5,5])
+
+  **Decisoes em aberto pos-validacao T2d:**
+  - Se PASSAR todos criterios → Pass N desbloqueado; discutir 5 itens pendentes (posicionamento, massa, frequencia, rate limit, interacao com use_splitting)
+  - Se FALHAR em mean_v ou massa → T2e (tension_ratio 0.30→0.40) primeiro
+  - Se FALHAR em max_v/a_pressure spikes → T2g (reduzir σ de 20 para 10, mantendo β=5) — tradeoff transitorio vs estabilidade
+  - Se FALHAR em morfologia (colapso) → reverter para T2b como baseline conservador
+
 **Invariantes morfologicos descobertos (K.5-K.14):**
 1. `smoothstep` em `[a,b]` satura em 1.0 no pico → **max(metric) e cego ao estreitamento do gate**. K.1, K.2 pareceram no-op por isso; diagnostico correto requer `n_active` e `mean_active`, nao `max`.
 2. Tip-boost via `|∇rho_b|` e **uniforme no rim** (pontas, baias e trechos retos tem magnitude similar). Nao discrimina pontas sozinho.
@@ -746,6 +1005,8 @@ Calibracao pos-Passes A-I.7. **MARCO I.7:** Transicao blob→dendritico confirma
 22. **Pinning rigido pode mascarar coesao SPH insuficiente** (lição M-B.9a, 2026-05-13): substituir `u=v=0` (pin cinematico, nao-fisico mas estruturalmente protetor) por drag forte com γ_eff~5000-15000 (fisicamente correto, v_term ~ 0.001) NAO preserva integridade estrutural se a coesao SPH (`B_tension`) e baixa. Pin rigido transforma um problema mecanico (separacao de vizinhos) em um problema sem fisica (vizinhos nao mexem); drag deixa o problema mecanico ativo, mas com forcas pequenas. Quando vizinhos tem `c_n` diferentes, seus γ_eff sao diferentes, suas v_term sao diferentes, abre gap, e com `B_tension=0.00069` (M-B.8 baseline) nada segura. **Sintoma**: fragmentacao distribuida (particulas individuais soltas em halo) ao inves de fragmentacao localizada (fraturas internas dos bracos). **Regra geral**: ao remover pin rigido, verificar se `B_tension` consegue resistir ao diferencial de v_term tipico no rim. Se `(γ_max - γ_min)·v_typical / B_tension > 1`, e necessario reforcar coesao simultaneamente. Implicacao: **drag suave so e viavel apos coesao SPH ser proporcional aos diferenciais de mobilidade que ele cria**.
 
 23. **Cohesao SPH e tradeoff direto contra fragmentacao interna** (lição M-B.9b, 2026-05-13): quadruplicar `tension_ratio` (0.02→0.08, `B_tension` 0.00069→0.00275) em `BiomassEOS` reduziu fraturas internas dos bracos E melhorou dramaticamente a localizacao do cs (`contrast_cs` 96→283, **3×**). Mecanismo plausivel: bracos mais coesos mantem swarmers do rim em movimento agrupado por mais tempo, sustentando producao localizada de cs nas pontas (motile_boost via |v| coerente) em vez de difundir lateralmente. Confirma que **lição #15 (brittle neck) era o mecanismo dominante de fragmentacao**, e que a coesao 0.02 (legado de I.5 quando o objetivo era "permitir estiramento") era subóptima por margem ampla pos-introducao de hard pinning. Predicao de risco — "atracao extra puxa material das baias e re-introduz halo" — **invalidada** porque pinning quimico hard ainda controla baias. **Regra:** sempre que motor flagelar/Marangoni for amplificado (lição §15) OU pin quimico for usado em conjunto com motor forte, re-avaliar `tension_ratio` no mesmo passo. Caminho seguro de teste pos-M-B.9b: `tension_ratio = 0.12` em M-B.11+ para extrair ganho marginal.
+
+24. **Mecanismo Trinschek-like (saturacao local em cs_max) PRODUZ a morfologia (b) transitoriamente — mas amplificacao σ/β escala alem da coesao SPH** (lição Pass T1, 2026-05-18): substituir o motor multiplicativo (motile_boost · tip_boost · c_n_factor) por `production ∝ (1 - cs/cs_max)` a la Trinschek 2018 produziu em **frame 005 (t≈21s) a melhor morfologia transitoria do projeto** — 12-15 dendritos finos coerentes matching reference_result.png painel (b). Porem amplitude `σ=5, β=10` necessaria para escalar com `cs_max=0.5` gera Marangoni na fronteira (|F_mar_borda| ≈ β·cs_max/h ≈ 70) muito acima do que `tension_ratio=0.08` (`B_tension≈0.003`) suporta — particulas do rim sao ejetadas radialmente em t>25s, dendritos se fragmentam em linhas de particulas isoladas, nucleo colapsa (frames 010-012). **Tres consequencias para futuro:** (a) o mecanismo de saturacao Trinschek **e validado empiricamente** (nao apenas teoricamente) — primeira vez que a morfologia (b) emerge no SPH, mesmo que transitoriamente; (b) sem `motile_boost` ou equivalente, a perda de assimetria azimutal de cs torna a morfologia DEPENDENTE da perturbacao inicial cos(Nθ) — fingerings sao artefato de seeding amplificado, nao de selecao competitiva sustentavel; (c) regra de escala: para qualquer T2 que mantenha `cs_max ~ 0.5`, `tension_ratio` deve escalar como ~`(β/β_ref)·tension_ratio_ref` — para `β=10`, `tension_ratio ≈ 0.20-0.30` (multiplicar tension_ratio_M-B.10 por β/β_M-B.10 = 10x). Lição metodologica: **calcular `|F_mar_borda| / B_tension` antes de mexer em σ ou β** — se razao > 10, brittle neck garantido em t < 30s.
 
 **Proximos diagnosticos obrigatorios (atualizado 2026-04-30 pos-K.21):**
 
@@ -822,6 +1083,7 @@ Resultado: pulsacoes episodicas (n_fast pico=114 em t=1.5s via perturbacao inici
 - **Nao sugerir Pass L (rugosidade)** enquanto morfologia nao reproduzir `reference.jpg` (dendritos AR ≥ 1:5, baias estacionarias, tip-splitting visivel). Bloqueio C (Mullins-Sekerka geometrico) provavelmente requer abordagem apos B resolvido.
 - **Nao remover hard pinning mecanico `rho_b>=0.8`** (K.17). Confirmado nao negociavel por K.25a (falha catastrofica) e M-B.9a (fragmentacao distribuida quando substituido por drag forte, lição §22). Pin cinematico e estruturalmente protetor — coesao SPH atual `B_tension≈0.0028` nao resiste ao diferencial de v_term ~ 0.1 entre core e tip sem o pin.
 - **Ao introduzir mecanismo que aumenta tracao no rim** (f0 maior, motile_boost maior, etc), **re-avaliar `tension_ratio` no mesmo passo** (lição §23). Cohesao SPH deve escalar com motor — ignorar isso reproduz brittle neck (lição §15).
+- **OBRIGATORIO — executar o protocolo §3.3.6 antes de qualquer mudanca em fator de producao ou sumidouro de cs.** Forcas `MarangoniForce` e `FlagellarForce` apontam na direcao `−∇cs` (de alto cs para baixo cs). Para push outward, cs deve **decrescer monotonicamente para fora** ao longo da biomassa — o pico cs deve cair dentro do corpo da colonia, com biomassa contigua entre o pico e o agar. Mudancas em `c_n_factor`, `growth_headroom`, `sigma`, `tip_boost`, `motile_boost`, `qs`, `k_consume`, `lambda` que movam o pico para o agar ou para o rim externo isolado sao PATOLOGICAS — geram push inward na maior parte da colonia. **A falacia "cs concentrado nas pontas puxa para fora" e proibida** — calcular cs_∞ em 4 zonas antes de propor.
 
 ---
 

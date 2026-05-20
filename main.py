@@ -1,5 +1,6 @@
 import csv
 import numpy as np
+from scipy.spatial import cKDTree
 from pysph.solver.application import Application
 from pysph.base.kernels import CubicSpline
 from pysph.solver.solver import Solver
@@ -29,6 +30,7 @@ LOG_HEADER = [
     "mean_c_n",
     "contrast_c_n",
     "mass_total",  # soma de m — cresce por BiomassGrowth (logistico)
+    "pass_n_spawned",  # partículas criadas pelo Pass N desde a última linha de log
 ]
 
 x_dim, y_dim = 187, 187  # M-B.10: expandido para preservar dx≈0.054 em dominio 10x10
@@ -76,7 +78,7 @@ D_n_int = 1e-4  # M-B.4: difusao dentro do biofilme (EPS bloqueia transporte)
 k_n = 0.5  # taxa de consumo por unidade de biomassa
 
 dt_global = 0.001
-total_sim_time = 100.0  # Validacao T2d ate t=100s antes de aplicar Pass N (pre-requisito morfologia base)
+total_sim_time = 50.0  # Validacao T2d ate t=100s antes de aplicar Pass N (pre-requisito morfologia base)
 print_freq = 200
 
 trajectory_store_interval = 20
@@ -86,6 +88,40 @@ c0 = 0.35  # EOS: B = 1.5²/7 ≈ 0.32 (repulsão suave, atração ~0.1)
 
 use_splitting = False
 
+# Pass N v2 — Refinamento hexagonal Vacondio 2013 / Feldman 2006
+# (Soleimani 2017 §3.2.6). Substitui 1 mãe por 7 filhas (1 centro + 6 vértices
+# hexagonais), massa dividida IGUALMENTE (m_filha = m_mãe/7), velocidade
+# IDÊNTICA herdada (conserva momentum linear e angular), escalares (rho_b, cs,
+# c_o, c_n, noise) copiados; smoothing length h_filha = α·h_mãe; offset hexagonal
+# r = ε·h_mãe; α = ε = 0.6 (Feldman 2006, erro de densidade < 5%).
+# Trigger: V_a = m_a / rho_a > V_limit (partícula esticada, não buraco angular).
+# Aplica em toda a colônia (rho_b > 0.05) — núcleo + braços + transição.
+use_pass_n = True
+PASS_N_FREQ = 100  # iter entre checks (mais agressivo que v1=200)
+PASS_N_MAX_PARENTS = 100  # máx mães por call (×~7 filhas = ~700 novas/call)
+PASS_N_RHO_TRIG = 0.7  # trigger relativo: split se rho_a/rho_0 < 0.7.
+# v2.1 usou V_a > 1.5·dx² (absoluto), que para
+# gen ≥ 1 requer rho < 0.1·rho_0 (raro) — trigger
+# ficava cego a partículas em "gap critico"
+# (visualizadas como vermelho/azul no painel 3
+# do plot.py). Critério relativo casa exatamente
+# com a definição visual de gap (rho < 0.7·rho_0).
+PASS_N_ALPHA = 0.6  # h_filha = α · h_mãe (Feldman 2006)
+PASS_N_EPSILON = 0.35  # offset filha = ε · h_mãe — REDUZIDO de 0.6 (Feldman puro)
+# para 0.35 evita overlap com vizinhos a ~dx (causou
+# instabilidade max_v=8.25 em call 3 de v2-inicial).
+# Vertices agora a 0.63·dx do centro.
+PASS_N_M_FLOOR_RATIO = 1.0 / 49.0  # permite gen ≤ 2: m > m₀/49 ainda splittable.
+# v2-inicial usou 1/7 → bloqueava após 1 gen → splits
+# cessaram em t=7.6s mesmo com braços alongando.
+PASS_N_RHO_B_MIN = 0.3  # gate de biomassa — exclui borda dilute da Gaussiana
+# inicial (rho_b 0.05-0.3 tem rho SPH naturalmente baixo
+# por kernel truncado, não gap real). Cobre swarmers
+# ativos (rho_b ∈ [0.3, 0.8]) E núcleo (rho_b ≥ 0.8).
+PASS_N_PROXIMITY_MIN = 0.4  # min distância filha-vizinho em unidades de dx;
+# vertices que cairiam < 0.4·dx de partícula existente
+# são descartadas (mass redistribuída em N_actual < 7).
+
 
 class SwarmApp(Application):
     def initialize(self):
@@ -94,6 +130,7 @@ class SwarmApp(Application):
         self._m_initial = (
             None  # snapshot da massa total em t=0 (preenchido em post_step)
         )
+        self._pass_n_spawned_since_log = 0  # acumula spawns entre linhas de log
 
     def create_particles(self):
         fluid_solid = create_initial_state(
@@ -136,6 +173,11 @@ class SwarmApp(Application):
                 pa.add_property("ay_drag")
                 # flag
                 pa.add_property("au_flag")
+                # Pass N — posição de referência para rastreamento de deslocamento
+                pa.add_property("x_spawn_ref")
+                pa.add_property("y_spawn_ref")
+                pa.x_spawn_ref[:] = pa.x[:]
+                pa.y_spawn_ref[:] = pa.y[:]
                 pa.add_output_arrays(
                     [
                         "rho_b_grown",
@@ -283,8 +325,10 @@ class SwarmApp(Application):
                         f"{mean_c_n:.4f}",
                         f"{contrast_c_n:.4f}",
                         f"{mass_total:.6e}",
+                        self._pass_n_spawned_since_log,
                     ]
                 )
+                self._pass_n_spawned_since_log = 0  # reseta após registrar
 
         if use_splitting:
             print("Iniciando processo de divisão celular...")
@@ -356,8 +400,151 @@ class SwarmApp(Application):
 
                     solver.nnps.update()
 
-        else:
-            pass
+        # Pass N v2.1 — Refinamento hexagonal Vacondio/Feldman + correções:
+        # (a) gen ≤ 2 (m_floor = m₀/49), (b) ε=0.35 (evita overlap c/ vizinhos),
+        # (c) gate rho_b > 0.3 (exclui borda da Gaussiana), (d) proximity guard
+        # (filhas a < 0.4·dx de vizinho existente são descartadas; massa
+        # redistribuída entre N_actual filhas para preservar m_total da mãe).
+        if use_pass_n and solver.count > 0 and solver.count % PASS_N_FREQ == 0:
+            fluid = self.particles[0]
+
+            rho_safe = np.maximum(fluid.rho, 1e-6)  # evita div0 (planktônicas)
+            rho0 = 1.0  # densidade de referência SPH
+
+            V_0 = dx * dx  # volume inicial (referência massa)
+
+            # Gate: rho_b > 0.3 (exclui borda dilute da Gaussiana onde rho SPH
+            # é naturalmente baixo por kernel truncado, não por gap real).
+            colony_mask = fluid.rho_b_grown > PASS_N_RHO_B_MIN
+
+            # Geração ≤ 2: m_floor = m₀/49 permite 2 splits sucessivos
+            m_floor = V_0 * PASS_N_M_FLOOR_RATIO
+            splittable_mass_mask = fluid.m > m_floor
+
+            # Trigger RELATIVO: rho_a / rho_0 < PASS_N_RHO_TRIG (= 0.7).
+            # Casa exatamente com a definição de "gap crítico" visualizada
+            # no painel 3 do plot.py. Independente da geração — gen 0, 1, 2
+            # disparam pelo mesmo critério (não sofre da restrição artificial
+            # do trigger absoluto V_a, que ficava 7× mais estrito para gen 1).
+            rho_rel = rho_safe / rho0
+            split_mask = (
+                colony_mask & (rho_rel < PASS_N_RHO_TRIG) & splittable_mass_mask
+            )
+            split_idx = np.where(split_mask)[0]
+
+            if len(split_idx) > 0:
+                # Prioriza mais esvaziadas (menor rho_rel) se exceder limite
+                if len(split_idx) > PASS_N_MAX_PARENTS:
+                    order = np.argsort(rho_rel[split_idx])
+                    split_idx = split_idx[order][:PASS_N_MAX_PARENTS]
+
+                eps = PASS_N_EPSILON
+                alpha = PASS_N_ALPHA
+                prox_min = PASS_N_PROXIMITY_MIN * dx
+                prox_min_sq = prox_min * prox_min
+
+                # Padrão hexagonal: 6 vértices a 60°
+                angles_hex = np.arange(6) * (np.pi / 3.0)
+                cos_a = np.cos(angles_hex)
+                sin_a = np.sin(angles_hex)
+
+                # KDTree de partículas existentes — proximity guard
+                positions = np.column_stack([fluid.x, fluid.y])
+                tree = cKDTree(positions)
+
+                daughters = fluid.empty_clone()
+                new_positions = []  # filhas já adicionadas nesta call
+                mothers_used = []  # índices de mães que efetivamente splitaram
+                n_daughters_total = 0
+
+                # Snapshot dos campos (índices estáveis até o remove)
+                x_arr = fluid.x[split_idx]
+                y_arr = fluid.y[split_idx]
+                h_arr = fluid.h[split_idx]
+                m_arr = fluid.m[split_idx]
+                u_arr = fluid.u[split_idx]
+                v_arr = fluid.v[split_idx]
+                rho_arr = fluid.rho[split_idx]
+                rhob_arr = fluid.rho_b_grown[split_idx]
+                cs_arr = fluid.cs[split_idx]
+                co_arr = fluid.c_o[split_idx]
+                cn_arr = fluid.c_n[split_idx]
+                noise_arr = fluid.noise[split_idx]
+
+                for k in range(len(split_idx)):
+                    x_m, y_m = float(x_arr[k]), float(y_arr[k])
+                    h_m = float(h_arr[k])
+                    m_m = float(m_arr[k])
+                    r_off = eps * h_m
+
+                    # Filtra vértices que colidem com vizinhos existentes
+                    # OU com filhas já adicionadas nesta call.
+                    valid_vertices = []
+                    for j in range(6):
+                        vx = x_m + r_off * cos_a[j]
+                        vy = y_m + r_off * sin_a[j]
+                        d_existing, _ = tree.query([vx, vy])
+                        if d_existing < prox_min:
+                            continue
+                        too_close = False
+                        for nx, ny in new_positions:
+                            if (vx - nx) ** 2 + (vy - ny) ** 2 < prox_min_sq:
+                                too_close = True
+                                break
+                        if too_close:
+                            continue
+                        valid_vertices.append((vx, vy))
+
+                    # n_d = 1 centro + N vértices válidos
+                    n_d = 1 + len(valid_vertices)
+
+                    # Skip se sobraram poucas filhas (ganho de resolução baixo)
+                    if n_d < 4:
+                        continue
+
+                    # Massa REDISTRIBUÍDA entre n_d filhas (preserva m_total mãe)
+                    m_d = m_m / n_d
+                    h_d = alpha * h_m
+                    u_d = float(u_arr[k])
+                    v_d = float(v_arr[k])
+
+                    xs = [x_m] + [p[0] for p in valid_vertices]
+                    ys = [y_m] + [p[1] for p in valid_vertices]
+
+                    # Atualiza tracking de posições para próximas mães
+                    new_positions.append((x_m, y_m))
+                    new_positions.extend(valid_vertices)
+
+                    data = {
+                        "x": xs,
+                        "y": ys,
+                        "m": [m_d] * n_d,
+                        "h": [h_d] * n_d,
+                        "rho": [float(rho_arr[k])] * n_d,
+                        "rho_b_grown": [float(rhob_arr[k])] * n_d,
+                        "cs": [float(cs_arr[k])] * n_d,
+                        "c_o": [float(co_arr[k])] * n_d,
+                        "c_n": [float(cn_arr[k])] * n_d,
+                        "u": [u_d] * n_d,
+                        "v": [v_d] * n_d,
+                        "noise": [float(noise_arr[k])] * n_d,
+                    }
+                    daughters.add_particles(**data)
+                    mothers_used.append(int(split_idx[k]))
+                    n_daughters_total += n_d
+
+                if mothers_used:
+                    fluid.append_parray(daughters)
+                    fluid.remove_particles(np.asarray(mothers_used, dtype=np.uint32))
+                    solver.nnps.update()
+
+                    self._pass_n_spawned_since_log += n_daughters_total
+                    avg_d = n_daughters_total / len(mothers_used)
+                    print(
+                        f"Pass N v2.2 t={solver.t:.1f}s: "
+                        f"{len(mothers_used)} mães → {n_daughters_total} filhas "
+                        f"(<n_d>={avg_d:.1f}, ε={eps}, ρ_trig={PASS_N_RHO_TRIG}, gen≤2)"
+                    )
 
 
 if __name__ == "__main__":

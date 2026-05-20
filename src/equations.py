@@ -39,10 +39,8 @@ class BiomassGrowth(Equation):
                 motility_gate = tv * tv * (3.0 - 2.0 * tv)
 
             rate = (
-                self.r_growth
-                * (1.0 - d_rho_b_grown[d_idx] / self.rho_max)
-                * c_n_factor
-                * motility_gate
+                self.r_growth * (1.0 - d_rho_b_grown[d_idx] / self.rho_max) * c_n_factor
+                # * motility_gate
             )
             d_a_rho_b_grown[d_idx] = rate * d_rho_b_grown[d_idx]
             d_am[d_idx] = rate * d_m[d_idx]

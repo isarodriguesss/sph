@@ -14,6 +14,8 @@ $\frac{dc_s}{dt} = \sigma \rho_b + D \nabla^2 c_s - \lambda c_s$ => $\frac{Dc_s}
 
 $\frac{d\rho_b}{dt} = r \rho_b \left(1 - \frac{\rho_b}{\rho_{\text{max}}} \right)$
 
+
+
 # Rodando o PySPH
 
 ## Instalando as dependências

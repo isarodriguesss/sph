@@ -55,7 +55,7 @@ class CustomEulerStep(EulerStep):
         # distribuida (lição §22). Esta versao testa se reforcar coesao
         # (tension_ratio 0.02→0.08 em BiomassEOS) reduz a fragmentacao
         # interna pos-t=50s observada com pin hard. Mantem K.17 mecanico.
-        if d_rho_b_grown[d_idx] >= 0.8 or d_c_n[d_idx] < 0.4:
+        if d_rho_b_grown[d_idx] >= 0.8 or d_c_n[d_idx] < 0.6:
             d_u[d_idx] = 0.0
             d_v[d_idx] = 0.0
         else:
@@ -131,7 +131,7 @@ class MyBiomassScheme(Scheme):
                     sources=None,
                     rho0=1.0,
                     c0=self.c0,
-                    tension_ratio=0.08,  # M-B.9b: 0.02 → 0.08 (4x) — coesao reforcada
+                    tension_ratio=0.30,  # M-B.9b: 0.02 → 0.08 (4x) — coesao reforcada
                     # contra fragmentacao interna pos-t=50s (lição §15/§22). B_tension
                     # sobe de 0.00069 → 0.00275. Risco: re-aparecer halo nas baias.
                 ),
@@ -176,8 +176,9 @@ class MyBiomassScheme(Scheme):
                     D_ext=self.D_ext,
                     sigma=self.sigma,
                     lambda_=self.lambda_,
-                    lambda_ext_ratio=5.0,  # K.20: revertido de K.19 (que destruiu Pass J). Mantem drenagem por gradiente de borda agar-biofilme
-                    k_consume=1.0,  # K.20: 0.5→2.0 (4x) — sumidouro biomassa-dependente. Steady-state cs_int ≈ 0.10 (vs 0.85). Resolve bloqueio quimico §2.4-B
+                    lambda_ext_ratio=5.0,  # decaimento no agar mantem halo finito (Trinschek-like)
+                    k_consume=0.0,  # Pass T1: sumidouro removido — saturacao agora via (1-cs/cs_max)
+                    cs_max=0.5,  # Pass T1: Γ_max do painel (b) Trinschek 2018 — alvo de saturacao
                 ),
                 OxigenConsumption(
                     dest="fluid",

@@ -1008,6 +1008,8 @@ Calibracao pos-Passes A-I.7. **MARCO I.7:** Transicao blob→dendritico confirma
 
 24. **Mecanismo Trinschek-like (saturacao local em cs_max) PRODUZ a morfologia (b) transitoriamente — mas amplificacao σ/β escala alem da coesao SPH** (lição Pass T1, 2026-05-18): substituir o motor multiplicativo (motile_boost · tip_boost · c_n_factor) por `production ∝ (1 - cs/cs_max)` a la Trinschek 2018 produziu em **frame 005 (t≈21s) a melhor morfologia transitoria do projeto** — 12-15 dendritos finos coerentes matching reference_result.png painel (b). Porem amplitude `σ=5, β=10` necessaria para escalar com `cs_max=0.5` gera Marangoni na fronteira (|F_mar_borda| ≈ β·cs_max/h ≈ 70) muito acima do que `tension_ratio=0.08` (`B_tension≈0.003`) suporta — particulas do rim sao ejetadas radialmente em t>25s, dendritos se fragmentam em linhas de particulas isoladas, nucleo colapsa (frames 010-012). **Tres consequencias para futuro:** (a) o mecanismo de saturacao Trinschek **e validado empiricamente** (nao apenas teoricamente) — primeira vez que a morfologia (b) emerge no SPH, mesmo que transitoriamente; (b) sem `motile_boost` ou equivalente, a perda de assimetria azimutal de cs torna a morfologia DEPENDENTE da perturbacao inicial cos(Nθ) — fingerings sao artefato de seeding amplificado, nao de selecao competitiva sustentavel; (c) regra de escala: para qualquer T2 que mantenha `cs_max ~ 0.5`, `tension_ratio` deve escalar como ~`(β/β_ref)·tension_ratio_ref` — para `β=10`, `tension_ratio ≈ 0.20-0.30` (multiplicar tension_ratio_M-B.10 por β/β_M-B.10 = 10x). Lição metodologica: **calcular `|F_mar_borda| / B_tension` antes de mexer em σ ou β** — se razao > 10, brittle neck garantido em t < 30s.
 
+26. **A mãe sob teste NAO pode estar na KDTree do proximity guard — gen-1 viram "intocaveis"** (lição Pass N v2.2, 2026-05-21): em refinamento hexagonal Vacondio/Feldman, a verificacao de proximidade `d(vk, vizinho) >= prox_min` precisa excluir a propria mae da arvore espacial, porque por construcao geometrica `d(vk, mãe) = r_off = ε·h_mãe`. Se `r_off < prox_min`, a mae aparece como o vizinho mais proximo e **todos os 6 vertices sao rejeitados silenciosamente** (`n_d < 4` → split abortado sem print de falha). Com `ε=0.35`, `α=0.6` e `prox_min=0.4·dx_0`, isso acontece para `h_mãe < 1.143·dx_0` — ou seja, **todas as filhas gen-1 (h=1.08·dx_0)** ficam permanentemente bloqueadas para re-splittar. Sintoma: log mostra splits apenas em iter 200 (gen-0 da relaxacao inicial) e pausa de ~32s antes de retomada esporadica; nucleo esvazia sem ser repovoado; mass_total quasi-invariante (correto por design). **Fix v2.3:** `tree_mask[split_idx] = False` antes de `cKDTree(positions[tree_mask])` ([main.py:451-465](main.py#L451-L465)). **Regra geral:** em qualquer guard de proximidade que verifica vertices geometricamente derivados de uma particula, essa particula precisa ser excluida da arvore de busca, porque a distancia vertice-particula original e DETERMINISTICAMENTE menor que a distancia vertice-qualquer-outra-particula (na regiao de refinamento). Equivale a verificar colisao com um vizinho que ja sabemos que vai ser deletado.
+
 25. **Refinamento "1 filha por gap angular" FALHA estruturalmente; padrão Vacondio/Feldman (7 filhas hexagonais) é obrigatório** (lição Pass N v1, 2026-05-20): Pass N implementado como "detectar gap angular > π/2 e adicionar 1 filha em direção do gap" falhou em 3 modos simultaneamente: (a) **núcleo permanece oco** porque gaps no núcleo são isotrópicos (perda em múltiplas direções por hard pin K.17 + drift do rim), e filtro `max_gap > π/2` os rejeita; (b) **braços permanecem espaçados** porque ganho de resolução por split é 2× (mãe + 1 filha) ao invés de 7× (substituição hexagonal Vacondio) — não acompanha taxa de alongamento dos braços; (c) **velocidade NÃO herdada** (filhas nascem com u=v=0) viola conservação de momentum prescrita por Soleimani 2017 §3.2.6 — gera gradiente artificial e concentra propriedades dinâmicas nas partículas originais. **Solução obrigatória**: implementar Vacondio 2013 / Feldman 2006 (cit. Soleimani §3.2.6): substituir 1 mãe por 7 filhas em padrão hexagonal 2D (1 centro + 6 vértices a 60°), `ε = α = 0.6` (offset e smoothing), massa dividida igualmente (`m_filha = m_mãe/7`), velocidade IDÊNTICA herdada (`u_filha = u_mãe`), todas propriedades (rho_b, cs, c_o, c_n) copiadas para cada filha. Mãe é DELETADA. Erro de densidade < 5% comprovado (Feldman 2006). **Regra geral**: qualquer mecanismo de refinamento SPH neste projeto deve seguir o padrão Vacondio/Feldman — substituição N×, não adição 1×. Antes de propor variação, computar: ganho de resolução = N (não fração) e verificar conservação simultânea de mass + linear momentum + angular momentum. Se algum for violado, voltar ao paper. Diagnóstico em §12 Pass N v1.
 
 **Proximos diagnosticos obrigatorios (atualizado 2026-04-30 pos-K.21):**
@@ -1548,11 +1550,73 @@ Trigger novo: `colony_mask AND (rho_a/rho_0 < 0.7) AND (m > m_floor)`.
 | Morfologia | ✅ ~20 dendritos starfish | ✅ preservada com partículas mais densas |
 | `contrast_cs` em t=40s | 11 (colapso) | depende — talvez melhore com kernel mais denso |
 
-**Validacao pendente — proximos passos:**
-1. Rodar `make run` com `total_sim_time = 50` (a confirmar com usuario antes do run).
-2. Verificar criterios de aceitacao da tabela acima.
-3. Se v2.2 validar em t=50s, estender para t=100s.
-4. Se passar em t=100s: marcar Pass N v2.2 como validado e considerar Pass L.
+#### Pass N v2.2 — VALIDACAO t=0-50s + FALHA DIAGNOSTICADA (2026-05-21)
+
+**Resultado experimental** (50s solicitados, executou ate t=49.95s, 9200 iter):
+- ❌ **`pass_n_spawned` cataclismicamente baixo**: 165 em iter 200 (t=3.1s) → **0 sustentado durante iter 400-3000 (~32s)** → retomada esporadica iter 3200+ com picos 7-21/call.
+- ❌ **Nucleo permanece oco** em frame 23 (t≈50s): painel rho/rho_0 mostra circulos azuis (rho < 0.7·rho_0) persistentes no centro.
+- ❌ **Braços como fios isolados**: rho/rho_0 < 0.7 espalha pelos dendritos sem reposicao.
+- ✅ `mass_total` 101.08 → 103.01 (+1.9%) — consistente com conservacao por construcao (m_d = m_m/n_d); crescimento residual vem de BiomassGrowth.am.
+
+**Diagnostico (2026-05-21) — falha geometrica: filhas gen-1 sao ESTRUTURALMENTE IMPOSSIVEIS de re-splittar.**
+
+A cKDTree em [main.py:452](main.py#L452) (v2.2) era construida **sobre todas as particulas existentes, inclusive a propria mae sob teste**. Para cada vertice `vk` no padrao hexagonal:
+
+```
+d_existing = distância(vk, vizinho mais próximo na tree)
+           ≤ distância(vk, mãe)
+           = r_off = ε · h_mãe = 0.35 · h_mãe (por construção)
+```
+
+Filtro de proximidade `d_existing >= prox_min = 0.4·dx_0` exige:
+```
+0.35 · h_mãe > 0.4 · dx_0  ↔  h_mãe > 1.143 · dx_0
+```
+
+Comportamento por geracao (`h_0 = 1.8·dx_0`, `α = 0.6`):
+
+| Geracao | `h_mãe / dx_0` | Passa `> 1.143·dx_0`? | Resultado |
+|---|:---:|:---:|---|
+| 0 | 1.80 | ✅ | Splita normalmente |
+| 1 | 1.08 | ❌ | **Todos 6 vertices abortados → split silenciosamente recusado** |
+| 2 | 0.65 | ❌ | (já bloqueada por m_floor = m_0/49) |
+
+**Implicacao:** as ~700-1000 filhas gen-1 acumuladas no iter 200 ficam permanentemente "invisiveis" ao refinamento. Quando o nucleo continua perdendo vizinhos por migracao do rim (Marangoni + hard pin K.17), nada repoe. Os splits gen-0 esporadicos pos-t=39s sao apenas particulas do rim em estiramento — one-shot, nao progressivo.
+
+**Vetor 2 (secundario) — Trigger `rho_rel < 0.7` é late-acting:** so dispara apos a particula perder ~3-4 vizinhos. Combinado com `r_growth=0.02` (motor lento), durante t=0-37s a colonia esta quasi-estatica e o trigger nao dispara — comportamento fisicamente correto, mas combinado com Vetor 1 significa que gen-1 do iter 200 permanecem nao-refinaveis enquanto o nucleo se esvazia silenciosamente.
+
+**Vetor 3 (não-causal) — Hard pinning interage mas nao e o conflito direto:** pin em `rho_b ≥ 0.8` congela nucleo enquanto rim migra → nucleo perde vizinhos → `rho/rho_0 < 0.7` dispara em principio. Mas se as candidatas viraram gen-1 antes (iter 200), elas ficam barradas por Vetor 1. Hard pin gera o gap; Vetor 1 impede a solucao.
+
+#### Pass N v2.3 — EXCLUIR MAES DA KDTREE (2026-05-21, IMPLEMENTADO)
+
+**Fix unico** em [main.py:451-465](main.py#L451-L465): construir cKDTree apenas com particulas que NAO sao mães do split atual. As mães serão removidas em `remove_particles` ao final da call — mantê-las na árvore era inconsistente fisicamente (elas são "transparentes" para o filtro de colisão).
+
+```python
+tree_mask = np.ones(len(fluid.x), dtype=bool)
+tree_mask[split_idx] = False
+positions = np.column_stack([fluid.x[tree_mask], fluid.y[tree_mask]])
+tree = cKDTree(positions)
+```
+
+**Predicoes v2.3 vs v2.2:**
+
+| Metrica | v2.2 observado (t=50s) | v2.3 predicao |
+|---|:---:|:---:|
+| `pass_n_spawned` em t=10-37s | 0 sustentado | 50-200 por call (gen-1 do iter 200 desbloqueadas) |
+| Nucleo oco em t=50s | sim | nao |
+| "gap critico" rho_rel < 0.7 (t=50s) | núcleo + braços | minoria, isolado |
+| `mass_total` em t=50s | 103.01 (+1.9%) | ≈ 103 ± 0.5 (invariante por construcao) |
+| Morfologia ~20 dendritos | preservada | preservada com partículas mais densas |
+| Risco: gen-2 com h=0.65·dx_0 | n/a | sub-amostragem do kernel — **monitorar max_v < 1.0** |
+
+**Validacao pendente:**
+1. Rodar `make run` com `total_sim_time = 50`.
+2. Criterios de aceitacao:
+   - `pass_n_spawned` >> 0 sustentado durante t=10-40s (n~50-200/call, nao 0).
+   - Frame 23 (t≈50s) painel 3: nucleo sem anel azul, braços majoritariamente com rho/rho_0 ≥ 0.7.
+   - `mass_total` em t=50s entre 102.5 e 103.5 (Bloqueio E preservado).
+   - `max_v` pico ≤ 1.0 durante todo o run (sem instabilidade tipo v2-inicial).
+3. Se v2.3 passar em t=50s, estender para t=100s.
 
 ---
 

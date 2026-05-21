@@ -448,8 +448,18 @@ class SwarmApp(Application):
                 cos_a = np.cos(angles_hex)
                 sin_a = np.sin(angles_hex)
 
-                # KDTree de partículas existentes — proximity guard
-                positions = np.column_stack([fluid.x, fluid.y])
+                # KDTree de partículas existentes — proximity guard.
+                # Pass N v2.3: excluir as mães do split atual da árvore. Elas serão
+                # removidas em remove_particles ao final desta call — manter elas
+                # na árvore fazia com que o filtro rejeitasse vértices que caem a
+                # r_off < prox_min da própria mãe. Para gen-1 (h=1.08·dx_0) o
+                # r_off=0.378·dx_0 é < prox_min=0.4·dx_0, então todos os 6 vértices
+                # falhavam → n_d=1 < 4 → split abortado silenciosamente. Resultado
+                # v2.2: filhas gen-1 nunca conseguiam se redividir; núcleo
+                # esvaziava progressivamente sem reposição. Ver §9 Pass N v2.3.
+                tree_mask = np.ones(len(fluid.x), dtype=bool)
+                tree_mask[split_idx] = False
+                positions = np.column_stack([fluid.x[tree_mask], fluid.y[tree_mask]])
                 tree = cKDTree(positions)
 
                 daughters = fluid.empty_clone()
@@ -541,7 +551,7 @@ class SwarmApp(Application):
                     self._pass_n_spawned_since_log += n_daughters_total
                     avg_d = n_daughters_total / len(mothers_used)
                     print(
-                        f"Pass N v2.2 t={solver.t:.1f}s: "
+                        f"Pass N v2.3 t={solver.t:.1f}s: "
                         f"{len(mothers_used)} mães → {n_daughters_total} filhas "
                         f"(<n_d>={avg_d:.1f}, ε={eps}, ρ_trig={PASS_N_RHO_TRIG}, gen≤2)"
                     )

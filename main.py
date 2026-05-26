@@ -114,10 +114,21 @@ PASS_N_EPSILON = 0.35  # offset filha = ε · h_mãe — REDUZIDO de 0.6 (Feldma
 PASS_N_M_FLOOR_RATIO = 1.0 / 49.0  # permite gen ≤ 2: m > m₀/49 ainda splittable.
 # v2-inicial usou 1/7 → bloqueava após 1 gen → splits
 # cessaram em t=7.6s mesmo com braços alongando.
-PASS_N_RHO_B_MIN = 0.3  # gate de biomassa — exclui borda dilute da Gaussiana
-# inicial (rho_b 0.05-0.3 tem rho SPH naturalmente baixo
-# por kernel truncado, não gap real). Cobre swarmers
-# ativos (rho_b ∈ [0.3, 0.8]) E núcleo (rho_b ≥ 0.8).
+PASS_N_RHO_B_MIN = 0.3  # gate inferior de biomassa — exclui borda dilute da
+# Gaussiana inicial (rho_b 0.05-0.3 tem rho SPH naturalmente baixo por kernel
+# truncado, não gap real).
+PASS_N_RHO_B_MAX = 0.7  # Pass N v2.3.1 (Opção 2): gate superior — exclui núcleo
+# e shell adjacente ao pin (rho_b ≥ 0.7) do refinamento.
+# Justificativa: v2.3 desbloqueou gen-1 mas todos os splits
+# se concentraram no centro (relaxacao inicial da Gaussiana
+# criou gaps no nucleo), causando over-pack do core e
+# a_pressure=5.0 sustentado → dt collapse 12× → simulação
+# travou em t=13s/iter 7200. Restringindo a rho_b ∈ [0.3, 0.7]
+# (zona de transicao/rim ativo), o refinamento so vai disparar
+# quando dendritos do rim esticarem (t > 30s). Trade-off:
+# nucleo continua perdendo vizinhos com o tempo sem reposicao
+# — aceita-se este custo para manter pace temporal saudavel
+# e focar refinamento onde a morfologia esta evoluindo.
 PASS_N_PROXIMITY_MIN = 0.4  # min distância filha-vizinho em unidades de dx;
 # vertices que cairiam < 0.4·dx de partícula existente
 # são descartadas (mass redistribuída em N_actual < 7).
@@ -413,9 +424,15 @@ class SwarmApp(Application):
 
             V_0 = dx * dx  # volume inicial (referência massa)
 
-            # Gate: rho_b > 0.3 (exclui borda dilute da Gaussiana onde rho SPH
-            # é naturalmente baixo por kernel truncado, não por gap real).
-            colony_mask = fluid.rho_b_grown > PASS_N_RHO_B_MIN
+            # Gate v2.3.1: rho_b ∈ [0.3, 0.7] — exclui borda dilute (rho_b<0.3,
+            # gap não real, só kernel truncado) E núcleo/shell adjacente ao pin
+            # (rho_b>0.7, onde gaps são gerados pela migração do rim mas o
+            # refinamento ali causou over-pack do centro em v2.3 → dt collapse).
+            # Refinamento agora focado na zona de transição/rim ativo, onde
+            # dendritos esticam e geram gaps morfologicamente significativos.
+            colony_mask = (fluid.rho_b_grown > PASS_N_RHO_B_MIN) & (
+                fluid.rho_b_grown < PASS_N_RHO_B_MAX
+            )
 
             # Geração ≤ 2: m_floor = m₀/49 permite 2 splits sucessivos
             m_floor = V_0 * PASS_N_M_FLOOR_RATIO

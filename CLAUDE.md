@@ -1609,14 +1609,63 @@ tree = cKDTree(positions)
 | Morfologia ~20 dendritos | preservada | preservada com partículas mais densas |
 | Risco: gen-2 com h=0.65·dx_0 | n/a | sub-amostragem do kernel — **monitorar max_v < 1.0** |
 
-**Validacao pendente:**
+#### Pass N v2.3 — VALIDACAO PARCIAL t=0-13s + EFEITO COLATERAL: OVER-PACK DO CENTRO (2026-05-26)
+
+**Resultado experimental** (50s solicitados, executou apenas t=12.98s em 7200 iter antes do diagnostico — dt colapsou):
+
+**Lado positivo — fix v2.3 funcionou empiricamente:**
+- iter 200 (t=3.19s): 139 splits ✅
+- iter 400 (t=4.64s): **374 splits** ✅ (gen-1 do iter 100/200 entraram como mães — desbloqueio confirmado)
+- iter 600 (t=5.29s): 39 splits
+- iter 800 (t=6.41s): 4 splits
+- Total 556 splits em t=0-6s (vs 165 em todo v2.2 — 3.4× mais).
+- Tamanho HDF5: 5078→5141 KB (+63 KB ≈ ~500 particulas novas).
+- Conservacao de massa: 101.08 → 101.43 em 13s (consistente com BiomassGrowth.am, Pass N nao adiciona massa).
+
+**Lado negativo — splits concentrados no centro causaram travamento:**
+- iter 1000+: 0 splits sustentado.
+- Causa raiz: trigger `rho/rho_0 < 0.7` em t=0-6s só dispara onde ha gap real, que e SO no centro relaxando a Gaussiana inicial (rim ainda coeso, motor fraco com r_growth=0.02). 556 mães identificadas todas perto do centro → ~2200 daughters reocupam o centro → rho local sobe → trigger se autoamortece.
+- Efeito colateral devastador no dt: filhas com h=1.08·dx_0 empacotadas a 0.378·dx_0 → kernel vê excesso de vizinhos próximos → pressão EOS sobe → CFL_force aperta dt.
+- `a_pressure` cravado em **5.015** desde iter 800 (vs baseline 3.0 em v2.2 — alavanca §8 violada).
+- Pace temporal: dt avg de 5e-3 (iter 0-1000) → 4.3e-4 (iter 2000-7200) — **12× menor**. Simulação rastejando.
+- Extrapolacao: chegar a t=50s exigiria ~75 000 iter adicionais (~2-3h wall time).
+
+**Bug secundário diagnosticado:** `mean_c_n > max_c_n` (1.0177 vs 1.0000 cravado) em iter 6000+. Matematicamente impossivel — implica particulas com c_n > 1.0 não-clampadas. Provavel: `add_particles` em PySPH alocando buffer com lixo > 1 para propriedade `c_n` não explicitamente no `data` dict. Baixa prioridade, mas vale verificar inicialização de daughters.
+
+**Frame i7_032 (iter 6400, t≈12s) — confirmacao visual:** painel 1 (rho_b) mostra colonia starfish com ~12-15 protrusoes radiais (motor de Marangoni inicial). Painel 3 (rho/rho_0) mostra **mancha azul intensa no centro** correspondendo as ~556 filhas empacotadas la — refinamento visualmente localizado mas NAO morfologicamente util (centro nao precisava de mais resolucao, dendritos sim).
+
+#### Pass N v2.3.1 — GATE SUPERIOR rho_b < 0.7 (Opção 2, 2026-05-26, IMPLEMENTADO)
+
+**Fix em [main.py:117-130](main.py#L117-L130) + [main.py:427-434](main.py#L427-L434):**
+
+Adicionado `PASS_N_RHO_B_MAX = 0.7`. `colony_mask` agora exige `rho_b ∈ [0.3, 0.7]` (zona de transicao/rim ativo) ao inves de `rho_b > 0.3` apenas. Particulas em `rho_b ≥ 0.7` (nucleo + shell adjacente ao hard pin K.17) **nao sao candidatas a split**.
+
+**Trade-off explicito:** o gap inicial do nucleo da relaxacao da Gaussiana NAO sera repovoado por Pass N. Aceita-se este custo porque:
+1. O nucleo nao precisa de resolucao adicional — esta hard-pinado (K.17), nao se move, nao gera morfologia.
+2. Over-pack do centro em v2.3 inviabilizou o run por colapso de dt (12× menor).
+3. Refinamento morfologicamente util e nos braços que esticam (rho_b ∈ [0.3, 0.7]).
+
+**Predicoes v2.3.1 vs v2.3:**
+
+| Metrica | v2.3 observado (t=13s) | v2.3.1 predicao |
+|---|:---:|:---:|
+| `pass_n_spawned` em iter 200-1000 | 556 (no centro) | 0-30 (rim ainda coeso, sem gaps) |
+| `a_pressure` em t=10s | 5.015 cravado | ~3.0 (orcamento §8 ✓) |
+| dt avg em iter 2000-7200 | 4.3e-4 | ~5e-3 (recuperado) |
+| `pass_n_spawned` em t > 30s | n/a (run nao chegou) | 50-200 sustentado (braços esticando) |
+| t=50s atingido em | ~75 000 iter (extrapolado) | ~9000 iter (baseline v2.2) |
+| Nucleo oco no painel 3 | preenchido (over-pack) | sim — trade-off aceito |
+| Braços com rho_rel < 0.7 em t=50s | n/a | minoritarios (preenchidos por splits) |
+
+**Validacao pendente v2.3.1:**
 1. Rodar `make run` com `total_sim_time = 50`.
 2. Criterios de aceitacao:
-   - `pass_n_spawned` >> 0 sustentado durante t=10-40s (n~50-200/call, nao 0).
-   - Frame 23 (t≈50s) painel 3: nucleo sem anel azul, braços majoritariamente com rho/rho_0 ≥ 0.7.
-   - `mass_total` em t=50s entre 102.5 e 103.5 (Bloqueio E preservado).
-   - `max_v` pico ≤ 1.0 durante todo o run (sem instabilidade tipo v2-inicial).
-3. Se v2.3 passar em t=50s, estender para t=100s.
+   - `pass_n_spawned` em t=0-10s próximo de 0 (não há gaps no rim ainda).
+   - `pass_n_spawned` em t=30-50s sustentado em 20-200/call (braços esticando).
+   - `a_pressure` plateau ~3.0 (sem over-pack).
+   - dt avg ~5e-3 ao longo do run (pace temporal restaurado).
+   - Frame 23 (t≈50s) painel 3: BRAÇOS sem azul (preenchidos por splits); núcleo PODE ter azul (aceito por design).
+3. Bug secundario `mean_c_n > max_c_n` — checar se persiste; se sim, adicionar inicializacao explicita de `c_n` (e outras propriedades flutuantes) no `data` dict de `daughters.add_particles`.
 
 ---
 

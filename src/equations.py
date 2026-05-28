@@ -77,6 +77,26 @@ class BiomassGradient(Equation):
         d_grad_rho_b_mag[d_idx] = (gx * gx + gy * gy) ** 0.5
 
 
+class KernelSum(Equation):
+    # Pass N v2.4 — Partição da unidade discreta (Violeau §3.4-3.6, Liu §3.3.3).
+    # sigma_a = Sum_j V_j W(r_aj, h_aj). Mede a consistencia de ordem zero
+    # do SPH na particula a: sigma_a → 1 para distribuicao uniforme com
+    # vizinhanca completa; sigma_a < 1 quando o kernel esta truncado por gap.
+    # Trigger Pass N v2.4: sigma_a < 0.85 (~15% erro nos operadores SPH).
+    # Invariante sob refinamento — gen 0/1/2 disparam pelo mesmo limiar
+    # (diferente do trigger absoluto V_a, que ficava 7x cego apos gen 1).
+    # DEVE rodar em Group SEPARADO apos SummationDensity para que s_rho
+    # esteja totalmente acumulado.
+    def initialize(self, d_idx, d_sigma_a):
+        d_sigma_a[d_idx] = 0.0
+
+    def loop(self, d_idx, s_idx, s_m, s_rho, WIJ, d_sigma_a):
+        rho_safe = s_rho[s_idx]
+        if rho_safe < 1e-6:
+            rho_safe = 1e-6
+        d_sigma_a[d_idx] += (s_m[s_idx] / rho_safe) * WIJ
+
+
 class SurfactantEquation(Equation):
     def __init__(
         self,

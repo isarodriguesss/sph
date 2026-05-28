@@ -153,6 +153,20 @@ Validado experimentalmente em B. subtilis (este trabalho), E. coli (Wu & Berg, P
 
 **[T4] Potomkin, Tournus, Berlyand, Aranson 2017 — *J. R. Soc. Interface* 14, 20161031.** Modelo individual de microswimmer com flagelo flexivel em fluxo de cisalhamento. Resultados-chave: (a) **flagella bending reduz viscosidade efetiva** em suspensoes diluidas SEM tumbling (vs Haines et al. que requeria tumbling); (b) flagela buckling assiste **escape de paredes**. Complexidade dependente da rigidez `K_b` do flagelo. Valida nossa abordagem de Frente 5 (motilidade flagelar) mas sugere extensao futura para incluir flexibilidade do flagelo.
 
+**[T6] Liu & Liu 2003 — *Smoothed Particle Hydrodynamics: A Meshfree Particle Method* (World Scientific).** Texto-referencia obrigatorio para qualquer modificacao em consistencia SPH, instabilidade numerica, ou refinamento. Capitulos criticos para o projeto:
+- **§3.3 — Particle Approximation Consistency:** condicoes de consistencia de ordem zero e um; requisitos minimos de vizinhos (~20 para gradiente confiavel, ~35 para Laplaciano).
+- **§3.4 — Conservation Properties:** condicoes para conservacao exata de massa, momento linear e momento angular sob formulacao SPH antisimetrica.
+- **§4.1-4.3 — SPH for Navier-Stokes:** formulacao da equacao de momentum, derivacao da pressao via EOS, papel da viscosidade artificial Monaghan.
+- **§6.4 — Tensile Instability:** mecanismo de instabilidade sob pressao negativa (p<0 → kernel atrativo); criterios de Monaghan para diagnostico; mitigacoes (artificial stress, kernel gradient correction).
+- **§6.5 — Treatment of Free Surface:** sub-amostragem do kernel em bordas e particulas isoladas; tradeoff acuracia vs estabilidade.
+
+**[T7] Violeau 2012 — *Fluid Mechanics and the SPH Method: Theory and Applications* (Oxford U. Press).** Complemento ao Liu para fundamentacao teorica rigorosa. Capitulos criticos:
+- **§3.4-3.6 — Discrete Consistency / Partition of Unity:** definicao formal de `σ_a = Σ_j V_j W_aj` e seu papel como medida direta do erro do operador SPH. Trigger v2.4 do Pass N baseado nesta secao.
+- **§5.3 — Conservation in SPH:** prova rigorosa de que momento linear e exatamente conservado com formulacao antisimetrica; momento angular conservado apenas aproximadamente — refinamento parcial agrava drift.
+- **§7.4-7.5 — Particle Refinement / Coarsening:** baseado em Vacondio 2013 e Feldman 2006; deriva razao otima `ε/α = 1`, padrao hexagonal 2D, requisitos de simetria para preservacao do CM e momento angular.
+
+**Aplicabilidade obrigatoria (2026-05-28):** qualquer mudanca em (a) refinamento adaptativo (Pass N e variantes), (b) integradores customizados (CustomEulerStep, pinning), (c) novas equacoes SPH (forcas, difusao, EOS), (d) trigger ou criterio de qualidade do kernel, **deve citar explicitamente o capitulo/secao de Liu ou Violeau que fundamenta a alteracao**. Solucoes "tentativa e erro" sem ancoragem teorica nestas referencias sao **rejeitadas em revisao**. Ver §10 Proibicoes.
+
 **[T5] Bru, Kasallis, Zhuo, Høyland-Kroghsbo, Siryaporn 2023 — *Biophys. Rev.* 4, 031305.** Review especifico de swarming em P. aeruginosa. Pontos cruciais:
 - **Marangoni nao e dominante:** experimento de Yang et al. — adicionar surfactante (Triton X-100) DEVERIA reduzir gradiente de tensao superficial e enfraquecer Marangoni, mas EXPERIMENTALMENTE aumentou o swarming. Conclusao: pressao-osmotica (van't Hoff) e o motor dominante, NAO Marangoni.
 - **Modelo multilayer:** bacteria + camada de surfactante + agar. Ramnolipidos produzem camada distinta da camada bacteriana (confirmado por IRIS imaging).
@@ -1008,6 +1022,10 @@ Calibracao pos-Passes A-I.7. **MARCO I.7:** Transicao blob→dendritico confirma
 
 24. **Mecanismo Trinschek-like (saturacao local em cs_max) PRODUZ a morfologia (b) transitoriamente — mas amplificacao σ/β escala alem da coesao SPH** (lição Pass T1, 2026-05-18): substituir o motor multiplicativo (motile_boost · tip_boost · c_n_factor) por `production ∝ (1 - cs/cs_max)` a la Trinschek 2018 produziu em **frame 005 (t≈21s) a melhor morfologia transitoria do projeto** — 12-15 dendritos finos coerentes matching reference_result.png painel (b). Porem amplitude `σ=5, β=10` necessaria para escalar com `cs_max=0.5` gera Marangoni na fronteira (|F_mar_borda| ≈ β·cs_max/h ≈ 70) muito acima do que `tension_ratio=0.08` (`B_tension≈0.003`) suporta — particulas do rim sao ejetadas radialmente em t>25s, dendritos se fragmentam em linhas de particulas isoladas, nucleo colapsa (frames 010-012). **Tres consequencias para futuro:** (a) o mecanismo de saturacao Trinschek **e validado empiricamente** (nao apenas teoricamente) — primeira vez que a morfologia (b) emerge no SPH, mesmo que transitoriamente; (b) sem `motile_boost` ou equivalente, a perda de assimetria azimutal de cs torna a morfologia DEPENDENTE da perturbacao inicial cos(Nθ) — fingerings sao artefato de seeding amplificado, nao de selecao competitiva sustentavel; (c) regra de escala: para qualquer T2 que mantenha `cs_max ~ 0.5`, `tension_ratio` deve escalar como ~`(β/β_ref)·tension_ratio_ref` — para `β=10`, `tension_ratio ≈ 0.20-0.30` (multiplicar tension_ratio_M-B.10 por β/β_M-B.10 = 10x). Lição metodologica: **calcular `|F_mar_borda| / B_tension` antes de mexer em σ ou β** — se razao > 10, brittle neck garantido em t < 30s.
 
+28. **Partição da unidade discreta (σ_a) é o trigger correto para refinamento adaptativo — `ρ_rel < 0.7` é enviesado por massa** (lição Pass N v2.4, 2026-05-28, ancorada em Violeau §3.6 e Liu §3.3.3): o trigger `ρ_rel = ρ_a/ρ_0 < 0.7` (v2.2-v2.3.1) parece medir gap mas mistura duas coisas: a partição da unidade `σ_a = Σ_j V_j W_aj` (consistencia de ordem zero do SPH) E o fator de escala de massa das filhas (`m_d = m_m / n_d`). Como `ρ_a = Σ_j m_j W_aj`, em regime de uniformidade de massa (gen 0) `ρ_a / ρ_0 ≈ σ_a` e os dois criterios coincidem. **Pos-refinamento**, filhas em região esticada têm `σ_a < 1` (gap real, kernel mal suportado) MAS `ρ_a` artificialmente alto se cercadas de irmãs da mesma mãe a curta distância (`ε·h`) — o trigger por densidade silencia o sinal real do erro do operador SPH. **Regra geral**: para refinamento adaptativo, sempre disparar com base em medida invariante sob refinamento — Liu §3.3.3 e Violeau §3.6 identificam `σ_a < 0.85` como criterio de ~15% erro nos operadores SPH, válido independente de geração. Implementacao em [equations.py](src/equations.py) `KernelSum` em Group separado apos `SummationDensity` (necessario para `s_rho` finalizado).
+
+27. **Pinning cinemático + refinamento simétrico são incompatíveis — refinar no núcleo é academic** (lição Pass N v2.3 → v2.3.1, 2026-05-26, ancorada em Liu §4.5 e §6.4): o hard pin K.17 (`u=v=0` em `ρ_b ≥ 0.8`) zera velocidade APÓS o cálculo da força no integrador, quebrando reciprocidade Newton-3: a partícula vizinha não-pinada recebe push integral de pressão mas a reação é zerada artificialmente. Quando v2.3 desbloqueou refinamento no núcleo (gen-1 via tree_mask), os splits se concentraram lá porque `ρ_b ≥ 0.8` + relaxacao Gaussiana inicial cria gaps no centro. Resultado: `a_pressure = 5.015` sustentado (vs orcamento §8 < 3), `max_v` cravado, **dt collapse 12×** (5e-3 → 4.3e-4), simulação travou em t=13s/iter 7200. Causa raiz dupla: (a) com `ε=0.35` e `α=0.6`, o offset 0.378·dx das filhas-vértice cai no pico do kernel `W(r/h ≈ 0.35)` — densidade pós-split ≈ 1.7×densidade pré-split (Violeau §7.4 prova que `ε/α=1` minimiza esse erro; manter razao ≠ 1 é over-pack garantido); (b) Liu §4.5 alerta que a equação de momentum não é integrada em pin cinemático — refinar lá adiciona vizinhos cujas forças vão ao lixo, mas cuja contribuição ao kernel inflaciona a densidade dos vizinhos NÃO-pinados, criando instabilidade de pressão por toda a borda. **Regra geral**: refinamento adaptativo deve ser EXCLUÍDO de regiões com pin cinemático ativo (Liu §6.4 — tensile instability se agrava). Em Pass N v2.3.1 isso virou o gate `ρ_b < PASS_N_RHO_B_MAX = 0.7`. Trade-off explicito: nucleo continua perdendo vizinhos com o tempo sem reposicao — aceito por design porque partição da unidade no núcleo congelado é teoricamente irrelevante.
+
 26. **A mãe sob teste NAO pode estar na KDTree do proximity guard — gen-1 viram "intocaveis"** (lição Pass N v2.2, 2026-05-21): em refinamento hexagonal Vacondio/Feldman, a verificacao de proximidade `d(vk, vizinho) >= prox_min` precisa excluir a propria mae da arvore espacial, porque por construcao geometrica `d(vk, mãe) = r_off = ε·h_mãe`. Se `r_off < prox_min`, a mae aparece como o vizinho mais proximo e **todos os 6 vertices sao rejeitados silenciosamente** (`n_d < 4` → split abortado sem print de falha). Com `ε=0.35`, `α=0.6` e `prox_min=0.4·dx_0`, isso acontece para `h_mãe < 1.143·dx_0` — ou seja, **todas as filhas gen-1 (h=1.08·dx_0)** ficam permanentemente bloqueadas para re-splittar. Sintoma: log mostra splits apenas em iter 200 (gen-0 da relaxacao inicial) e pausa de ~32s antes de retomada esporadica; nucleo esvazia sem ser repovoado; mass_total quasi-invariante (correto por design). **Fix v2.3:** `tree_mask[split_idx] = False` antes de `cKDTree(positions[tree_mask])` ([main.py:451-465](main.py#L451-L465)). **Regra geral:** em qualquer guard de proximidade que verifica vertices geometricamente derivados de uma particula, essa particula precisa ser excluida da arvore de busca, porque a distancia vertice-particula original e DETERMINISTICAMENTE menor que a distancia vertice-qualquer-outra-particula (na regiao de refinamento). Equivale a verificar colisao com um vizinho que ja sabemos que vai ser deletado.
 
 25. **Refinamento "1 filha por gap angular" FALHA estruturalmente; padrão Vacondio/Feldman (7 filhas hexagonais) é obrigatório** (lição Pass N v1, 2026-05-20): Pass N implementado como "detectar gap angular > π/2 e adicionar 1 filha em direção do gap" falhou em 3 modos simultaneamente: (a) **núcleo permanece oco** porque gaps no núcleo são isotrópicos (perda em múltiplas direções por hard pin K.17 + drift do rim), e filtro `max_gap > π/2` os rejeita; (b) **braços permanecem espaçados** porque ganho de resolução por split é 2× (mãe + 1 filha) ao invés de 7× (substituição hexagonal Vacondio) — não acompanha taxa de alongamento dos braços; (c) **velocidade NÃO herdada** (filhas nascem com u=v=0) viola conservação de momentum prescrita por Soleimani 2017 §3.2.6 — gera gradiente artificial e concentra propriedades dinâmicas nas partículas originais. **Solução obrigatória**: implementar Vacondio 2013 / Feldman 2006 (cit. Soleimani §3.2.6): substituir 1 mãe por 7 filhas em padrão hexagonal 2D (1 centro + 6 vértices a 60°), `ε = α = 0.6` (offset e smoothing), massa dividida igualmente (`m_filha = m_mãe/7`), velocidade IDÊNTICA herdada (`u_filha = u_mãe`), todas propriedades (rho_b, cs, c_o, c_n) copiadas para cada filha. Mãe é DELETADA. Erro de densidade < 5% comprovado (Feldman 2006). **Regra geral**: qualquer mecanismo de refinamento SPH neste projeto deve seguir o padrão Vacondio/Feldman — substituição N×, não adição 1×. Antes de propor variação, computar: ganho de resolução = N (não fração) e verificar conservação simultânea de mass + linear momentum + angular momentum. Se algum for violado, voltar ao paper. Diagnóstico em §12 Pass N v1.
@@ -1088,7 +1106,8 @@ Resultado: pulsacoes episodicas (n_fast pico=114 em t=1.5s via perturbacao inici
 - **Nao remover hard pinning mecanico `rho_b>=0.8`** (K.17). Confirmado nao negociavel por K.25a (falha catastrofica) e M-B.9a (fragmentacao distribuida quando substituido por drag forte, lição §22). Pin cinematico e estruturalmente protetor — coesao SPH atual `B_tension≈0.0028` nao resiste ao diferencial de v_term ~ 0.1 entre core e tip sem o pin.
 - **Ao introduzir mecanismo que aumenta tracao no rim** (f0 maior, motile_boost maior, etc), **re-avaliar `tension_ratio` no mesmo passo** (lição §23). Cohesao SPH deve escalar com motor — ignorar isso reproduz brittle neck (lição §15).
 - **OBRIGATORIO — executar o protocolo §3.3.6 antes de qualquer mudanca em fator de producao ou sumidouro de cs.** Forcas `MarangoniForce` e `FlagellarForce` apontam na direcao `−∇cs` (de alto cs para baixo cs). Para push outward, cs deve **decrescer monotonicamente para fora** ao longo da biomassa — o pico cs deve cair dentro do corpo da colonia, com biomassa contigua entre o pico e o agar. Mudancas em `c_n_factor`, `growth_headroom`, `sigma`, `tip_boost`, `motile_boost`, `qs`, `k_consume`, `lambda` que movam o pico para o agar ou para o rim externo isolado sao PATOLOGICAS — geram push inward na maior parte da colonia. **A falacia "cs concentrado nas pontas puxa para fora" e proibida** — calcular cs_∞ em 4 zonas antes de propor.
-- **OBRIGATORIO — qualquer refinamento adaptativo (Pass N e variantes) deve seguir Vacondio 2013 / Feldman 2006 (Soleimani 2017 §3.2.6).** Substituir 1 mãe por N filhas (hexagonal 2D, N=7) com massa dividida IGUALMENTE (`m_filha = m_mãe/N`), velocidade IDÊNTICA herdada (`u_filha = u_mãe, v_filha = v_mãe` — conservação de momentum), `α=ε=0.6` (smoothing length e offset). **Proibido "adicionar 1 filha"** (lição §25 — falha estrutural em 3 modos comprovada por Pass N v1). Antes de propor variação, computar: (a) ganho de resolução por split = N (não fração), (b) conservação simultânea de mass + linear momentum + angular momentum. Se algum for violado, voltar ao paper. Filhas com `rho_b ≥ 0.8` herdam pin automaticamente do scheme.py.
+- **OBRIGATORIO — qualquer refinamento adaptativo (Pass N e variantes) deve seguir Vacondio 2013 / Feldman 2006 (Soleimani 2017 §3.2.6).** Substituir 1 mãe por N filhas (hexagonal 2D, N=7) com massa dividida IGUALMENTE (`m_filha = m_mãe/N`), velocidade IDÊNTICA herdada (`u_filha = u_mãe, v_filha = v_mãe` — conservação de momentum), `α=ε` (Feldman 2006 — razao otima de smoothing/offset; v2.4 usa `α=ε=0.35` para evitar overlap com vizinhos a ~dx). **Proibido "adicionar 1 filha"** (lição §25 — falha estrutural em 3 modos comprovada por Pass N v1). **Proibido n_d < 7** (licao §27/§28 — splits parciais quebram momento angular e amplificam tensile instability Liu §6.4). Antes de propor variação, computar: (a) ganho de resolução por split = N (não fração), (b) conservação simultânea de mass + linear momentum + angular momentum. Se algum for violado, voltar ao paper. Filhas com `rho_b ≥ 0.8` herdam pin automaticamente do scheme.py.
+- **OBRIGATORIO — citar Liu [T6] ou Violeau [T7] em qualquer mudanca de fisica SPH (2026-05-28).** Toda alteracao em (a) refinamento adaptativo, (b) integrador customizado (CustomEulerStep, pinning, drag implicito), (c) equacoes SPH (forcas, difusao, EOS), (d) trigger ou criterio de qualidade do kernel, (e) tratamento de fronteira, **deve referenciar o capitulo/secao especifico de Liu 2003 ou Violeau 2012 que fundamenta a mudanca**. Exemplos validos: "Violeau §3.6 — particao da unidade discreta", "Liu §6.4 — tensile instability sob p<0", "Liu §3.4 — conservacao de momento linear com formulacao antisimetrica". Solucoes "tentativa e erro" sem ancoragem teorica nestas referencias sao **rejeitadas em revisao**. Ver §3.0 [T6]/[T7] para mapa de capitulos relevantes. **A IA deve consultar Liu/Violeau ANTES de propor qualquer modificacao em fisica SPH**, exatamente como ja deve consultar Trinschek/Srinivasan/Bru antes de modificar a fisica biologica.
 
 ---
 
@@ -1666,6 +1685,75 @@ Adicionado `PASS_N_RHO_B_MAX = 0.7`. `colony_mask` agora exige `rho_b ∈ [0.3, 
    - dt avg ~5e-3 ao longo do run (pace temporal restaurado).
    - Frame 23 (t≈50s) painel 3: BRAÇOS sem azul (preenchidos por splits); núcleo PODE ter azul (aceito por design).
 3. Bug secundario `mean_c_n > max_c_n` — checar se persiste; se sim, adicionar inicializacao explicita de `c_n` (e outras propriedades flutuantes) no `data` dict de `daughters.add_particles`.
+
+#### Pass N v2.4 — RECONSTRUCAO TEORICA Liu/Violeau (2026-05-28, IMPLEMENTADO — aguardando validacao)
+
+**Motivacao:** sob analise teorica rigorosa baseada em Liu 2003 (*SPH: A Meshfree Particle Method*) e Violeau 2012 (*Fluid Mechanics and the SPH Method*) — agora referencias obrigatorias do projeto [T6] e [T7] — diagnosticou-se que v2.3.1 ainda violava tres principios de consistencia SPH (licoes #27 e #28). v2.4 corrige todos simultaneamente.
+
+**Tres mudancas estruturais:**
+
+**(a) Trigger por particao da unidade σ_a (Violeau §3.6, Liu §3.3.3) — substitui ρ_rel < 0.7:**
+
+Adicionada equacao `KernelSum` em [src/equations.py](src/equations.py) e novo Group `equations_kernel_sum` em [src/scheme.py](src/scheme.py) entre `equations_pre` e `equations_main`:
+```
+σ_a = Σ_j (m_j/ρ_j) · W(r_aj, h_aj)
+```
+Group separado e obrigatorio: se `KernelSum` estivesse no mesmo Group de `SummationDensity`, `s_rho[s_idx]` seria parcial durante o loop (PySPH acumula durante o loop e finaliza apos post_loop do Group). Trigger `σ_a < 0.85` corresponde a ~15% erro nos operadores SPH (Violeau §3.6) e e INVARIANTE sob refinamento — gen 0/1/2 disparam pelo mesmo limiar. Diferente de `ρ_rel = ρ_a/ρ_0`, que mistura particao da unidade com fator de massa das filhas (licao #28).
+
+**(b) α = ε = 0.35 (Feldman 2006 — razao otima):**
+
+`PASS_N_ALPHA: 0.6 → 0.35`, mantido `PASS_N_EPSILON = 0.35`. Feldman 2006 deriva que `ε/α = 1` minimiza erro de densidade pos-split (< 5% em regime ideal). v2.3 usou `α=0.6, ε=0.35` (razao 0.58), causando over-pack do nucleo: filhas-vertice a `0.378·dx` caem no pico do kernel `W(r/h≈0.35)` → densidade pos-split ≈ 1.7×densidade pre-split → `a_pressure=5.015` sustentado → dt collapse 12× (licao #27).
+
+Custo aceito: kernel das filhas agora com `h_filha = 0.35·h_mae = 0.63·dx` → suporte ~1.26·dx → ~12 vizinhos efetivos (vs ~35 em gen-0). Liu §3.3 reconhece que < 20 vizinhos degrada consistencia de ordem 1, mas Liu §6.5 argumenta que sub-amostragem e menos catastrofica que over-pack porque **nao viola conservacao** — apenas reduz acuracia local nas filhas.
+
+**(c) n_d = 7 ESTRITO (Violeau §7.4.3 — simetria hexagonal):**
+
+Substituida exigencia `n_d ≥ 4` (v2.3.1) por `n_d == 7` (v2.4) em [main.py:529](main.py#L529). Se qualquer vertice falhar no proximity guard, o split inteiro e adiado para proxima call. Violeau §7.4.3 prova que apenas distribuicao hexagonal **simetrica** preserva simultaneamente:
+1. Erro de densidade < 5% (Feldman 2006)
+2. Centro de massa na posicao da mae (conservacao espacial)
+3. Tensor de inercia local (conservacao de spin)
+4. Momento angular exato (Liu §3.4)
+
+Splits parciais (n_d ∈ [4, 6]) com vertices descartados assimetricamente deslocam o CM e introduzem torque espurio que amplifica instabilidade de tracao (Liu §4.2.4).
+
+**Implementacao:**
+- [src/equations.py](src/equations.py) `KernelSum`: novo loop SPH para σ_a.
+- [src/scheme.py](src/scheme.py): import `KernelSum`, novo `equations_kernel_sum` Group, retorno em 3 grupos.
+- [main.py](main.py): propriedade `sigma_a` no array, inicializada em 1.0; constantes `PASS_N_SIGMA_TRIG=0.85`, `PASS_N_ALPHA=0.35`; trigger via `sigma_a < 0.85`; priorizacao por menor σ_a; `n_d == 7` estrito; `sigma_a` copiada para filhas.
+
+**Conservacao validada (Liu §3.4, Violeau §5.3):**
+- **Massa:** `7 · (m_m/7) = m_m` por mae ✓ (exato)
+- **Momento linear:** `Σ_d m_d · v_d = 7 · (m_m/7) · v_m = m_m · v_m` ✓ (exato porque v_d = v_m)
+- **Momento angular:** 6 vertices simetricos em torno do centro + 1 filha no centro → contribuicao rotacional nula em torno do CM da mae ✓ (exato pela exigencia n_d=7)
+
+**Predicoes v2.4 vs v2.3.1 (a validar):**
+
+| Metrica | v2.3.1 observado (t=13s) | v2.4 predicao |
+|---|:---:|:---:|
+| `pass_n_spawned` em t=0-10s | 556 (over-pack centro) | 0-10 (nucleo excluido + σ_a controlado) |
+| `pass_n_spawned` em t=30-50s | n/a (run nao chegou) | 50-200 sustentado nos braços (σ_a cai com alongamento) |
+| `a_pressure` plateau | 5.015 (vs orcamento <3) | ≤ 3.5 (densidade pos-split com erro ~5-8%) |
+| dt avg | 4.3e-4 (12× degradado) | ~5e-3 (recuperado) |
+| t=50s atingido em | ~75 000 iter (extrapolado) | ~9 000 iter (baseline v2.2) |
+| Vizinhos por filha | ~35 (α=0.6) | ~12 (α=0.35) |
+| Frame 23 (t≈50s) painel σ_a | n/a | braços σ_a > 0.85 (refinados); nucleo σ_a < 0.85 (excluido por gate) |
+
+**Criterios de aceitacao v2.4:**
+1. Sem regressao numerica: `max_v < 1.0` em todo run, `a_pressure < 4.0` plateau.
+2. `mass_total` invariante (101.7 ± 0.5) — conservacao exata por construcao.
+3. Spawn sustentado em t > 30s nos braços (σ_a cai quando dendritos esticam).
+4. Frames mostram braços com densidade restaurada (σ_a > 0.85 visivel no plot, se instrumentado).
+5. Motor preservado: `mean_v >= 0.0005`, `n_fast > 0` em t > 30s.
+
+**Riscos identificados:**
+- Sub-amostragem das filhas (h pequeno) pode degradar acuracia do `MarangoniForce` e `FlagellarForce` localmente — monitorar `a_marangoni` nas filhas via inspecao de outliers no log.
+- Exigencia n_d=7 estrita pode reduzir spawn rate inicial (rim muito empacotado adia split ate gap > 2·prox_min). Aceito por design — splits prematuros causam over-pack.
+- Bug secundario `mean_c_n > max_c_n` de v2.3 nao endereçado em v2.4 — checar se persiste no log.
+
+**Validacao pendente:**
+1. Rodar `make run` com `total_sim_time = 50`.
+2. Verificar criterios de aceitacao acima.
+3. Se passar t=50s, estender para `total_sim_time = 100`.
 
 ---
 

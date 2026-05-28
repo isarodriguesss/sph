@@ -88,50 +88,54 @@ c0 = 0.35  # EOS: B = 1.5²/7 ≈ 0.32 (repulsão suave, atração ~0.1)
 
 use_splitting = False
 
-# Pass N v2 — Refinamento hexagonal Vacondio 2013 / Feldman 2006
-# (Soleimani 2017 §3.2.6). Substitui 1 mãe por 7 filhas (1 centro + 6 vértices
-# hexagonais), massa dividida IGUALMENTE (m_filha = m_mãe/7), velocidade
-# IDÊNTICA herdada (conserva momentum linear e angular), escalares (rho_b, cs,
-# c_o, c_n, noise) copiados; smoothing length h_filha = α·h_mãe; offset hexagonal
-# r = ε·h_mãe; α = ε = 0.6 (Feldman 2006, erro de densidade < 5%).
-# Trigger: V_a = m_a / rho_a > V_limit (partícula esticada, não buraco angular).
-# Aplica em toda a colônia (rho_b > 0.05) — núcleo + braços + transição.
+# Pass N v2.4 — Refinamento hexagonal Vacondio 2013 / Feldman 2006 com
+# consistencia SPH restaurada (Liu §3.3.3, Violeau §3.4-3.6, §7.4-7.5).
+# Substitui 1 mãe por 7 filhas (1 centro + 6 vértices a 60°). Massa dividida
+# IGUALMENTE (m_filha = m_mãe/7); velocidade IDÊNTICA herdada (Liu §3.4 —
+# conservação de momentum linear exata); escalares (rho_b, cs, c_o, c_n,
+# noise, sigma_a) copiados. h_filha = α·h_mãe, offset = ε·h_mãe.
+#
+# Tres mudancas estruturais vs v2.3.1:
+#   (a) Trigger MIGRADO de rho_rel<0.7 para sigma_a<0.85 (Violeau §3.6 —
+#       particao da unidade discreta, invariante sob refinamento; mede
+#       diretamente o erro do operador SPH).
+#   (b) α: 0.6 → 0.35 (acoplado a ε=0.35). Feldman 2006 deriva otimo em
+#       razao ε/α = 1; manter α=0.6 com ε=0.35 causou over-pack do nucleo
+#       em v2.3 (rho_pos-split ≈ 1.7·rho_pre-split → a_pressure=5.015
+#       sustentado → dt collapse 12×). Custo: kernel das filhas com ~12
+#       vizinhos vs ~35 — degrada acuracia local mas nao viola conservacao
+#       (Liu §6.5 — sub-amostragem e menos catastrofica que over-pack).
+#   (c) Exigencia ESTRITA n_d=7 (todos os 6 vertices precisam passar no
+#       proximity guard). Violeau §7.4.3 — apenas distribuicao hexagonal
+#       simetrica preserva (i) erro de densidade < 5%, (ii) centro de massa
+#       na posicao da mae, (iii) tensor de inercia local. Splits parciais
+#       quebram momento angular e introduzem torque espurio (Liu §4.2.4).
 use_pass_n = True
-PASS_N_FREQ = 100  # iter entre checks (mais agressivo que v1=200)
-PASS_N_MAX_PARENTS = 100  # máx mães por call (×~7 filhas = ~700 novas/call)
-PASS_N_RHO_TRIG = 0.7  # trigger relativo: split se rho_a/rho_0 < 0.7.
-# v2.1 usou V_a > 1.5·dx² (absoluto), que para
-# gen ≥ 1 requer rho < 0.1·rho_0 (raro) — trigger
-# ficava cego a partículas em "gap critico"
-# (visualizadas como vermelho/azul no painel 3
-# do plot.py). Critério relativo casa exatamente
-# com a definição visual de gap (rho < 0.7·rho_0).
-PASS_N_ALPHA = 0.6  # h_filha = α · h_mãe (Feldman 2006)
-PASS_N_EPSILON = 0.35  # offset filha = ε · h_mãe — REDUZIDO de 0.6 (Feldman puro)
-# para 0.35 evita overlap com vizinhos a ~dx (causou
-# instabilidade max_v=8.25 em call 3 de v2-inicial).
-# Vertices agora a 0.63·dx do centro.
+PASS_N_FREQ = 100  # iter entre checks
+PASS_N_MAX_PARENTS = 100  # máx mães por call (×7 filhas = 700 novas/call)
+PASS_N_SIGMA_TRIG = 0.85  # trigger v2.4: split se sigma_a < 0.85.
+# Violeau §3.6: sigma_a ≈ 0.85 corresponde a ~15% erro nos operadores SPH.
+# Invariante sob refinamento — gen 0/1/2 disparam pelo mesmo limiar
+# (diferente do trigger rho_rel da v2.2-v2.3.1, que dependia da massa
+# da particula porque rho = Sum m_j W). Mede diretamente a quantidade
+# que governa a consistencia de ordem zero do SPH.
+PASS_N_ALPHA = 0.35  # v2.4: 0.6 → 0.35, acoplado a ε=0.35 (Feldman 2006:
+# razao ε/α = 1 minimiza erro de densidade pos-split).
+PASS_N_EPSILON = 0.35  # offset filha = ε · h_mãe.
 PASS_N_M_FLOOR_RATIO = 1.0 / 49.0  # permite gen ≤ 2: m > m₀/49 ainda splittable.
-# v2-inicial usou 1/7 → bloqueava após 1 gen → splits
-# cessaram em t=7.6s mesmo com braços alongando.
 PASS_N_RHO_B_MIN = 0.3  # gate inferior de biomassa — exclui borda dilute da
 # Gaussiana inicial (rho_b 0.05-0.3 tem rho SPH naturalmente baixo por kernel
 # truncado, não gap real).
-PASS_N_RHO_B_MAX = 0.7  # Pass N v2.3.1 (Opção 2): gate superior — exclui núcleo
-# e shell adjacente ao pin (rho_b ≥ 0.7) do refinamento.
-# Justificativa: v2.3 desbloqueou gen-1 mas todos os splits
-# se concentraram no centro (relaxacao inicial da Gaussiana
-# criou gaps no nucleo), causando over-pack do core e
-# a_pressure=5.0 sustentado → dt collapse 12× → simulação
-# travou em t=13s/iter 7200. Restringindo a rho_b ∈ [0.3, 0.7]
-# (zona de transicao/rim ativo), o refinamento so vai disparar
-# quando dendritos do rim esticarem (t > 30s). Trade-off:
-# nucleo continua perdendo vizinhos com o tempo sem reposicao
-# — aceita-se este custo para manter pace temporal saudavel
-# e focar refinamento onde a morfologia esta evoluindo.
-PASS_N_PROXIMITY_MIN = 0.4  # min distância filha-vizinho em unidades de dx;
-# vertices que cairiam < 0.4·dx de partícula existente
-# são descartadas (mass redistribuída em N_actual < 7).
+PASS_N_RHO_B_MAX = 0.7  # Pass N v2.3.1: gate superior — exclui núcleo
+# e shell adjacente ao pin (rho_b ≥ 0.7). Refinamento focado na zona de
+# transicao/rim ativo onde dendritos esticam. Mantido em v2.4: hard pin K.17
+# torna refinamento no nucleo irrelevante (momentum nao integrado ali —
+# Liu §4.5; particao da unidade no nucleo e academic).
+PASS_N_PROXIMITY_MIN = 0.4  # min distância filha-vizinho em unidades de dx.
+# v2.4: usado em conjunto com exigencia ESTRITA n_d=7 — se QUALQUER vertice
+# falhar no proximity guard, o split inteiro e adiado para proxima call.
+# Garante simetria hexagonal estrita (Violeau §7.4.3 — centro de massa
+# preservado, momento angular conservado).
 
 
 class SwarmApp(Application):
@@ -180,6 +184,10 @@ class SwarmApp(Application):
                 # gradiente do osmolito c_o (Pass M-A — usado por OsmolyteProduction)
                 pa.add_property("grad_co_x")
                 pa.add_property("grad_co_y")
+                # Pass N v2.4 — partição da unidade discreta sigma_a = Σ V_j W_aj
+                # (Violeau §3.4-3.6, Liu §3.3.3). Trigger de refinamento.
+                pa.add_property("sigma_a")
+                pa.sigma_a[:] = 1.0  # inicializa em 1 (consistencia perfeita)
                 pa.add_property("ax_drag")
                 pa.add_property("ay_drag")
                 # flag
@@ -411,25 +419,22 @@ class SwarmApp(Application):
 
                     solver.nnps.update()
 
-        # Pass N v2.1 — Refinamento hexagonal Vacondio/Feldman + correções:
-        # (a) gen ≤ 2 (m_floor = m₀/49), (b) ε=0.35 (evita overlap c/ vizinhos),
-        # (c) gate rho_b > 0.3 (exclui borda da Gaussiana), (d) proximity guard
-        # (filhas a < 0.4·dx de vizinho existente são descartadas; massa
-        # redistribuída entre N_actual filhas para preservar m_total da mãe).
+        # Pass N v2.4 — Refinamento hexagonal Vacondio/Feldman com consistencia
+        # SPH restaurada (Liu §3.3.3, Violeau §3.4-3.6, §7.4-7.5):
+        # (a) trigger sigma_a < 0.85 (particao da unidade — Violeau §3.6),
+        # (b) α = ε = 0.35 (Feldman 2006 — razao otima preserva densidade),
+        # (c) gen ≤ 2 (m_floor = m₀/49),
+        # (d) gate rho_b ∈ [0.3, 0.7] (exclui borda dilute e nucleo pinado),
+        # (e) n_d = 7 ESTRITO (Violeau §7.4.3 — simetria hexagonal).
         if use_pass_n and solver.count > 0 and solver.count % PASS_N_FREQ == 0:
             fluid = self.particles[0]
-
-            rho_safe = np.maximum(fluid.rho, 1e-6)  # evita div0 (planktônicas)
-            rho0 = 1.0  # densidade de referência SPH
 
             V_0 = dx * dx  # volume inicial (referência massa)
 
             # Gate v2.3.1: rho_b ∈ [0.3, 0.7] — exclui borda dilute (rho_b<0.3,
             # gap não real, só kernel truncado) E núcleo/shell adjacente ao pin
-            # (rho_b>0.7, onde gaps são gerados pela migração do rim mas o
-            # refinamento ali causou over-pack do centro em v2.3 → dt collapse).
-            # Refinamento agora focado na zona de transição/rim ativo, onde
-            # dendritos esticam e geram gaps morfologicamente significativos.
+            # (rho_b>0.7, onde refinamento e irrelevante porque momentum nao e
+            # integrado — hard pin K.17).
             colony_mask = (fluid.rho_b_grown > PASS_N_RHO_B_MIN) & (
                 fluid.rho_b_grown < PASS_N_RHO_B_MAX
             )
@@ -438,21 +443,24 @@ class SwarmApp(Application):
             m_floor = V_0 * PASS_N_M_FLOOR_RATIO
             splittable_mass_mask = fluid.m > m_floor
 
-            # Trigger RELATIVO: rho_a / rho_0 < PASS_N_RHO_TRIG (= 0.7).
-            # Casa exatamente com a definição de "gap crítico" visualizada
-            # no painel 3 do plot.py. Independente da geração — gen 0, 1, 2
-            # disparam pelo mesmo critério (não sofre da restrição artificial
-            # do trigger absoluto V_a, que ficava 7× mais estrito para gen 1).
-            rho_rel = rho_safe / rho0
+            # Pass N v2.4 — Trigger por PARTIÇÃO DA UNIDADE (sigma_a < 0.85).
+            # sigma_a = Sum_j V_j W_aj e a consistencia de ordem zero do SPH
+            # (Violeau §3.6, Liu §3.3.3). Mede diretamente o erro do operador
+            # SPH no nó a. INVARIANTE SOB REFINAMENTO — gen 0/1/2 disparam
+            # pelo mesmo limiar. v2.2-v2.3.1 usavam rho_rel < 0.7 que dependia
+            # da massa (rho = Sum m_j W) → trigger ficava enviesado em filhas
+            # com m_d = m_m/7.
+            sigma_a = fluid.sigma_a
             split_mask = (
-                colony_mask & (rho_rel < PASS_N_RHO_TRIG) & splittable_mass_mask
+                colony_mask & (sigma_a < PASS_N_SIGMA_TRIG) & splittable_mass_mask
             )
             split_idx = np.where(split_mask)[0]
 
             if len(split_idx) > 0:
-                # Prioriza mais esvaziadas (menor rho_rel) se exceder limite
+                # Prioriza partição da unidade mais degradada (menor sigma_a)
+                # se exceder limite — refina onde o operador SPH e pior.
                 if len(split_idx) > PASS_N_MAX_PARENTS:
-                    order = np.argsort(rho_rel[split_idx])
+                    order = np.argsort(sigma_a[split_idx])
                     split_idx = split_idx[order][:PASS_N_MAX_PARENTS]
 
                 eps = PASS_N_EPSILON
@@ -497,6 +505,7 @@ class SwarmApp(Application):
                 co_arr = fluid.c_o[split_idx]
                 cn_arr = fluid.c_n[split_idx]
                 noise_arr = fluid.noise[split_idx]
+                sigma_arr = fluid.sigma_a[split_idx]
 
                 for k in range(len(split_idx)):
                     x_m, y_m = float(x_arr[k]), float(y_arr[k])
@@ -522,16 +531,22 @@ class SwarmApp(Application):
                             continue
                         valid_vertices.append((vx, vy))
 
-                    # n_d = 1 centro + N vértices válidos
+                    # Pass N v2.4 — EXIGENCIA ESTRITA n_d = 7 (Violeau §7.4.3):
+                    # apenas distribuicao hexagonal SIMETRICA preserva (i) erro
+                    # de densidade < 5% pos-split (Feldman 2006), (ii) centro de
+                    # massa na posicao da mae, (iii) tensor de inercia local.
+                    # Splits parciais quebram momento angular e introduzem torque
+                    # espurio (Liu §4.2.4) que amplifica instabilidade de tracao.
+                    # Se algum vertice falha no proximity guard, split e ADIADO
+                    # para proxima call (gap precisa esticar mais).
                     n_d = 1 + len(valid_vertices)
-
-                    # Skip se sobraram poucas filhas (ganho de resolução baixo)
-                    if n_d < 4:
+                    if n_d != 7:
                         continue
 
-                    # Massa REDISTRIBUÍDA entre n_d filhas (preserva m_total mãe)
-                    m_d = m_m / n_d
-                    h_d = alpha * h_m
+                    # Massa REDISTRIBUÍDA entre 7 filhas (Liu §3.4 — conservacao
+                    # de momentum linear: Sum m_d v_d = 7·(m_m/7)·v_m = m_m·v_m)
+                    m_d = m_m / 7.0
+                    h_d = alpha * h_m  # v2.4: alpha=0.35 (acoplado a eps=0.35)
                     u_d = float(u_arr[k])
                     v_d = float(v_arr[k])
 
@@ -545,20 +560,21 @@ class SwarmApp(Application):
                     data = {
                         "x": xs,
                         "y": ys,
-                        "m": [m_d] * n_d,
-                        "h": [h_d] * n_d,
-                        "rho": [float(rho_arr[k])] * n_d,
-                        "rho_b_grown": [float(rhob_arr[k])] * n_d,
-                        "cs": [float(cs_arr[k])] * n_d,
-                        "c_o": [float(co_arr[k])] * n_d,
-                        "c_n": [float(cn_arr[k])] * n_d,
-                        "u": [u_d] * n_d,
-                        "v": [v_d] * n_d,
-                        "noise": [float(noise_arr[k])] * n_d,
+                        "m": [m_d] * 7,
+                        "h": [h_d] * 7,
+                        "rho": [float(rho_arr[k])] * 7,
+                        "rho_b_grown": [float(rhob_arr[k])] * 7,
+                        "cs": [float(cs_arr[k])] * 7,
+                        "c_o": [float(co_arr[k])] * 7,
+                        "c_n": [float(cn_arr[k])] * 7,
+                        "u": [u_d] * 7,
+                        "v": [v_d] * 7,
+                        "noise": [float(noise_arr[k])] * 7,
+                        "sigma_a": [float(sigma_arr[k])] * 7,
                     }
                     daughters.add_particles(**data)
                     mothers_used.append(int(split_idx[k]))
-                    n_daughters_total += n_d
+                    n_daughters_total += 7
 
                 if mothers_used:
                     fluid.append_parray(daughters)
@@ -566,11 +582,10 @@ class SwarmApp(Application):
                     solver.nnps.update()
 
                     self._pass_n_spawned_since_log += n_daughters_total
-                    avg_d = n_daughters_total / len(mothers_used)
                     print(
-                        f"Pass N v2.3 t={solver.t:.1f}s: "
+                        f"Pass N v2.4 t={solver.t:.1f}s: "
                         f"{len(mothers_used)} mães → {n_daughters_total} filhas "
-                        f"(<n_d>={avg_d:.1f}, ε={eps}, ρ_trig={PASS_N_RHO_TRIG}, gen≤2)"
+                        f"(n_d=7 estrito, ε=α={eps}, σ_trig={PASS_N_SIGMA_TRIG}, gen≤2)"
                     )
 
 

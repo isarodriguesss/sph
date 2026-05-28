@@ -9,6 +9,7 @@ from .equations import (
     BiomassEOS,
     BiomassGrowth,
     FlagellarForce,
+    KernelSum,
     MarangoniForce,
     OxigenConsumption,
     SurfactantEquation,
@@ -139,6 +140,19 @@ class MyBiomassScheme(Scheme):
             real=False,
         )
 
+        # Pass N v2.4: sigma_a (partição da unidade) calculado em Group separado
+        # APOS SummationDensity, para que s_rho esteja totalmente acumulado
+        # quando KernelSum.loop ler s_rho[s_idx]. Se KernelSum estivesse no
+        # mesmo Group de SummationDensity, s_rho seria parcial durante o loop
+        # (Violeau §3.4-3.6, Liu §3.3.3 — consistencia de ordem zero exige
+        # densidades completas).
+        equations_kernel_sum = Group(
+            equations=[
+                KernelSum(dest="fluid", sources=["fluid"]),
+            ],
+            real=False,
+        )
+
         equations_main = Group(
             equations=[
                 # MomentumEquation com Monaghan artificial viscosity forte
@@ -206,7 +220,7 @@ class MyBiomassScheme(Scheme):
             ],
         )
 
-        return [equations_pre, equations_main]
+        return [equations_pre, equations_kernel_sum, equations_main]
 
     def get_integrator(self):
         return EulerIntegrator(fluid=CustomEulerStep())

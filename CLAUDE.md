@@ -442,7 +442,7 @@ Calibracao pos-Passes A-I.7. **MARCO I.7:** Transicao blob→dendritico confirma
 | Arrasto (base) | `gamma` | 60.0 | `a_drag` = `gamma*v_term` = 6 em v=0.1 |
 | Arrasto (nucleo) | `gamma_mature` (scheme) | `1.5*gamma` | Pass I.4: razao core/edge 2.5x (era 0.3*gamma) |
 | Coef. Marangoni | `beta` | **5.0** | Pass T2d: T1 10→5 — reduz tracao amplificada na fronteira pela metade; razao `|F_mar|/B_tension` ~3000× |
-| Producao surfactante | `sigma` | **20.0** | Pass T2d: T1 5→20 — acelera saturacao em cs_max=0.5 (4× taxa); compensa β reduzido por aumentar fracao temporal em gradiente maximo |
+| Producao surfactante | `sigma` | **10.0** | Pass T2g: T2d 20→10 — desacelera saturacao cs; reduz mean_cs e tracao no rim. Baseline estavel ate t=100s sem fragmentacao (contrast_cs plateau ~12, a_pressure 3.0) |
 | Saturacao cs (T1) | `cs_max` | **0.5** | Pass T1: substitui growth_headroom+tip_boost+motile_boost+c_n_factor+k_consume por `(1-cs/cs_max)` |
 | Decaimento (agar) | `lambda_eff` (T1) | `0.5*lambda` = 0.075 | Pass T1: decay LENTO no agar (gera halo); `2*lambda`=0.30 no biofilme |
 | Forca flagelar | `f0` | **3.0** | K.22: 0.5→3.0 — alvo teorico §8 (f0~γ·v_term/2=3); K.21 diagnosticou regime subcritico |
@@ -987,6 +987,38 @@ Calibracao pos-Passes A-I.7. **MARCO I.7:** Transicao blob→dendritico confirma
   - Se FALHAR em mean_v ou massa → T2e (tension_ratio 0.30→0.40) primeiro
   - Se FALHAR em max_v/a_pressure spikes → T2g (reduzir σ de 20 para 10, mantendo β=5) — tradeoff transitorio vs estabilidade
   - Se FALHAR em morfologia (colapso) → reverter para T2b como baseline conservador
+
+- **Pass N v2.4 sobre baseline T2d — FALHA DE PROPOSITO (numericamente OK, morfologicamente no-op) (2026-06-01):** primeiro run com `use_pass_n=True` (v2.4: trigger `σ_a<0.85`, hexagonal n_d==7, `α=ε=0.35`) sobre o motor T2d (`σ=20, β=5, cs_max=0.5, tension_ratio=0.30`), `total_sim_time=50`. **Pre-requisito pulado:** baseline T2d nunca foi validado limpo ate t=100s antes de aplicar Pass N (armadilha lição §22).
+
+  **Sucesso numerico (vs v2.3):** spawns sempre multiplos de 7 (regra n_d==7 funcionando), 1827 spawns total ≈ 261 maes, `mass_total` 101→103 (+2%, de BiomassGrowth nao de Pass N — conservacao OK). `α=ε=0.35` evitou o over-pack sistemico do nucleo da v2.3; run **completou 50s** (vs v2.3 travou em t=13s).
+
+  **Falha de proposito (refinamento e no-op morfologico):** taxa de spawn ~1-2 maes/call e ordens de magnitude lenta demais — dendritos esticam r≈0.5→3 (area ~36×) enquanto Pass N injeta ~5 particulas/~5s. Frame t≈44s (painel rho/rho0): gaps espalhados por **toda** a colonia — refinamento nao sustenta os braços.
+
+  **Degradacao do motor persiste (causa-raiz NAO e resolucao):** narrativa temporal compacto(t4) → **15-18 dendritos belos(t21)** → **fios fragmentados + cs uniformizado(t44)** — identica a lição §24 (T1). `contrast_cs` colapsa 372→9.3, `mean_cs` sobe 0.005→0.0535 (= halo cs enchendo tudo, `contrast_cs ≈ max_cs/mean_cs`). `a_pressure` patologico: pico **123 em t=3s** (over-pack do burst inicial de splits) + spikes 8-33 + subida monotonica terminal 16→21 (instabilidade localizada, NAO motor — `mean_v` parado, `n_fast=0`). `mean_v≈0.001`, regime tip-only/quase-congelado.
+
+  **CUSTO DE dt (descoberta critica):** 580200 iteracoes para 50s (vs 4600 iter para 98s sem Pass N — ver T2g). As filhas com `h=0.35·h_mãe` apertam CFL_force → **dt colapsa ~250×**. Custo de wall-time do Pass N e proibitivo; precisa ser gerenciado (`PASS_N_FREQ` maior, `PASS_N_MAX_PARENTS` menor) antes de qualquer run longo com Pass N ligado.
+
+  **Conclusao:** Pass N v2.4 e sucesso de engenharia numerica (estavel, conservativo, n_d=7 simetrico) mas inutil enquanto o motor T2d/T1 ainda fragmenta sozinho. **Decisao: desligar Pass N (preservar codigo via flag) e validar baseline limpo primeiro → Pass T2g.**
+
+- **Pass T2g — `σ: 20 → 10` + Pass N OFF + `total_sim_time=100` (2026-06-01, SUCESSO — PRIMEIRO BASELINE ESTAVEL ATE t=100s):** alavanca unica no motor ([main.py:55](main.py#L55)), Pass N preservado mas desligado (`use_pass_n=False` [main.py:113](main.py#L113), codigo v2.4 intacto). Objetivo: isolar o motor do baseline (uma alavanca por vez §2.3) e validar o pre-requisito pulado.
+
+  **Descoberta dt:** run chegou a t=98s em **4600 iteracoes** (vs 580200 para 50s com Pass N) — confirma que o colapso de dt ~250× era 100% causado pelas filhas do Pass N (h pequeno → CFL minusculo), nao pelo motor.
+
+  **Metricas (t≈98s):**
+  - `a_pressure` = **3.0 plateau** (vs spikes 8-123 com Pass N) — orcamento §8 ✓✓, sem subida terminal (instabilidade T2d eliminada)
+  - `a_marangoni` = 8-9 estavel (vs subida terminal a 27) — motor vivo e estavel
+  - `contrast_cs` 359 → **12 (quasi-plateau**, t=65→98s: 14→12, deriva ~2 em 33s) — **nao colapsa** (T2d+PassN era 9.3 e caindo)
+  - `mean_cs` = 0.040 (subindo lentissimo 0.037→0.040 em 8s) — estavel; `max_cs/mean_cs=11.9 > 4` ✓ (criterio §2.4 #7)
+  - `mean_v` = 0.001, `n_fast` 5-11 pulsando — tip-only vivo (lição §21), NAO sub-critico (a_mar=8>>5)
+  - `mass_total` 101→106 (+5% em 100s) — controlado, tip pumping leve
+
+  **Frames (§11):** t≈21s ~15-18 dendritos curtos/medios + halo cs; t≈52s dendritos **mais longos e finos** (r≈2.5), baias limpas, **sem fragmentacao**; **t≈98s ~18-20 braços COERENTES persistentes** a r≈2.5-3, ramificacao incipiente, nucleo compacto. **Contraste decisivo vs T2d+PassN:** aquele fragmentava em fios isolados ja em t≈44s; T2g mantem dendritos continuos ate t=98s (>2× o tempo). **Fragmentacao T1/T2d RESOLVIDA.**
+
+  **Validacao vs predicoes:** `a_pressure<6` ✓✓ (3.0); `a_mar` sem spike ✓; fragmentacao reduzida ✓✓ (resolvida); motor nao sub-critico ✓. Parciais: `contrast_cs` plateau ~12 (alvo era ≥16 — abaixo mas **estabilizou** em vez de divergir); `mean_cs` 0.040 (alvo ~0.030 — acima mas estavel). Objetivo central (motor estavel sem fragmentacao ate t=100s) ATINGIDO.
+
+  **Gaps remanescentes vs reference.jpg:** (1) largura dendritos ainda 3-4 particulas (alvo PA14: 1-2) — agora genuinamente problema de **resolucao** = trabalho do Pass N (braços, gate rho_b∈[0.3,0.7]); (2) nucleo esvaziando (gaps no centro, painel 3) — esperado (pin K.17 + Pass N off + gate rho_b<0.7 excluiria nucleo de qualquer forma, decisao v2.3.1).
+
+  **Estado:** T2g e o **baseline validado** para reintroduzir Pass N. Proximo passo: religar Pass N (`use_pass_n=True`) sobre morfologia que NAO fragmenta mais, atacando a largura dos braços — porem com custo de dt (250×) gerenciado via `PASS_N_FREQ`/`PASS_N_MAX_PARENTS` ou runs curtos.
 
 **Invariantes morfologicos descobertos (K.5-K.14):**
 1. `smoothstep` em `[a,b]` satura em 1.0 no pico → **max(metric) e cego ao estreitamento do gate**. K.1, K.2 pareceram no-op por isso; diagnostico correto requer `n_active` e `mean_active`, nao `max`.

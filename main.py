@@ -52,7 +52,7 @@ dx = (x_max_domain - x_min_domain) / (x_dim - 1)
 mu = 0.020  # K.23: I.2 revert parcial — fortalecer coesão viscosa (I.2 era 0.012, pre-I.2 era 0.025)
 gamma = 60.0  # Drag: a_drag = gamma * v_term = 60 * 0.1 = 6
 beta = 5.0  # Pass T2d: T1 β=10 → 5 (reduz tracao amplificada na fronteira); razao |F_mar|/B_tension ~4800×
-sigma = 20.0  # Pass T2d: T1 σ=5 → 20 (acelera saturacao em cs_max=0.5); |F_mar| final depende de β·|∇cs|, nao de σ
+sigma = 10.0  # Pass T2g: T2d σ=20 → 10 — desacelera saturacao cs; reduz mean_cs e tracao no rim (combate colapso de contrast_cs e fragmentacao pos-t25s diagnosticada em Pass N v2.4)
 D = 1.5e-3  # Pass I.3: D_int dentro do biofilme — gradiente afiado na interface
 D_ext = 0.08  # K.18: 4x — L_D_ext=0.298 (~2x maior); habilita focalizacao Mullins-Sekerka pos-K.17
 lambda_ = 0.15  # Decaimento: confina cs mas permite penetracao de ~L_D_ext no exterior
@@ -78,7 +78,7 @@ D_n_int = 1e-4  # M-B.4: difusao dentro do biofilme (EPS bloqueia transporte)
 k_n = 0.5  # taxa de consumo por unidade de biomassa
 
 dt_global = 0.001
-total_sim_time = 50.0  # Validacao T2d ate t=100s antes de aplicar Pass N (pre-requisito morfologia base)
+total_sim_time = 50.0  # Pass N-on validacao curta: medir custo dt real (gen-1) antes de comprometer 100s
 print_freq = 200
 
 trajectory_store_interval = 20
@@ -110,9 +110,9 @@ use_splitting = False
 #       simetrica preserva (i) erro de densidade < 5%, (ii) centro de massa
 #       na posicao da mae, (iii) tensor de inercia local. Splits parciais
 #       quebram momento angular e introduzem torque espurio (Liu §4.2.4).
-use_pass_n = True
+use_pass_n = True  # T2g validado (baseline estavel t=100s); religado p/ refinar braços sobre morfologia que NAO fragmenta mais.
 PASS_N_FREQ = 100  # iter entre checks
-PASS_N_MAX_PARENTS = 100  # máx mães por call (×7 filhas = 700 novas/call)
+PASS_N_MAX_PARENTS = 25  # T2g: 100→25 — limita burst inicial (a_pressure=123 em t=3s no run anterior) e acumulo de particulas pequenas
 PASS_N_SIGMA_TRIG = 0.85  # trigger v2.4: split se sigma_a < 0.85.
 # Violeau §3.6: sigma_a ≈ 0.85 corresponde a ~15% erro nos operadores SPH.
 # Invariante sob refinamento — gen 0/1/2 disparam pelo mesmo limiar
@@ -122,7 +122,9 @@ PASS_N_SIGMA_TRIG = 0.85  # trigger v2.4: split se sigma_a < 0.85.
 PASS_N_ALPHA = 0.35  # v2.4: 0.6 → 0.35, acoplado a ε=0.35 (Feldman 2006:
 # razao ε/α = 1 minimiza erro de densidade pos-split).
 PASS_N_EPSILON = 0.35  # offset filha = ε · h_mãe.
-PASS_N_M_FLOOR_RATIO = 1.0 / 49.0  # permite gen ≤ 2: m > m₀/49 ainda splittable.
+PASS_N_M_FLOOR_RATIO = (
+    1.0 / 7.0
+)  # T2g: gen ≤ 1 — proibe gen-2 (h=0.22dx → dt_visc 0.015× = killer dos 250×). Cap penalidade dt em ~8×. 7× de resolucao basta p/ braços de 3-4 particulas.
 PASS_N_RHO_B_MIN = 0.3  # gate inferior de biomassa — exclui borda dilute da
 # Gaussiana inicial (rho_b 0.05-0.3 tem rho SPH naturalmente baixo por kernel
 # truncado, não gap real).

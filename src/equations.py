@@ -10,11 +10,29 @@ class BiomassGrowth(Equation):
         super(BiomassGrowth, self).__init__(dest, sources)
 
     def loop(
-        self, d_idx, d_rho_b_grown, d_a_rho_b_grown, d_m, d_am, d_rho, d_c_n, d_u, d_v
+        self,
+        d_idx,
+        d_rho_b_grown,
+        d_a_rho_b_grown,
+        d_m,
+        d_am,
+        d_rho,
+        d_c_n,
+        d_u,
+        d_v,
+        d_is_filler,
     ):
         d_a_rho_b_grown[d_idx] = 0.0
         d_am[d_idx] = 0.0
-        if d_rho_b_grown[d_idx] > 1e-12 and d_rho_b_grown[d_idx] < 0.8:
+        # C3.3 — filler inerte (Rota C3): partículas inseridas para suporte de
+        # kernel NAO crescem (is_filler=1). Quebra o feedback de "nucleus
+        # maturation" (lição #18) que causou o runaway de inserções em t>57s:
+        # filler maturando → núcleo maior → junção maior → mais inserção.
+        if (
+            d_rho_b_grown[d_idx] > 1e-12
+            and d_rho_b_grown[d_idx] < 0.8
+            and d_is_filler[d_idx] < 0.5
+        ):
             c_n = d_c_n[d_idx]
             if c_n < 0.6:
                 c_n_factor = 0.0
@@ -97,6 +115,173 @@ class KernelSum(Equation):
         d_sigma_a[d_idx] += (s_m[s_idx] / rho_safe) * WIJ
 
 
+class KernelGradientCorrection(Equation):
+    # ── Rota C — Kernel Gradient Correction (Bonet & Lok 1999; CSPM) ────────
+    # [T10], Liu §3.3 (CSPM e de Chen-Beraun/Liu-Liu, dentro do proprio T6).
+    #
+    # Restaura CONSISTENCIA DE 1a ORDEM do operador de gradiente: reproduz ∇
+    # de um campo linear EXATAMENTE mesmo com vizinhanca incompleta/irregular
+    # (braços sub-resolvidos, junção do vacuo). Sem isso, o ∇cs da Marangoni
+    # nos dendritos e numericamente ESPURIO (Liu §3.3) — o que invalidaria a
+    # comparacao com Trinschek.
+    #
+    # Diferente da Rota A (shifting), KGC NAO move nem cria particulas:
+    #   - nao pode congelar a morfologia (lição #31) — nao mexe na distribuicao;
+    #   - nao depende de separar vacuo↔frontier por rho_b (lição #32) —
+    #     auto-gateia pelo determinante (bulk: det≈1 → sem correcao; rim/vacuo:
+    #     det<1 → corrige).
+    #   - custo de dt ZERO.
+    #
+    # Matriz de renormalizacao (2D):
+    #     M_i = Σ_j V_j (x_j - x_i) ⊗ ∇_i W_ij      (→ I p/ vizinhanca completa)
+    #     L_i = M_i^{-1}                            (correcao do kernel gradient)
+    # Gradiente corrigido: ∇φ_i = L_i · Σ_j V_j (φ_j-φ_i) ∇W_ij.
+    # Aplicado em MarangoniForce.loop substituindo DWIJ por L_i·DWIJ.
+    #
+    # FALLBACK (CSPM standard, Liu §6.5): se det(M) < det_min a vizinhanca e
+    # degradada demais p/ correcao confiavel → reverte a IDENTIDADE (SPH padrao,
+    # sem amplificar). Limita a amplificacao de L e evita spike de forca em
+    # particulas quasi-isoladas. det_min=0.25 ⇒ |L| ≲ 4×.
+    def __init__(self, dest, sources, det_min=0.25):
+        self.det_min = det_min
+        super().__init__(dest, sources)
+
+    def initialize(self, d_idx, d_Mxx, d_Mxy, d_Myx, d_Myy):
+        d_Mxx[d_idx] = 0.0
+        d_Mxy[d_idx] = 0.0
+        d_Myx[d_idx] = 0.0
+        d_Myy[d_idx] = 0.0
+
+    def loop(self, d_idx, s_idx, s_m, s_rho, XIJ, DWIJ, d_Mxx, d_Mxy, d_Myx, d_Myy):
+        vol_j = s_m[s_idx] / s_rho[s_idx]
+        # (x_j - x_i) = -XIJ ; M_ab = Σ_j V_j (x_j-x_i)_a · DWIJ_b → I (completo)
+        dxx = -XIJ[0]
+        dyy = -XIJ[1]
+        d_Mxx[d_idx] += vol_j * dxx * DWIJ[0]
+        d_Mxy[d_idx] += vol_j * dxx * DWIJ[1]
+        d_Myx[d_idx] += vol_j * dyy * DWIJ[0]
+        d_Myy[d_idx] += vol_j * dyy * DWIJ[1]
+
+    def post_loop(self, d_idx, d_Mxx, d_Mxy, d_Myx, d_Myy, d_Lxx, d_Lxy, d_Lyx, d_Lyy):
+        det = d_Mxx[d_idx] * d_Myy[d_idx] - d_Mxy[d_idx] * d_Myx[d_idx]
+        # Fallback p/ identidade se M singular/degradada (CSPM, Liu §6.5):
+        if det < self.det_min:
+            d_Lxx[d_idx] = 1.0
+            d_Lxy[d_idx] = 0.0
+            d_Lyx[d_idx] = 0.0
+            d_Lyy[d_idx] = 1.0
+        else:
+            inv_det = 1.0 / det
+            d_Lxx[d_idx] = d_Myy[d_idx] * inv_det
+            d_Lxy[d_idx] = -d_Mxy[d_idx] * inv_det
+            d_Lyx[d_idx] = -d_Myx[d_idx] * inv_det
+            d_Lyy[d_idx] = d_Mxx[d_idx] * inv_det
+
+
+class ParticleShift(Equation):
+    # ── Rota A — Fickian Particle Shifting Technique (PST) ──────────────────
+    # Xu, Stansby & Laurence 2009; Lind, Xu, Stansby & Rogers 2012 (JCP).
+    #
+    # PREENCHE VACUOS REDISTRIBUINDO as particulas existentes — NAO cria
+    # particulas novas. Logo NAO encolhe h e NAO crava o dt (custo de dt ZERO),
+    # ao contrario do Pass N (lição #29: dt = min-h global). Cada particula e
+    # deslocada na direcao -∇C (C = concentracao de particulas) — de regioes
+    # densas para vacuos — drenando a particao da unidade sigma_a → 1
+    # (Violeau §3.6) por GEOMETRIA, em vez de por contagem.
+    #
+    # Ancoragem teorica:
+    #   - Liu §6.5 (free surface / kernel truncado): PST foi criada por Lind
+    #     justamente para o caso de suporte de kernel incompleto na borda —
+    #     o nosso rim/dendrito sub-resolvido.
+    #   - Liu §6.4 (tensile instability): a homogeneizacao reduz clumping/voids
+    #     que disparam p<0 → kernel atrativo espurio.
+    #   - Violeau §3.4-3.6: sigma_a e a medida do erro; o shift a leva a 1.
+    #
+    # Formulacao (Fickiana, dt-independente — relaxacao geometrica por passo):
+    #     ∇C_i = Σ_j (m_j/ρ_j) ∇W_ij        (gradiente da concentracao)
+    #     δr_i = -shift_coeff · h_i² · ∇C_i  (cap |δr| ≤ shift_cap · h_i)
+    # Auto-limitante: distribuicao uniforme → ∇C = 0 → δr = 0.
+    #
+    # RESPEITA O HARD PIN K.17: nucleo (rho_b ≥ rho_b_pin) e starvation
+    # (c_n < c_n_pin) tem shift = 0 — mesma condicao do CustomEulerStep.
+    #
+    # A.3 (2026-06-02) — GATE SO PARA O INTERIOR: rho_b_min=0.6 EXCLUI o
+    # frontier motil (rho_b < 0.6, zona dos swarmers/pontas e do gate flagelar
+    # [0.1,0.6]). v1 (rho_b_min=0.05) deslocava as pontas isotropicamente →
+    # amortecia as sementes de Mullins-Sekerka → colonia congelou em disco
+    # lumpy r≈1.0 sem dendritos (mean_v≈0). A.3 desloca SO a banda interior
+    # [0.6, 0.8) — a junção núcleo↔rim onde vive o vacuo — deixando o frontier
+    # (<0.6) livre para formar dedos. Inspirado no tratamento de superficie
+    # livre de Lind 2012 [T8] (nao mexer na interface em movimento).
+    #
+    # SIMPLIFICACAO v1 (documentada): aplica-se o shift APENAS a posicao; os
+    # campos carregados (rho_b, cs, c_n) acompanham a particula sem a correcao
+    # de Taylor δr·∇φ de Lind 2012. Justificado por shift pequeno (cap≈0.05h),
+    # campo de densidade recomputado a cada passo (SummationDensity), e cs/c_n
+    # difusivos. TODO: adicionar correcao δr·∇φ se observar drift de campo.
+    def __init__(
+        self,
+        dest,
+        sources,
+        shift_coeff,
+        shift_cap,
+        rho_b_min=0.6,
+        rho_b_pin=0.8,
+        c_n_pin=0.6,
+    ):
+        self.shift_coeff = shift_coeff
+        self.shift_cap = shift_cap
+        self.rho_b_min = rho_b_min
+        self.rho_b_pin = rho_b_pin
+        self.c_n_pin = c_n_pin
+        super().__init__(dest, sources)
+
+    def initialize(self, d_idx, d_shift_dC_x, d_shift_dC_y):
+        d_shift_dC_x[d_idx] = 0.0
+        d_shift_dC_y[d_idx] = 0.0
+
+    def loop(self, d_idx, s_idx, s_m, s_rho, DWIJ, d_shift_dC_x, d_shift_dC_y):
+        vol_j = s_m[s_idx] / s_rho[s_idx]
+        d_shift_dC_x[d_idx] += vol_j * DWIJ[0]
+        d_shift_dC_y[d_idx] += vol_j * DWIJ[1]
+
+    def post_loop(
+        self,
+        d_idx,
+        d_shift_dC_x,
+        d_shift_dC_y,
+        d_shift_x,
+        d_shift_y,
+        d_rho_b_grown,
+        d_c_n,
+        d_h,
+    ):
+        rho_b = d_rho_b_grown[d_idx]
+        sx = 0.0
+        sy = 0.0
+        # Gate: so particulas MOVEIS (inverso do hard pin K.17) e nao-agar.
+        # Sem early-return: o transpiler Cython do PySPH exige fluxo unico.
+        if (
+            rho_b >= self.rho_b_min
+            and rho_b < self.rho_b_pin
+            and d_c_n[d_idx] >= self.c_n_pin
+        ):
+            h = d_h[d_idx]
+            D = self.shift_coeff * h * h
+            sx = -D * d_shift_dC_x[d_idx]
+            sy = -D * d_shift_dC_y[d_idx]
+
+            # Cap |δr| ≤ shift_cap · h (Lind 2012 — shifts grandes desestabilizam).
+            mag = (sx * sx + sy * sy) ** 0.5
+            cap = self.shift_cap * h
+            if mag > cap:
+                sx = sx * cap / mag
+                sy = sy * cap / mag
+
+        d_shift_x[d_idx] = sx
+        d_shift_y[d_idx] = sy
+
+
 class SurfactantEquation(Equation):
     def __init__(
         self,
@@ -167,9 +352,14 @@ class SurfactantEquation(Equation):
         d_cs,
         d_noise,
         d_c_n,
+        d_is_filler,
     ):
         rho_b = d_rho_b_grown[d_idx]
         qs = rho_b * rho_b / (rho_b * rho_b + 0.01)
+        # C3.3 — filler inerte NAO produz cs (so difunde passivamente): evita a
+        # inflacao de cs no interior que colapsou contrast_cs (360→8) em t=100s.
+        if d_is_filler[d_idx] > 0.5:
+            qs = 0.0
 
         # Pass T1 (Trinschek-like, §3.0 [T1] painel (b)): producao satura
         # localmente em cs_max via (1 - cs/cs_max). Substitui a combinacao
@@ -243,6 +433,10 @@ class MarangoniForce(Equation):
         d_ax_mar,
         d_ay_mar,
         d_grad_rho_b_mag,
+        d_Lxx,
+        d_Lxy,
+        d_Lyx,
+        d_Lyy,
         DWIJ,
     ):
         # Gate de interface: só atua onde |∇rho_b| é significativo
@@ -257,8 +451,14 @@ class MarangoniForce(Equation):
             vol_j = s_m[s_idx] / s_rho[s_idx]
             cs_ij = s_cs[s_idx] - d_cs[d_idx]
 
-            acc_x = gate * self.beta * vol_j * cs_ij * DWIJ[0]
-            acc_y = gate * self.beta * vol_j * cs_ij * DWIJ[1]
+            # Rota C — KGC (Bonet-Lok): kernel gradient corrigido cDWIJ = L_i·DWIJ
+            # restaura consistencia de 1a ordem do ∇cs nos braços sub-resolvidos.
+            # L = identidade (init) se KGC desligado → reduz ao SPH padrao.
+            cdwij_x = d_Lxx[d_idx] * DWIJ[0] + d_Lxy[d_idx] * DWIJ[1]
+            cdwij_y = d_Lyx[d_idx] * DWIJ[0] + d_Lyy[d_idx] * DWIJ[1]
+
+            acc_x = gate * self.beta * vol_j * cs_ij * cdwij_x
+            acc_y = gate * self.beta * vol_j * cs_ij * cdwij_y
 
             d_au[d_idx] += acc_x
             d_av[d_idx] += acc_y

@@ -78,7 +78,7 @@ D_n_int = 1e-4  # M-B.4: difusao dentro do biofilme (EPS bloqueia transporte)
 k_n = 0.5  # taxa de consumo por unidade de biomassa
 
 dt_global = 0.001
-total_sim_time = 50.0  # Pass N-on validacao curta: medir custo dt real (gen-1) antes de comprometer 100s
+total_sim_time = 100.0  # C3.2 validada em t=50s (vacuo profundo preenchido, massa +2.1%, inserções auto-limitantes); estender p/ confirmar sustentabilidade
 print_freq = 200
 
 trajectory_store_interval = 20
@@ -110,29 +110,68 @@ use_splitting = False
 #       simetrica preserva (i) erro de densidade < 5%, (ii) centro de massa
 #       na posicao da mae, (iii) tensor de inercia local. Splits parciais
 #       quebram momento angular e introduzem torque espurio (Liu §4.2.4).
-use_pass_n = True  # T2g validado (baseline estavel t=100s); religado p/ refinar braços sobre morfologia que NAO fragmenta mais.
+# ── Rota A — Fickian Particle Shifting (Xu 2009; Lind 2012) ──────────────
+# Alternativa de custo-dt-ZERO ao Pass N para o problema do vacuo: redistribui
+# particulas existentes (-∇C) p/ drenar sigma_a → 1 (Violeau §3.6, Liu §6.5),
+# sem criar particulas pequenas que cravam o dt (lição #29). Respeita hard pin.
+use_shift = False  # Rota A ESGOTADA (v1 congela #31, A.3 deixa vacuo #32). Preservada.
+SHIFT_COEFF = 0.5  # D = shift_coeff·h² no δr = -D∇C (relaxacao Fickiana)
+SHIFT_CAP = 0.05  # |δr| ≤ 0.05·h por passo (Lind 2012 — estabilidade)
+SHIFT_RHO_B_MIN = 0.6  # A.3: gate SO interior [0.6,0.8) — exclui frontier motil
+
+# ── Rota C — Kernel Gradient Correction (Bonet-Lok 1999; CSPM) ───────────
+# Corrige o ∇cs da Marangoni (consistencia 1a ordem, Liu §3.3) nos braços
+# sub-resolvidos SEM mover particula → nao congela (#31) nem depende de
+# separar vacuo↔frontier por rho_b (#32). Auto-gateia pelo det(M): bulk
+# det≈1 (sem correcao), rim/vacuo det<1 (corrige). Custo de dt ZERO.
+use_kgc = True  # Rota C ativa (KEEP — gradiente da Marangoni válido nas pontas)
+KGC_DET_MIN = 0.25  # fallback p/ identidade se det(M)<0.25 (|L|≲4×, anti-spike)
+
+# ── Rota C3 — Inserção de partículas no vácuo (em espaçamento dx) ─────────
+# Preenche o vácuo central (evacuação dinâmica núcleo↔rim) INSERINDO partículas
+# frescas na rede dx — NÃO dividindo (Vacondio over-packa, #27). h=h0 e
+# espaçamento=dx → dt INTACTO (#29) e SEM over-pack (#27). Inseridas herdam
+# rho_b alto → pinadas → congelam e preenchem estável. Não move partícula
+# existente (escapa #31/#32). Ancorado em particle insertion/packing (Liu §6.5).
+use_insert = True  # Rota C3 ativa (lever sob teste; KGC mantido)
+INSERT_FREQ = 200  # iter entre inserções (~4s com dt~0.02)
+INSERT_RHO_TRIG = 0.6  # C3.2: 0.7→0.6 — fillar so vacuo PROFUNDO (consistencia
+# genuinamente quebrada, σ_a severo <0.85 ~ rho/rho0<0.6, Violeau §3.6). A franja
+# 0.6-0.7 e under-density leve (nao e buraco real) — inseri-la so inflava massa.
+INSERT_RHO_B_MIN = (
+    0.5  # só vácuo estrutural (núcleo/junção/braço interior); poupa tips (<0.5)
+)
+INSERT_PROX = (
+    0.7  # spot vazio se nenhum existente a < 0.7·dx (insere só em buraco real)
+)
+INSERT_MAX = 100  # máx inserções por call (limita crescimento de massa)
+
+use_pass_n = False  # Rota A: Pass N DESLIGADO (preservado) p/ isolar o efeito do shifting. Religar so apos avaliar Rota A.
 PASS_N_FREQ = 100  # iter entre checks
-PASS_N_MAX_PARENTS = 25  # T2g: 100→25 — limita burst inicial (a_pressure=123 em t=3s no run anterior) e acumulo de particulas pequenas
-PASS_N_SIGMA_TRIG = 0.85  # trigger v2.4: split se sigma_a < 0.85.
+PASS_N_MAX_PARENTS = 100  # v2.5: 25→100 — enchimento agressivo. Viavel pq α=0.75 mantem h grande (lição #29: dt e min-h, nao contagem)
+PASS_N_SIGMA_TRIG = 0.95  # v2.5: 0.85→0.95 — gatilho PREEMPTIVO (agir ao 1o sinal de estiramento, 5% de perda, nao 15%).
 # Violeau §3.6: sigma_a ≈ 0.85 corresponde a ~15% erro nos operadores SPH.
 # Invariante sob refinamento — gen 0/1/2 disparam pelo mesmo limiar
 # (diferente do trigger rho_rel da v2.2-v2.3.1, que dependia da massa
 # da particula porque rho = Sum m_j W). Mede diretamente a quantidade
 # que governa a consistencia de ordem zero do SPH.
-PASS_N_ALPHA = 0.35  # v2.4: 0.6 → 0.35, acoplado a ε=0.35 (Feldman 2006:
-# razao ε/α = 1 minimiza erro de densidade pos-split).
-PASS_N_EPSILON = 0.35  # offset filha = ε · h_mãe.
+PASS_N_ALPHA = 0.75  # v2.5: 0.35 → 0.75 — h_filha ~ h_mãe PRESERVA dt-por-h
+# (penalidade ~1.5× vs ~85× em v2.4; lição #29 — dt e min-h). ε MANTIDO em 0.35
+# (decoupling deliberado de Feldman ε/α=1): aceita-se over-pack inicial, confiando
+# na EOS coesiva (tension_ratio=0.30) + Monaghan (alpha_mon=0.12, K.23) p/ relaxar
+# (Liu §6.5). RISCO lição #27: ε/α=0.47 < v2.3 (0.58) que travou — critério #2
+# (dt avg t>30s ≥ 0.5× inicial) e o teste de relaxacao. Fallback: ε→0.5 ou α→0.6.
+PASS_N_EPSILON = 0.35  # offset filha = ε · h_mãe (mantido v2.4 — evita abortar splits no domínio empacotado).
 PASS_N_M_FLOOR_RATIO = (
     1.0 / 7.0
 )  # T2g: gen ≤ 1 — proibe gen-2 (h=0.22dx → dt_visc 0.015× = killer dos 250×). Cap penalidade dt em ~8×. 7× de resolucao basta p/ braços de 3-4 particulas.
-PASS_N_RHO_B_MIN = 0.3  # gate inferior de biomassa — exclui borda dilute da
-# Gaussiana inicial (rho_b 0.05-0.3 tem rho SPH naturalmente baixo por kernel
-# truncado, não gap real).
-PASS_N_RHO_B_MAX = 0.7  # Pass N v2.3.1: gate superior — exclui núcleo
-# e shell adjacente ao pin (rho_b ≥ 0.7). Refinamento focado na zona de
-# transicao/rim ativo onde dendritos esticam. Mantido em v2.4: hard pin K.17
-# torna refinamento no nucleo irrelevante (momentum nao integrado ali —
-# Liu §4.5; particao da unidade no nucleo e academic).
+PASS_N_RHO_B_MIN = 0.15  # v2.5: 0.3→0.15 — alarga zona ativa p/ fechar buracos
+# em quase toda a colonia (enchimento agressivo).
+PASS_N_RHO_B_MAX = 0.95  # v2.5: 0.7→0.95 — INCLUI a junção núcleo-dendrito
+# (vácuo crítico). NOTA: 0.8-0.95 cai na zona pinada (hard pin K.17 rho_b≥0.8) —
+# refinar lá adiciona vizinhos com força descartada (Liu §4.5, lição #27);
+# aposta do usuario: fechar o vácuo da junção vale o risco. Monitorar a_pressure
+# na borda do núcleo.
 PASS_N_PROXIMITY_MIN = 0.4  # min distância filha-vizinho em unidades de dx.
 # v2.4: usado em conjunto com exigencia ESTRITA n_d=7 — se QUALQUER vertice
 # falhar no proximity guard, o split inteiro e adiado para proxima call.
@@ -190,6 +229,35 @@ class SwarmApp(Application):
                 # (Violeau §3.4-3.6, Liu §3.3.3). Trigger de refinamento.
                 pa.add_property("sigma_a")
                 pa.sigma_a[:] = 1.0  # inicializa em 1 (consistencia perfeita)
+                # Rota A — Fickian shifting: gradiente de concentracao (dC) e
+                # vetor de deslocamento (shift). Aplicado a posicao no integrador.
+                pa.add_property("shift_dC_x")
+                pa.add_property("shift_dC_y")
+                pa.add_property("shift_x")
+                pa.add_property("shift_y")
+                pa.shift_x[:] = 0.0
+                pa.shift_y[:] = 0.0
+                # Rota C — KGC: matriz de renormalizacao M (acumulada) e sua
+                # inversa L (correcao do kernel gradient). L inicia na IDENTIDADE
+                # → se KGC desligado, MarangoniForce reduz ao SPH padrao.
+                pa.add_property("Mxx")
+                pa.add_property("Mxy")
+                pa.add_property("Myx")
+                pa.add_property("Myy")
+                pa.add_property("Lxx")
+                pa.add_property("Lxy")
+                pa.add_property("Lyx")
+                pa.add_property("Lyy")
+                pa.Lxx[:] = 1.0
+                pa.Lxy[:] = 0.0
+                pa.Lyx[:] = 0.0
+                pa.Lyy[:] = 1.0
+                # C3.3 — marcador de filler inerte (Rota C3): 0 = partícula real
+                # (cresce, produz cs, dinâmica normal); 1 = inserida p/ suporte de
+                # kernel (não cresce, não produz cs, pinada). Quebra o feedback de
+                # nucleus maturation + inflação de cs do runaway t>57s.
+                pa.add_property("is_filler")
+                pa.is_filler[:] = 0.0
                 pa.add_property("ax_drag")
                 pa.add_property("ay_drag")
                 # flag
@@ -240,6 +308,12 @@ class SwarmApp(Application):
             D_n=D_n,
             D_n_int=D_n_int,
             k_n=k_n,
+            use_shift=use_shift,
+            shift_coeff=SHIFT_COEFF,
+            shift_cap=SHIFT_CAP,
+            shift_rho_b_min=SHIFT_RHO_B_MIN,
+            use_kgc=use_kgc,
+            kgc_det_min=KGC_DET_MIN,
         )
 
     def create_solver(self):
@@ -588,6 +662,95 @@ class SwarmApp(Application):
                         f"Pass N v2.4 t={solver.t:.1f}s: "
                         f"{len(mothers_used)} mães → {n_daughters_total} filhas "
                         f"(n_d=7 estrito, ε=α={eps}, σ_trig={PASS_N_SIGMA_TRIG}, gen≤2)"
+                    )
+
+        # ── Rota C3 — Inserção de partículas no vácuo (em espaçamento dx) ─────
+        # Preenche o vácuo central INSERINDO partículas frescas na rede dx
+        # (NÃO split → sem over-pack #27; h=h0 → dt intacto #29). Inseridas
+        # herdam campos da mãe-vácuo (pinadas se rho_b alto → congelam estável).
+        if use_insert and solver.count > 0 and solver.count % INSERT_FREQ == 0:
+            fluid = self.particles[0]
+            m_target = dx * dx  # massa alvo = volume da rede inicial
+            rho_rel = fluid.rho / 1.0  # rho0 = 1.0
+
+            # Vácuo na zona ESTRUTURAL interior (rho_b alto, fora do frontier
+            # motil <0.5): núcleo/junção/braço interior com rho/rho0 < trigger.
+            void_mask = (fluid.rho_b_grown > INSERT_RHO_B_MIN) & (
+                rho_rel < INSERT_RHO_TRIG
+            )
+            void_idx = np.where(void_mask)[0]
+
+            if len(void_idx) > 0:
+                positions = np.column_stack([fluid.x, fluid.y])
+                tree = cKDTree(positions)
+                prox = INSERT_PROX * dx
+                prox_sq = prox * prox
+
+                # Candidatos: 6 vizinhos hexagonais a distância dx de cada
+                # partícula-vácuo. Insere onde o spot está VAZIO (rede com buraco).
+                angles_hex = np.arange(6) * (np.pi / 3.0)
+                cos_a = np.cos(angles_hex)
+                sin_a = np.sin(angles_hex)
+
+                new_x = []
+                new_y = []
+                parent_idx = []
+                added_pts = []  # dedupe entre candidatos da mesma call
+
+                for k in void_idx:
+                    xk = float(fluid.x[k])
+                    yk = float(fluid.y[k])
+                    for j in range(6):
+                        vx = xk + dx * cos_a[j]
+                        vy = yk + dx * sin_a[j]
+                        d_existing, _ = tree.query([vx, vy])
+                        if d_existing < prox:
+                            continue  # spot ocupado — não é buraco
+                        too_close = False
+                        for ax_, ay_ in added_pts:
+                            if (vx - ax_) ** 2 + (vy - ay_) ** 2 < prox_sq:
+                                too_close = True
+                                break
+                        if too_close:
+                            continue
+                        new_x.append(vx)
+                        new_y.append(vy)
+                        parent_idx.append(int(k))
+                        added_pts.append((vx, vy))
+                    if len(new_x) >= INSERT_MAX:
+                        break
+
+                if len(new_x) > 0:
+                    n_ins = len(new_x)
+                    p = np.asarray(parent_idx, dtype=int)
+                    inserted = fluid.empty_clone()
+                    # Campos herdados da mãe-vácuo (interpolação local simples).
+                    # rho recomputado por SummationDensity no proximo passo; L,
+                    # sigma_a recomputados por KGC/KernelSum — nao precisam init.
+                    data = {
+                        "x": new_x,
+                        "y": new_y,
+                        "m": [m_target] * n_ins,
+                        "h": list(fluid.h[p]),
+                        "rho": list(fluid.rho[p]),
+                        "rho_b_grown": list(fluid.rho_b_grown[p]),
+                        "cs": list(fluid.cs[p]),
+                        "c_o": list(fluid.c_o[p]),
+                        "c_n": list(fluid.c_n[p]),
+                        "u": [0.0] * n_ins,
+                        "v": [0.0] * n_ins,
+                        "noise": list(fluid.noise[p]),
+                        "is_filler": [1.0]
+                        * n_ins,  # C3.3 — inerte (não cresce/produz, pinada)
+                    }
+                    inserted.add_particles(**data)
+                    fluid.append_parray(inserted)
+                    solver.nnps.update()
+
+                    self._pass_n_spawned_since_log += n_ins
+                    print(
+                        f"C3 inserção t={solver.t:.1f}s: {n_ins} partículas no "
+                        f"vácuo (rede dx, h=h0 → dt intacto)"
                     )
 
 

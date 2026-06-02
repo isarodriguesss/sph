@@ -8,7 +8,16 @@ import glob
 import os
 
 os.makedirs("main_output/movie", exist_ok=True)
-files = sorted(glob.glob("main_output/main_*.hdf5"))
+all_files = sorted(glob.glob("main_output/main_*.hdf5"))
+
+# Subamostra: nao gera frame para TODO main_*.hdf5. Runs com Pass N tem dt
+# pequeno → milhares de snapshots; plotar todos e desnecessario e lento.
+# Mantem ~TARGET_FRAMES distribuidos uniformemente + sempre o ultimo (estado final).
+TARGET_FRAMES = 40
+stride = max(1, len(all_files) // TARGET_FRAMES)
+files = all_files[::stride]
+if all_files and all_files[-1] not in files:
+    files.append(all_files[-1])
 n = len(files)
 
 rho0 = 1.0  # densidade de referência SPH

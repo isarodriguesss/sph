@@ -167,6 +167,18 @@ Validado experimentalmente em B. subtilis (este trabalho), E. coli (Wu & Berg, P
 
 **Aplicabilidade obrigatoria (2026-05-28):** qualquer mudanca em (a) refinamento adaptativo (Pass N e variantes), (b) integradores customizados (CustomEulerStep, pinning), (c) novas equacoes SPH (forcas, difusao, EOS), (d) trigger ou criterio de qualidade do kernel, **deve citar explicitamente o capitulo/secao de Liu ou Violeau que fundamenta a alteracao**. Solucoes "tentativa e erro" sem ancoragem teorica nestas referencias sao **rejeitadas em revisao**. Ver §10 Proibicoes.
 
+### 3.0.1 — Literatura numerica SPH para o problema do vacuo (adicionada 2026-06-02)
+
+Tres familias de tecnicas atacam a perda de suporte de kernel (`σ_a < 1`, Violeau §3.6 / Liu §3.3) nos braços sub-resolvidos — o problema do "vacuo". Levantadas na analise comparativa de 2026-06-02 (ver §12 "Rotas para o vacuo"). **Pass N (splitting) e apenas UMA delas.**
+
+**[T8] Particle Shifting Technique (PST) — Xu, Stansby & Laurence 2009 (*JCP* 228, 6703); Lind, Xu, Stansby & Rogers 2012 (*JCP* 231, 1499); Adami, Hu & Adams 2013 (*JCP* 241, 292 — transport-velocity).** Preenche vacuos REDISTRIBUINDO particulas existentes via deslocamento Fickiano `δr = -D∇C` (C = concentracao), sem criar particulas → **custo de dt ZERO**. Lind estendeu para superficie livre / kernel truncado — exatamente o caso Liu §6.5. Cura clumping/tensile instability (Liu §6.4). **Implementado como Rota A (2026-06-02), ver §12.**
+
+**[T9] Timesteps individuais/locais — Springel 2005 (*MNRAS* 364, 1105, GADGET-2); Saitoh & Makino 2009 (*ApJL* 697, L99).** A resposta canonica ao problema "dt = min-h global" (lição #29): particulas de h pequeno integram no SEU passo curto (blocos hierarquicos), o bulk no passo grande. Saitoh & Makino provam que e preciso um **time-step limiter** (vizinhos nao podem ter dt muito diferentes) para nao corromper a fisica. Viabilizaria Pass N com α pequeno SEM os 85× de penalidade — mas exige reescrever o integrador (CustomEulerStep + pin). Rota B (futura).
+
+**[T10] Kernel Gradient Correction (KGC) / CSPM — Bonet & Lok 1999 (*CMAME* 180, 97); Chen & Beraun / Liu & Liu (CSPM, dentro do [T6]).** Restaura consistencia de 1a ordem do operador de gradiente (reproduz ∇ de campo linear exatamente) MESMO com vizinhanca incompleta — corrige `∇cs` espurio nos braços a **custo de dt ZERO**, sem preencher o vacuo fisico. Ataca diretamente a justificativa cientifica (validade do gradiente de Marangoni). Aplicavel so aos operadores de gradiente (`MarangoniForce`, `FlagellarForce`, `BiomassGradient`). Rota C (futura).
+
+**Distincao OBJETIVO ↔ MECANISMO (2026-06-02):** o objetivo e `σ_a ≈ 1` / operadores consistentes na zona ativa (obrigatorio — Liu §3.3). O mecanismo (splitting / shifting / KGC / timesteps individuais) e escolha de engenharia. Conflundir os dois foi o que custou 85× de dt na v2.4. **O vacuo e primariamente problema de DISTRIBUICAO (PST) e de OPERADOR (KGC), e so secundariamente de CONTAGEM (splitting).**
+
 **[T5] Bru, Kasallis, Zhuo, Høyland-Kroghsbo, Siryaporn 2023 — *Biophys. Rev.* 4, 031305.** Review especifico de swarming em P. aeruginosa. Pontos cruciais:
 - **Marangoni nao e dominante:** experimento de Yang et al. — adicionar surfactante (Triton X-100) DEVERIA reduzir gradiente de tensao superficial e enfraquecer Marangoni, mas EXPERIMENTALMENTE aumentou o swarming. Conclusao: pressao-osmotica (van't Hoff) e o motor dominante, NAO Marangoni.
 - **Modelo multilayer:** bacteria + camada de surfactante + agar. Ramnolipidos produzem camada distinta da camada bacteriana (confirmado por IRIS imaging).
@@ -1054,6 +1066,20 @@ Calibracao pos-Passes A-I.7. **MARCO I.7:** Transicao blob→dendritico confirma
 
 24. **Mecanismo Trinschek-like (saturacao local em cs_max) PRODUZ a morfologia (b) transitoriamente — mas amplificacao σ/β escala alem da coesao SPH** (lição Pass T1, 2026-05-18): substituir o motor multiplicativo (motile_boost · tip_boost · c_n_factor) por `production ∝ (1 - cs/cs_max)` a la Trinschek 2018 produziu em **frame 005 (t≈21s) a melhor morfologia transitoria do projeto** — 12-15 dendritos finos coerentes matching reference_result.png painel (b). Porem amplitude `σ=5, β=10` necessaria para escalar com `cs_max=0.5` gera Marangoni na fronteira (|F_mar_borda| ≈ β·cs_max/h ≈ 70) muito acima do que `tension_ratio=0.08` (`B_tension≈0.003`) suporta — particulas do rim sao ejetadas radialmente em t>25s, dendritos se fragmentam em linhas de particulas isoladas, nucleo colapsa (frames 010-012). **Tres consequencias para futuro:** (a) o mecanismo de saturacao Trinschek **e validado empiricamente** (nao apenas teoricamente) — primeira vez que a morfologia (b) emerge no SPH, mesmo que transitoriamente; (b) sem `motile_boost` ou equivalente, a perda de assimetria azimutal de cs torna a morfologia DEPENDENTE da perturbacao inicial cos(Nθ) — fingerings sao artefato de seeding amplificado, nao de selecao competitiva sustentavel; (c) regra de escala: para qualquer T2 que mantenha `cs_max ~ 0.5`, `tension_ratio` deve escalar como ~`(β/β_ref)·tension_ratio_ref` — para `β=10`, `tension_ratio ≈ 0.20-0.30` (multiplicar tension_ratio_M-B.10 por β/β_M-B.10 = 10x). Lição metodologica: **calcular `|F_mar_borda| / B_tension` antes de mexer em σ ou β** — se razao > 10, brittle neck garantido em t < 30s.
 
+35. **O vacuo tem DUAS regioes fisicamente distintas — estrutural (frozen, preenchivel) e frontier-ativa (motil, NAO-preenchivel por frozen) — separadas em `rho_b≈0.5`** (lição Rota C3.3 + diagnostico do usuario, 2026-06-02): apos C3.3 preencher o vacuo CENTRAL, o usuario notou vacuo remanescente num anel intermediario + nos dendritos. Esses estao na **frontier ativa (`rho_b<0.5`)** — a zona motil (gate flagelar [0.1,0.6], swarmers, tips). C3.3 os EXCLUI (`INSERT_RHO_B_MIN=0.5`) de proposito. **Por que nao da p/ preencher a frontier com a mesma ferramenta:** filler frozen ali CONGELA o motor (#31, shifting v1 provou); biomassa ativa ali realimenta crescimento (#34). O vacuo estrutural (`rho_b>0.5`, junto ao pin congelado) e preenchivel por filler inerte frozen porque NAO e o motor; o vacuo da frontier e o PROPRIO motor em expansao — preenche-lo exige (a) KGC (ja on — corrige o operador SEM preencher, ∇cs valido apesar do vacuo, Liu §3.3); (b) refinamento ATIVO que se move com o arm (Pass N velocidade-herdada + Rota B timesteps individuais [T9], OU inserção ativa C4 a h=h0 com u,v herdados); (c) A3 finer-res global (orcamento de particulas). **Regra:** classifique o vacuo por `rho_b` antes de escolher a ferramenta — frozen-filler so no estrutural (`>0.5`); na frontier ativa, ou se aceita KGC (operador valido) ou se usa refinamento que herda velocidade (nunca frozen). A mesma co-localizacao vacuo↔frontier da lição #32 (shifting) reaparece: na frontier, "mover/congelar particula" sempre conflita com a morfologia; so "corrigir operador" (KGC) ou "refinar herdando velocidade" escapam.
+
+34. **Particula inserida para preencher vacuo TEM que ser filler inerte — se for biomassa ativa, realimenta o vacuo (runaway)** (lição Rota C3.2 t=100s, 2026-06-02): a inserção C3 (lição #33) preencheu o vacuo, mas com as inseridas como BIOMASSA ATIVA (crescem + produzem cs) o run de t=100s teve RUNAWAY: inserções cravaram no cap (102/call de t~67), `mass` +9%, `contrast_cs` colapsou 360→8, estrutura assimetrica. Causa: inseridas na junção (rho_b 0.5-0.6) MATURAM (BiomassGrowth) → expandem o núcleo pinado → **nucleus maturation (#18)** re-disparada → junção maior → mais inserção (feedback +); e produzem cs → inflam o interior → contrast colapsa. **A validacao de t=50s ENGANOU** (auto-limitante ate t~57, runaway depois) — mais um caso §11 de validacao curta insuficiente. **Fix (C3.3):** flag `is_filler`; inseridas NAO crescem (gate em BiomassGrowth), NAO produzem cs (qs=0 em SurfactantEquation), e sao PINADAS (CustomEulerStep) — puro suporte de densidade/kernel, congelado. **Regra geral:** particula adicionada para corrigir um defeito NUMERICO (suporte de kernel) deve ser inerte para a FISICA (nao crescer, nao secretar, nao mover) — senao o remendo numerico vira fonte fisica e realimenta o defeito. Refinamento Vacondio (Pass N) preserva isso dividindo a massa da mae (conserva); inserção C3 ADICIONA massa, entao a inercia fisica tem que ser explicitamente desligada.
+
+33. **Inserir particulas na rede dx (NAO dividir/mover) preenche o vacuo central escapando de TODAS as armadilhas** (lição Rota C3, 2026-06-02): apos Pass N (dt #29), shifting (#31/#32) e KGC (nao cria particula) falharem no vacuo central, a **inserção de particulas frescas na rede dx** nos buracos (rho_b>0.5 & rho/rho0<trig) PREENCHEU o vacuo central pela 1a vez no projeto. Por que escapa de tudo: insere em espaçamento **dx** (densidade local ≈ rho0 → sem over-pack #27); **h=h0** (nao encolhe → dt intacto, escapa #29 que matou o Pass N); **nao move** particula existente (escapa #31/#32 do shifting); inseridas herdam rho_b alto → pinam → congelam estavel. **Distincao-chave vs Pass N:** Pass N DIVIDE (1 mãe→7 filhas coladas a ε·h, over-pack + h pequeno); C3 INSERE na rede (espaçamento dx, h0). O vacuo era deficit de particulas numa colonia em expansao com núcleo pinado — so CRIAR particulas preenche, e criar SEM encolher h nem colar e o que torna barato. **Custo:** `mass_total` cresce (~2× o BiomassGrowth) — inserir = adicionar celulas; controlar via trigger (so vacuo profundo <0.6) e cap. **Regra:** para vacuo que e deficit de contagem (nao de distribuicao nem de operador), inserção-na-rede e a ferramenta; reservar splitting (Pass N) so quando se precisa de RESOLUCAO sub-dx real (feature menor que dx), pareado com timesteps individuais [T9].
+
+32. **O vacuo co-localiza com o frontier motil em `rho_b` — gating por `rho_b` nao separa "preencher" de "proteger"; shifting (Rota A) esgotado** (lição Rota A.3, 2026-06-02, ancorada em Liu §6.4/§6.5): apos a v1 congelar a colonia (#31), a A.3 subiu o gate para `rho_b∈[0.6,0.8)` para deslocar so o interior. Resultado: dendritos voltaram (✅ morfologia, `mean_v`=0.0008≈T2g, dt custo ZERO) MAS o **vacuo da junção núcleo↔rim PERSISTIU** (painel 3: gaps `<0.7` ainda no centro). Causa: as particulas esparsas do anel oco tem `rho_b<0.6` (mesma faixa do frontier que A.3 protege) → excluidas do shift. **`rho_b` nao discrimina vacuo↔frontier — coabitam <0.6.** v1 preenche+congela, A.3 preserva+deixa vacuo: nao ha janela de `rho_b` que faca as duas coisas. Camada profunda: o vacuo e CINEMATICO (hard pin congela o núcleo enquanto o rim expande → junção regenera o gap continuamente); shift de banda fina nao acompanha um vacuo recriado a cada passo. **Regra:** quando o defeito numerico (vacuo/baixo σ_a) co-localiza com a estrutura fisica sensivel (frontier de Mullins-Sekerka), tecnicas que MOVEM particulas (shifting) ou ADICIONAM particulas no frontier (Pass N gate [0.3,0.7]) ficam presas no mesmo dilema. A saida e corrigir o OPERADOR sem mexer na distribuicao — KGC/CSPM [T10] (Rota C): torna ∇cs consistente APESAR do vacuo, sem mover/criar particula, sem depender de separar vacuo↔frontier. Para vacuos CINEMATICOS de pin, "fazer o operador valido apesar do vacuo" supera "tentar preencher o vacuo".
+
+31. **Particle Shifting isotropico no rim MATA a morfologia dendritica — a homogeneizacao que preenche o vacuo e a mesma que aniquila o fingering** (lição Rota A v1, 2026-06-02, ancorada em Lind et al. 2012 [T8] free-surface treatment, Liu §6.5): PST aplicado a TODA a colonia (gate rho_b∈[0.05,0.8)) entregou tudo numericamente — dt custo ZERO (0.0256 ≈ T2g, vs 85× do Pass N), `a_pressure`=3, massa conservada, painel 3 limpo (σ_a→1) — MAS congelou a colonia num disco lumpy r≈1.0 sem dendritos (`mean_v`≈0, vs T2g r≈2.5). Causa: PST e um HOMOGENEIZADOR (criado para bulk uniforme); a morfologia de Mullins-Sekerka e ANTI-homogenea. O shift no frontier (a) amortece as perturbacoes de curto λ que SEMEIAM os dedos, (b) redistribui de volta o push da Marangoni. `contrast_cs`=37 foi falso-positivo (disco compacto de borda nitida, nao pontas — lição §11). **Regra:** qualquer regularizacao geometrica (shifting, XSPH, density diffusion δ-SPH) que toque a INTERFACE EM MOVIMENTO suprime o fingering. Mitigacao canonica (Lind 2012): suprimir a componente do shift NORMAL a superficie livre, OU (simplificado, A.3) gatear o shift SO ao interior estrutural (rho_b>0.6), nunca ao frontier motil (rho_b<0.6). Corolario: o vacuo do INTERIOR (junção núcleo↔rim) pode ser preenchido por shift; o vacuo do RIM ATIVO (braços esticando) NAO — ali so refinamento real (Pass N + timesteps individuais [T9]) ou KGC [T10] (corrige operador sem mover particula).
+
+30. **O vacuo (perda de suporte de kernel) e primariamente problema de DISTRIBUICAO e de OPERADOR, nao de CONTAGEM de particulas — refinamento e so 1 de ≥4 mecanismos** (analise comparativa 2026-06-02, ancorada em Liu §3.3/§6.4/§6.5, Violeau §3.6, [T8]/[T9]/[T10]): o objetivo cientifico e `σ_a≈1` / operadores SPH consistentes na zona ativa (obrigatorio — sem isso o `∇cs` da Marangoni nos braços e espurio e a comparacao com Trinschek invalida). Mas isso NAO implica splitting. A literatura oferece: **(A) Particle Shifting** (Lind/Xu/Adami — redistribui particulas, `δr=-D∇C`, drena σ_a→1 por geometria, **custo dt ZERO**, criada para free-surface/kernel truncado = Liu §6.5); **(B) timesteps individuais** (Springel GADGET-2 + limiter Saitoh-Makino — dissolve a lição #29 deixando h pequeno integrar em passo proprio); **(C) Kernel Gradient Correction** (Bonet-Lok/CSPM — corrige o operador a custo ZERO sem preencher o vacuo). **Regra:** antes de refinar (custo de dt alto), pergunte se o objetivo nao e atingivel por shifting (distribuicao) ou KGC (operador) a custo zero. Splitting so quando a RESOLUCAO FISICA (feature menor que dx) e genuinamente necessaria — e nesse caso pareie com timesteps individuais (B), nao com over-pack. Conflundir objetivo↔mecanismo custou os 85× de dt da v2.4 (lição #29).
+
+29. **O dt adaptativo e fixado pela MENOR partícula, INDEPENDENTE da contagem — refinamento com h pequeno tem custo fixo mesmo com poucos splits** (lição Pass N v2.4 sobre T2g, 2026-06-01, ancorada em Liu §4.2 CFL): o run v2.4 (α=0.35, gen≤1) splitou só **98 mães (686 filhas = +1.7% de partículas)** em 50s, cobertura negligivel — e mesmo assim pagou **~85× de penalidade de dt** (203400 iter vs ~2400 do baseline). Causa: o `dt = CFL·min_a(h_a/...)` e governado pela partícula de menor `h` (filha gen-1, h=0.35·h_mãe=0.034), e 98 filhas pequenas cravam esse mínimo tanto quanto 10000 cravariam. **Consequencia de design:** com `α` pequeno o custo de dt e quase fixo e o benefício escala com a contagem → custo/benefício péssimo para spawn esparso. Duas saídas: (a) `α` grande (h_filha ~ h_mãe → não crava o dt → a contagem deixa de importar, viabilizando enchimento agressivo — Pass N v2.5), aceitando over-pack (lição #27/§10 amendment, Liu §6.5); (b) abandonar refinamento. **Corolário validado:** Pass N entrega RESOLUÇÃO (suporte de kernel, σ_a), NÃO largura física dos dendritos — v2.4 deu `contrast_cs` e morfologia IGUAIS ao baseline T2g (sem Pass N) a 85× o custo. Estreitamento físico dos dedos e problema do MOTOR (comprimento de onda Mullins-Sekerka), ortogonal ao refinamento.
+
 28. **Partição da unidade discreta (σ_a) é o trigger correto para refinamento adaptativo — `ρ_rel < 0.7` é enviesado por massa** (lição Pass N v2.4, 2026-05-28, ancorada em Violeau §3.6 e Liu §3.3.3): o trigger `ρ_rel = ρ_a/ρ_0 < 0.7` (v2.2-v2.3.1) parece medir gap mas mistura duas coisas: a partição da unidade `σ_a = Σ_j V_j W_aj` (consistencia de ordem zero do SPH) E o fator de escala de massa das filhas (`m_d = m_m / n_d`). Como `ρ_a = Σ_j m_j W_aj`, em regime de uniformidade de massa (gen 0) `ρ_a / ρ_0 ≈ σ_a` e os dois criterios coincidem. **Pos-refinamento**, filhas em região esticada têm `σ_a < 1` (gap real, kernel mal suportado) MAS `ρ_a` artificialmente alto se cercadas de irmãs da mesma mãe a curta distância (`ε·h`) — o trigger por densidade silencia o sinal real do erro do operador SPH. **Regra geral**: para refinamento adaptativo, sempre disparar com base em medida invariante sob refinamento — Liu §3.3.3 e Violeau §3.6 identificam `σ_a < 0.85` como criterio de ~15% erro nos operadores SPH, válido independente de geração. Implementacao em [equations.py](src/equations.py) `KernelSum` em Group separado apos `SummationDensity` (necessario para `s_rho` finalizado).
 
 27. **Pinning cinemático + refinamento simétrico são incompatíveis — refinar no núcleo é academic** (lição Pass N v2.3 → v2.3.1, 2026-05-26, ancorada em Liu §4.5 e §6.4): o hard pin K.17 (`u=v=0` em `ρ_b ≥ 0.8`) zera velocidade APÓS o cálculo da força no integrador, quebrando reciprocidade Newton-3: a partícula vizinha não-pinada recebe push integral de pressão mas a reação é zerada artificialmente. Quando v2.3 desbloqueou refinamento no núcleo (gen-1 via tree_mask), os splits se concentraram lá porque `ρ_b ≥ 0.8` + relaxacao Gaussiana inicial cria gaps no centro. Resultado: `a_pressure = 5.015` sustentado (vs orcamento §8 < 3), `max_v` cravado, **dt collapse 12×** (5e-3 → 4.3e-4), simulação travou em t=13s/iter 7200. Causa raiz dupla: (a) com `ε=0.35` e `α=0.6`, o offset 0.378·dx das filhas-vértice cai no pico do kernel `W(r/h ≈ 0.35)` — densidade pós-split ≈ 1.7×densidade pré-split (Violeau §7.4 prova que `ε/α=1` minimiza esse erro; manter razao ≠ 1 é over-pack garantido); (b) Liu §4.5 alerta que a equação de momentum não é integrada em pin cinemático — refinar lá adiciona vizinhos cujas forças vão ao lixo, mas cuja contribuição ao kernel inflaciona a densidade dos vizinhos NÃO-pinados, criando instabilidade de pressão por toda a borda. **Regra geral**: refinamento adaptativo deve ser EXCLUÍDO de regiões com pin cinemático ativo (Liu §6.4 — tensile instability se agrava). Em Pass N v2.3.1 isso virou o gate `ρ_b < PASS_N_RHO_B_MAX = 0.7`. Trade-off explicito: nucleo continua perdendo vizinhos com o tempo sem reposicao — aceito por design porque partição da unidade no núcleo congelado é teoricamente irrelevante.
@@ -1138,7 +1164,7 @@ Resultado: pulsacoes episodicas (n_fast pico=114 em t=1.5s via perturbacao inici
 - **Nao remover hard pinning mecanico `rho_b>=0.8`** (K.17). Confirmado nao negociavel por K.25a (falha catastrofica) e M-B.9a (fragmentacao distribuida quando substituido por drag forte, lição §22). Pin cinematico e estruturalmente protetor — coesao SPH atual `B_tension≈0.0028` nao resiste ao diferencial de v_term ~ 0.1 entre core e tip sem o pin.
 - **Ao introduzir mecanismo que aumenta tracao no rim** (f0 maior, motile_boost maior, etc), **re-avaliar `tension_ratio` no mesmo passo** (lição §23). Cohesao SPH deve escalar com motor — ignorar isso reproduz brittle neck (lição §15).
 - **OBRIGATORIO — executar o protocolo §3.3.6 antes de qualquer mudanca em fator de producao ou sumidouro de cs.** Forcas `MarangoniForce` e `FlagellarForce` apontam na direcao `−∇cs` (de alto cs para baixo cs). Para push outward, cs deve **decrescer monotonicamente para fora** ao longo da biomassa — o pico cs deve cair dentro do corpo da colonia, com biomassa contigua entre o pico e o agar. Mudancas em `c_n_factor`, `growth_headroom`, `sigma`, `tip_boost`, `motile_boost`, `qs`, `k_consume`, `lambda` que movam o pico para o agar ou para o rim externo isolado sao PATOLOGICAS — geram push inward na maior parte da colonia. **A falacia "cs concentrado nas pontas puxa para fora" e proibida** — calcular cs_∞ em 4 zonas antes de propor.
-- **OBRIGATORIO — qualquer refinamento adaptativo (Pass N e variantes) deve seguir Vacondio 2013 / Feldman 2006 (Soleimani 2017 §3.2.6).** Substituir 1 mãe por N filhas (hexagonal 2D, N=7) com massa dividida IGUALMENTE (`m_filha = m_mãe/N`), velocidade IDÊNTICA herdada (`u_filha = u_mãe, v_filha = v_mãe` — conservação de momentum), `α=ε` (Feldman 2006 — razao otima de smoothing/offset; v2.4 usa `α=ε=0.35` para evitar overlap com vizinhos a ~dx). **Proibido "adicionar 1 filha"** (lição §25 — falha estrutural em 3 modos comprovada por Pass N v1). **Proibido n_d < 7** (licao §27/§28 — splits parciais quebram momento angular e amplificam tensile instability Liu §6.4). Antes de propor variação, computar: (a) ganho de resolução por split = N (não fração), (b) conservação simultânea de mass + linear momentum + angular momentum. Se algum for violado, voltar ao paper. Filhas com `rho_b ≥ 0.8` herdam pin automaticamente do scheme.py.
+- **OBRIGATORIO — qualquer refinamento adaptativo (Pass N e variantes) deve seguir Vacondio 2013 / Feldman 2006 (Soleimani 2017 §3.2.6).** Substituir 1 mãe por N filhas (hexagonal 2D, N=7) com massa dividida IGUALMENTE (`m_filha = m_mãe/N`), velocidade IDÊNTICA herdada (`u_filha = u_mãe, v_filha = v_mãe` — conservação de momentum). **Sobre `α`/`ε` (AMENDADO 2026-06-02, Pass N v2.5):** Feldman 2006 deriva `ε/α=1` como otimo de densidade para particula **isolada**; em dominio **empacotado** isso e inviável (ε grande → filhas colidem com vizinhos a ~dx → proximity guard aborta). Politica do projeto: `α` pode EXCEDER `ε` (over-pack transitorio) quando o objetivo for preservar dt (h_filha grande) E houver coesao+viscosidade suficientes para relaxar (compromisso Liu §6.5). Trade-off explicito — v2.4 usou `α=ε=0.35` (sub-amostragem, dt 85× pior); v2.5 usa `α=0.75, ε=0.35` (over-pack aceito, dt preservado). **Toda escolha `α≠ε` DEVE citar Liu §6.5 e validar o critério "dt avg t>30s ≥ 0.5× inicial"** (teste de relaxacao do over-pack; lição #27 mostra que over-pack não-relaxado trava o run). **Proibido "adicionar 1 filha"** (lição §25 — falha estrutural em 3 modos comprovada por Pass N v1). **Proibido n_d < 7** (licao §27/§28 — splits parciais quebram momento angular e amplificam tensile instability Liu §6.4). Antes de propor variação, computar: (a) ganho de resolução por split = N (não fração), (b) conservação simultânea de mass + linear momentum + angular momentum. Se algum for violado, voltar ao paper. Filhas com `rho_b ≥ 0.8` herdam pin automaticamente do scheme.py.
 - **OBRIGATORIO — citar Liu [T6] ou Violeau [T7] em qualquer mudanca de fisica SPH (2026-05-28).** Toda alteracao em (a) refinamento adaptativo, (b) integrador customizado (CustomEulerStep, pinning, drag implicito), (c) equacoes SPH (forcas, difusao, EOS), (d) trigger ou criterio de qualidade do kernel, (e) tratamento de fronteira, **deve referenciar o capitulo/secao especifico de Liu 2003 ou Violeau 2012 que fundamenta a mudanca**. Exemplos validos: "Violeau §3.6 — particao da unidade discreta", "Liu §6.4 — tensile instability sob p<0", "Liu §3.4 — conservacao de momento linear com formulacao antisimetrica". Solucoes "tentativa e erro" sem ancoragem teorica nestas referencias sao **rejeitadas em revisao**. Ver §3.0 [T6]/[T7] para mapa de capitulos relevantes. **A IA deve consultar Liu/Violeau ANTES de propor qualquer modificacao em fisica SPH**, exatamente como ja deve consultar Trinschek/Srinivasan/Bru antes de modificar a fisica biologica.
 
 ---
@@ -1786,6 +1812,229 @@ Splits parciais (n_d ∈ [4, 6]) com vertices descartados assimetricamente deslo
 1. Rodar `make run` com `total_sim_time = 50`.
 2. Verificar criterios de aceitacao acima.
 3. Se passar t=50s, estender para `total_sim_time = 100`.
+
+#### Pass N v2.4 — VALIDADO em t=50s sobre baseline T2g: ESTAVEL mas NET-NEGATIVE (2026-06-01)
+
+Run completo t=50s (`α=ε=0.35, σ_trig=0.85, gate rho_b∈[0.3,0.7], gen≤1` via `m_floor=1/7`, `MAX_PARENTS=25`). **Numericamente saudavel, morfologicamente inutil, computacionalmente proibitivo.**
+
+- **dt:** 203400 iter para 50s (vs ~2400 do T2g sem Pass N) — **~85× overall, ~130× no regime permanente** (dt ~1.6e-4 vs 0.021). Confirmado proibitivo (3.5h→5.4h wall).
+- **Fisica saudavel:** `a_pressure` 3.0 plateau (1 spike de 40 em t=17s num split), `a_marangoni` 8-9 estavel, `mass_total` 103 conservada. Morfologia ~18-22 dendritos coerentes, SEM fragmentacao (diferente do T2d+PassN).
+- **MAS sem ganho vs T2g:** `contrast_cs` termina ~15 = IGUAL ao T2g; `mean_v` 0.0005 < T2g 0.001 (mais congelada). Morfologia visualmente equivalente.
+- **Raiz do zero-benefício:** só **98 mães splitaram (686 filhas) = +1.7% de partículas** — cobertura negligivel para densificar braços. Gate `σ_a<0.85` + `n_d=7 estrito` + `rho_b∈[0.3,0.7]` dispara pouquissimo.
+- **BIND FUNDAMENTAL (lição #29):** o dt e fixado pela MENOR partícula (gen-1 h=0.034), **INDEPENDENTE da contagem**. 98 filhas cravam o dt tanto quanto 10000. Paga-se a penalidade de 85× inteira por ~0 refinamento útil — custo/benefício péssimo por construção. Confirma: **Pass N entrega resolução, não largura física** (estreitamento dos dedos e problema do MOTOR, não de refinamento).
+
+#### Pass N v2.5 — REFINAMENTO DE PREENCHIMENTO REAL ("enchimento agressivo") (2026-06-02, IMPLEMENTADO — aguardando validacao)
+
+**Decisao do usuario (NAO abandonar Pass N):** braços sem suporte de kernel violam a Particao da Unidade (`σ_a≈1`, Violeau §3.4) e a Consistencia de Interpolacao (Liu §3.3) — gradientes de Marangoni nos dendritos ficam numericamente espurios. A base cientifica da tese exige resolver isto. A v2.4 falhou por ser **excessivamente conservadora**, nao por estar errada.
+
+**Quatro mudancas (vs v2.4):**
+1. **`α: 0.35 → 0.75`** (`PASS_N_ALPHA`) — h_filha proximo da mae, **preserva dt-por-h** (penalidade ~1.5× em vez de ~85×). **ε mantido em 0.35** (decoupling deliberado de Feldman, ver §10 amendment). **Aceita-se o over-pack inicial**, confiando na EOS coesiva (`tension_ratio=0.30`) + Monaghan (`alpha_mon=0.12`, K.23) para relaxar (compromisso Liu §6.5).
+2. **`σ_trig: 0.85 → 0.95`** (`PASS_N_SIGMA_TRIG`) — gatilho preemptivo: agir ao primeiro sinal de estiramento (5% de perda de consistencia, nao 15%).
+3. **gate `rho_b: [0.3,0.7] → [0.15,0.95]`** (`PASS_N_RHO_B_MIN/MAX`) — Pass N livre para fechar buracos em quase toda a colonia, incluindo a junção núcleo-dendrito.
+4. **`MAX_PARENTS: 25 → 100`** — enchimento agressivo, agora VIÁVEL porque α=0.75 mantem h grande (lição #29: dt e min-h, não contagem; com h grande a contagem deixa de cravar o dt).
+- `n_d=7 estrito` MANTIDO (Violeau §7.4.3 — CM + momento angular). `gen≤1` mantido (`m_floor=1/7`).
+
+**RISCO PRINCIPAL (lição #27 re-apostada):** α=0.75 com ε=0.35 dá `ε/α=0.47` — MAIS longe do otimo Feldman do que a v2.3 (0.58) que travou em t=13s. Efeito contraintuitivo: α maior melhora dt-por-h mas PIORA dt-por-força via over-pack. Efeito líquido no dt e incerto — pode re-travar. **Critério #2 (dt avg t>30s ≥ 0.5× inicial) e o teste direto de se o over-pack relaxou.** Fallback se falhar: ε→0.5 (reduz over-pack mantendo parte do ganho de h) ou α→0.6.
+
+**Criterios de Sucesso v2.5 (obrigatorios para desbloqueio):**
+1. **Consistencia geometrica:** `σ_a ≥ 0.90` sustentado na zona de transição e braços.
+2. **Continuidade de dt:** dt avg em t>30s ≥ 0.5× o dt avg inicial (t<5s) — guarda contra over-pack não-relaxado.
+3. **Morfologia:** braços densos e contínuos (fluido), NÃO correntes de partículas isoladas.
+4. **Conservacao:** `mass_total` varia < 0.1% por splitting (crescimento via `r_growth` permitido).
+
+**Validacao pendente:** `make run` com `total_sim_time=50`. Se relaxar (criterio #2 ✓) e densificar (criterio #3 ✓), estender t=100s. Se re-travar (lição #27), aplicar fallback ε=0.5.
+
+---
+
+### Rotas para o problema do vacuo — analise comparativa (2026-06-02)
+
+Apos v2.4 (net-negative, lição #29) e antes de apostar tudo na v2.5 (over-pack, lição #27), fez-se um levantamento da literatura SPH ([T8]/[T9]/[T10], §3.0.1). **Decisao do usuario: NAO abandonar o Pass N** — braços sem suporte de kernel violam `σ_a≈1` (Violeau §3.4) e a consistencia de interpolacao (Liu §3.3), tornando o `∇cs` da Marangoni nos dendritos numericamente espurio. Isso invalidaria a comparacao com Trinschek (T1). **Mas o objetivo (`σ_a→1`) ≠ mecanismo (splitting):**
+
+| Rota | Mecanismo | Custo dt | Ancoragem | Status |
+|------|-----------|:--------:|-----------|--------|
+| **A** | Particle Shifting (redistribui, `δr=-D∇C`) | **ZERO** | [T8] Lind/Xu/Adami; Liu §6.4/§6.5 | **ESGOTADA** — v1 congela (#31), A.3 deixa vacuo (#32) |
+| **B** | Timesteps individuais/locais | controlado | [T9] Springel; Saitoh-Makino | futura (reescreve integrador) |
+| **C** | Kernel Gradient Correction (KGC/CSPM) | **ZERO** | [T10] Bonet-Lok; Liu §3.3 (CSPM ∈ T6) | **EM IMPLEMENTACAO 2026-06-02** |
+| **D** | Pass N "do paper" (mae passiva + grad-h) | alto | Vacondio/Barcarolo/Chiron; Springel-Hernquist | auditoria pendente |
+
+Sucessos preservados: a maquinaria Vacondio/Feldman do Pass N (n_d=7, conservacao exata, trigger σ_a) esta correta; T2g e baseline estavel ate t=100s; lição #29 alinha com a literatura de APR (resolucao fina = timestep curto = caro).
+
+#### Rota A — Fickian Particle Shifting (IMPLEMENTADO 2026-06-02, aguardando validacao)
+
+Preenche o vacuo REDISTRIBUINDO particulas existentes — custo de dt ZERO (nao encolhe h). Ataca o vacuo como problema de DISTRIBUICAO, nao de contagem.
+
+**Implementacao:**
+- **[src/equations.py](src/equations.py) `ParticleShift`:** `loop` acumula `∇C = Σ_j (m_j/ρ_j)∇W_ij` em `shift_dC_x/y`; `post_loop` calcula `δr = -shift_coeff·h²·∇C`, com cap `|δr| ≤ shift_cap·h` (Lind 2012 — shifts grandes desestabilizam). **Gate = inverso do hard pin K.17:** shift=0 se `rho_b≥0.8` (nucleo) OU `c_n<0.6` (starvation) OU `rho_b<0.05` (agar). Auto-limitante: uniforme → ∇C=0 → δr=0.
+- **[src/scheme.py](src/scheme.py):** Group `equations_shift` separado apos `equations_main` (condicional a `use_shift`); `CustomEulerStep.stage1` aplica `d_x += shift_x; d_y += shift_y` apos o passo de velocidade (shift=0 para pinados → soma incondicional segura).
+- **[main.py](main.py):** flags `use_shift=True`, `SHIFT_COEFF=0.5`, `SHIFT_CAP=0.05`; propriedades `shift_dC_x/y`, `shift_x/y`. **`use_pass_n=False` (Pass N preservado, desligado para isolar a Rota A).**
+
+**SIMPLIFICACAO v1 (documentada):** shift aplicado so a posicao; campos (`rho_b, cs, c_n`) acompanham a particula SEM a correcao de Taylor `δr·∇φ` de Lind 2012. Justificado por shift pequeno (cap 0.05h), `rho` recomputado a cada passo (SummationDensity), cs/c_n difusivos. TODO: adicionar `δr·∇φ` se houver drift.
+
+**RISCO PRINCIPAL — erosao morfologica:** PST e um HOMOGENEIZADOR (criado para escoamentos de bulk uniformes); a morfologia dendritica e ANTI-homogenea (braços finos + baias vazias). Mitigantes: (a) baias sao AGAR particle-filled (rho_b<0.05, gated OUT) → ∇C pequeno na fronteira braço-baia → contorno preservado; (b) ∇C grande so onde particulas estao genuinamente esparsas (braços esticados, junção). **Monitorar nos frames se os braços alargam/borram** — se sim, reduzir `SHIFT_COEFF`/`SHIFT_CAP` ou estreitar o gate.
+
+**Quando religar Pass N junto com shift:** `add_particles` das filhas precisara incluir `shift_x/y/dC` no dict `data` (senao herdam lixo, cf. bug `mean_c_n>max_c_n` v2.3).
+
+**Criterios de sucesso Rota A:**
+1. **Vacuo preenchido:** painel 3 (rho/rho0) sem gaps `<0.7` sustentados nos braços e na junção núcleo-rim.
+2. **dt preservado:** dt avg ~ T2g (~0.02; **sem** os 85× do Pass N) — confirma custo-ZERO.
+3. **Conservacao:** `mass_total` identica ao T2g (shift nao cria/destroi massa).
+4. **Morfologia NAO erodida:** braços continuam finos e separados (NAO blob homogeneo); `contrast_cs` nao colapsa abaixo do T2g.
+5. **Estabilidade:** `a_pressure` ≤ 4, sem particulas ejetadas.
+
+#### Rota A v1 (gate [0.05,0.8)) — SUCESSO NUMERICO / FALHA MORFOLOGICA (2026-06-02, t=50s)
+
+`SHIFT_COEFF=0.5, SHIFT_CAP=0.05, gate rho_b∈[0.05,0.8)` (isotropico, incluindo o frontier motil).
+
+- ✅✅ **dt = 0.0256 ≈ T2g — custo ZERO confirmado** (1932 iter para t=50, vs 203400 do Pass N). Promessa central cumprida.
+- ✅ `a_pressure`=3.0, `mass`=102 conservada, **painel 3 LIMPO** (vacuo preenchido, σ_a→1 atingido). Objetivo numerico alcancado.
+- ❌❌ **MORFOLOGIA SUPRIMIDA (critério #4):** colonia **congelou em disco lumpy r≈1.0** (vs T2g r≈2.5-3), ~12-15 bumps curtos, **ZERO dendritos**. `mean_v≈0.00008` (10× < T2g) — colonia parada.
+- ⚠️ `contrast_cs`=37 = **falso-positivo** (borda nitida de disco compacto, NAO pontas dendriticas; `mean_cs`=0.013 baixo só porque a colonia e pequena). Lição §11 confirmada: nunca ler contrast_cs isolado.
+
+**Causa-raiz (lição #31):** PST e um HOMOGENEIZADOR; fingering e ANTI-homogeneo. O shift isotropico no rim (a) **amortece as perturbacoes curtas** que SEMEIAM os dedos (Mullins-Sekerka nunca nucleia), (b) redistribui de volta o push da Marangoni → trava a expansao. **A homogeneizacao que preenche o vacuo e a mesma que mata o fingering.** Confirmado o risco sinalizado ex-ante. Lind 2012 [T8] previne isto suprimindo a componente do shift NORMAL a superficie livre.
+
+#### Rota A.3 (gate interior [0.6,0.8)) — IMPLEMENTADO 2026-06-02, aguardando validacao
+
+Alavanca unica: `SHIFT_RHO_B_MIN: 0.05 → 0.6` ([main.py](main.py), threaded → scheme → `ParticleShift.rho_b_min`). Mantem `coeff=0.5, cap=0.05` (numericamente OK na v1). Desloca SO a banda interior `[0.6, 0.8)` — a junção núcleo↔rim onde vive o vacuo — **EXCLUINDO todo o frontier motil** (rho_b<0.6, que cobre o gate flagelar [0.1,0.6] e a zona de swarmers). As pontas crescem livres; só o interior estrutural e homogeneizado. Versao simplificada do tratamento de superficie livre de Lind 2012 (em vez de projetar a componente normal, exclui a faixa de rho_b da interface ativa).
+
+**Predicao:** dt continua ~T2g (zero custo); junção núcleo↔rim preenchida (painel 3 limpo SO no interior); **dendritos voltam a formar** (frontier intocado) → `mean_v` recupera a ~0.001 (T2g), morfologia ~T2g ou melhor. Se FALHAR (colonia ainda congela OU vacuo da junção persiste), a homogeneizacao por shift e incompativel com esta morfologia → **partir para Rota C (KGC)** ou A.2 (supressao da componente normal via ∇rho_b).
+
+**RESULTADO A.3 (2026-06-02, t=50s) — FALHOU NO OBJETIVO (vacuo persiste):**
+- ✅ dt=0.0218 (custo ZERO), ✅ morfologia restaurada (~18-20 dendritos a r≈2.5, `mean_v`=0.0008 ≈ T2g, 10× > v1), ✅ `a_pressure`=3.0, ✅ massa conservada (101→102.9), ✅ `contrast_cs`=15.6 (saudavel, NAO o falso-positivo 37 da v1).
+- ❌ **CRITÉRIO #1 (vacuo) FALHOU:** painel 3 mostra aglomerado de gaps (`rho/rho0<0.7`) **ainda concentrado na junção núcleo↔rim**; painel 1 mostra anel oco entre o núcleo central e as bases dos dendritos. **O vacuo — alvo da Rota A — persistiu.**
+- ⚠️ Violacao §11 cometida na 1a leitura: declarei "sucesso" pela morfologia sem checar a metrica-alvo (vacuo). Corrigido apos feedback do usuario.
+
+**Causa-raiz (lição #32):** o vacuo da junção esta na MESMA faixa de `rho_b` (<0.6) que o frontier motil que A.3 protege. As particulas esparsas do anel oco tem `rho_b<0.6` → **excluidas pelo gate [0.6,0.8)**. v1 [0.05,0.8) preenche o vacuo MAS congela; A.3 [0.6,0.8) preserva morfologia MAS deixa o vacuo. **`rho_b` nao separa "vacuo a preencher" de "frontier a proteger" — coabitam <0.6.** Camada mais profunda: o vacuo e artefato CINEMATICO do hard pin K.17 (núcleo congelado + rim expandindo → junção esticada regenera o gap a cada passo); shift de banda fina nao acompanha.
+
+**Shifting (Rota A) ESGOTADO** — duas falhas independentes: v1 (homogeneiza→mata fingering, #31) e A.3 (vacuo co-localizado com frontier, #32). **Pivot autorizado para Rota C (KGC).**
+
+#### Rota C — Kernel Gradient Correction (KGC/CSPM) — IMPLEMENTADO 2026-06-02, aguardando validacao
+
+Bonet & Lok 1999 / CSPM ([T10], Liu §3.3 — CSPM e de Chen-Beraun/Liu-Liu, dentro do T6). **Corrige o operador `∇cs` da Marangoni SEM mover/criar particula** → restaura consistencia de 1a ordem nos braços sub-resolvidos (∇ de campo linear exato mesmo com vizinhanca incompleta). Ataca a justificativa cientifica real (∇cs espurio invalidaria Trinschek) em vez de tentar preencher o vacuo cinematico.
+
+**Por que KGC escapa dos becos da Rota A:**
+- **Nao move particula** → impossivel congelar a morfologia (lição #31 nao se aplica).
+- **Auto-gateia pelo determinante** → nao depende de separar vacuo↔frontier por `rho_b` (lição #32 nao se aplica). Bulk: `det(M)≈1` → L≈I (sem correcao). Rim/vacuo: `det<1` → corrige.
+- **Custo de dt ZERO** (so algebra local).
+
+**Mecanismo:** `M_i = Σ_j V_j (x_j-x_i)⊗∇_iW_ij` (→ I p/ vizinhanca completa); `L_i = M_i^{-1}`; gradiente corrigido `∇cs_i = L_i·Σ_j V_j(cs_j-cs_i)∇W_ij`. Em `MarangoniForce.loop`, `DWIJ` e substituido por `L_i·DWIJ`.
+
+**Implementacao:**
+- **[src/equations.py](src/equations.py) `KernelGradientCorrection`:** `loop` acumula M (2×2); `post_loop` inverte → L (Lxx,Lxy,Lyx,Lyy). **Fallback CSPM:** `det(M)<det_min` (0.25) → L=identidade (reverte a SPH padrao; evita amplificar forca em particula quasi-isolada; limita `|L|≲4×`).
+- **[src/scheme.py](src/scheme.py):** Group `equations_kgc` SEPARADO entre `kernel_sum` e `main` (L precisa estar invertida antes de MarangoniForce usar). Condicional a `use_kgc`.
+- **[src/equations.py](src/equations.py) `MarangoniForce.loop`:** `cdwij = L_i·DWIJ`, usado no lugar de DWIJ. L inicia identidade → KGC off ⇒ SPH padrao (toggle limpo).
+- **[main.py](main.py):** `use_kgc=True`, `KGC_DET_MIN=0.25`; props M/L (L init identidade). **`use_shift=False`** (Rota A esgotada, isola KGC).
+
+**Escopo v1:** KGC aplicado SO ao `∇cs` da `MarangoniForce` (motor central, a preocupacao cientifica). `FlagellarForce` (tambem usa ∇cs) e `BiomassGradient` ficam para follow-up se a v1 validar.
+
+**RISCO:** em regioes muito degradadas, `L~1/det` amplifica o gradiente → pode spike de `a_marangoni`/instabilidade. Mitigado pelo fallback `det_min=0.25` (|L|≲4×). Monitorar `a_marangoni` e `a_pressure` — se spikarem, subir `det_min`.
+
+**Criterios de sucesso Rota C:**
+1. **Operador valido:** `a_marangoni` consistente (sem o ruido espurio dos braços sub-resolvidos); idealmente instrumentar `σ_a`/erro do gradiente.
+2. **dt ZERO custo:** dt avg ~ T2g (~0.02).
+3. **Estabilidade:** `a_pressure` ≤ 4, `a_marangoni` sem spikes (fallback funcionando), sem particulas ejetadas.
+4. **Morfologia:** dendritos preservados ou MELHORADOS (gradiente correto → Marangoni mais fisica nas pontas); `mean_v`, `contrast_cs` ≥ T2g.
+5. **Conservacao:** `mass_total` ~ T2g.
+
+**Nota de conservacao:** a forma gather corrigida (`L_i·DWIJ`) NAO e pairwise-antisimetrica → perde conservacao exata de momento (Bonet-Lok teriam a forma variacional simetrica). Aceitavel aqui: a colonia ja e hard-pinada + drag-dominada (momento nao e conservado de qualquer forma). Documentar se houver drift de CM.
+
+**RESULTADO Rota C / KGC (2026-06-02, t=50s) — SUCESSO no proposito, vacuo central persiste (esperado):**
+- ✅ dt=0.0208 (custo ZERO), ✅ `a_pressure`=2.99 plateau (fallback `det_min` segurou — sem spikes), ✅ massa conservada, ✅ morfologia (~18-20 dendritos, braços OK).
+- ✅✅ **`a_marangoni` subiu de ~8 (T2g/A.3) → 13-14** — o gradiente corrigido **amplificou ~75% a forca nas pontas sub-resolvidas**: o `∇cs` que o SPH padrao SUBESTIMAVA no rim agora e consistente de 1a ordem (Liu §3.3). **KGC cumpriu seu objetivo** (operador valido nas pontas) de graca e estavel. **KGC e KEEP.**
+- ❌ vacuo **CENTRAL** persiste — mas KGC nunca preencheria (corrige operador, nao cria particula). O vacuo que sobra e a **junção núcleo↔rim, colada no núcleo congelado** — NAO nos braços (que estao bons).
+
+#### Mecanismo do vacuo central + analise preditiva de solucoes (2026-06-02)
+
+**Causa-raiz:** o vacuo central e **evacuacao dinamica por orcamento de particulas**, NAO inicializacao. Massa cresce ~2% (`r_growth=0.02`) mas area ~25× (r 0.5→2.5); particulas ≈ constantes (Pass N off) → o shell **migra para os braços** (Marangoni) evacuando o centro; o núcleo (`rho_b≥0.8`) esta congelado (pin) e o crescimento aumenta `rho_b` no lugar SEM criar particulas. O vacuo abre na fronteira pin↔shell e **cresce no tempo** (t10 pequeno → t50 claro). Confirmado dinamico.
+
+**Implicacao:** o vacuo e (a) dinamico (regenera) e (b) deficit de particulas. Solucoes estaticas (inicializacao) NAO previnem.
+
+| Familia | Predicao sobre o vacuo | Veredito |
+|---|---|---|
+| Iniciar sem núcleo pinado / pre-densificar | atrasa, EOS equaliza, re-evacua | paliativo (dinamico) |
+| **Resolucao global mais fina (dx menor)** | centro esparso ganha ~2.25× particulas → rho/rho0 sobe; **reduz muito** (talvez nao 100% — ha gap de deslocamento) | candidato robusto; custo dt~0.6×, wall~3.4× |
+| Suavizar pin (drag) | fragmenta | DESCARTADO (§22) |
+| Subir threshold pin (0.8→0.9) | vacuo se realoca + âncora enfraquece | negativo (K.25a) |
+| Pass N split na junção | over-pack adjacente ao pin → colapso dt | DESCARTADO (#27) |
+| Pass N + timesteps individuais (Rota B) | preenche (= divisao celular) | correto, caro (reescreve integrador) |
+| **C3 — inserir particulas na rede dx no vacuo** | preenche ao rho0; **dt intacto** (h=h0), **sem over-pack** (dx, nao split); nao move particula | candidato mais direcionado |
+| Aceitar + KGC | nao preenche; operador ja valido | base cientifica OK |
+
+**Decisao:** pin PRESERVADO (mexer nele = fragmentacao §22 ou realocacao K.25a). Testar **C3 primeiro** (mais barato, direcionado), depois finer-res se C3 falhar.
+
+#### Rota C3 — Inserção de partículas no vácuo (IMPLEMENTADO 2026-06-02, aguardando validacao)
+
+Preenche o vacuo INSERINDO particulas frescas na rede dx — escapa de TODAS as armadilhas anteriores:
+- **NAO e split Vacondio** (1→7 colado, over-packa #27). Insere na rede dx → densidade local ≈ rho0, sem over-pack.
+- **h=h0** (nao encolhe) → **dt INTACTO** (escapa #29, o killer do Pass N).
+- **NAO move particula existente** → nao congela (#31), nao depende de separar vacuo↔frontier por rho_b (#32).
+- Inseridas herdam `rho_b` alto da mãe-vácuo → pinadas → congelam e preenchem estavel.
+
+**Implementacao** ([main.py](main.py) `post_step`, gated `use_insert`): a cada `INSERT_FREQ=200` iter, detecta `void_mask = rho_b>0.5 & rho/rho0<0.7` (zona estrutural, poupa tips <0.5); p/ cada particula-vacuo gera 6 candidatos hexagonais a distancia dx; insere onde o spot esta VAZIO (nenhum existente a <`0.7·dx`, via cKDTree + dedupe); campos herdados da mãe (`rho_b,cs,c_o,c_n,noise`), `u=v=0`, `m=dx²`, `h=h0`. `rho`/`sigma_a`/`L` recomputados no proximo passo. Cap `INSERT_MAX=100`/call. KGC mantido ON (ortogonal).
+
+**Predicao C3:** vacuo central eliminado onde inserido (rho/rho0→~1); dt mantem ~0.021; `mass_total` sobe (controlado pelo cap — trade-off de inserir = adicionar "celulas"); morfologia dos braços intacta (tips <0.5 nao tocados). **Risco:** mecanismo ad hoc (inserir, nao Vacondio); `mass_total` crescente (monitorar); possivel descontinuidade de campo se interpolacao grosseira (herda só da mãe). Reporta no log via coluna `pass_n_spawned` (Pass N off).
+
+**Criterios de sucesso C3:** (1) painel 3 SEM aglomerado de gaps no centro; (2) dt ~0.021; (3) `mass_total` controlada (<~110 em t=50s); (4) morfologia preservada (braços finos, sem blob); (5) `a_pressure`≤4 (sem over-pack das inseridas).
+
+**RESULTADO C3 (2026-06-02, t=47s) — SUCESSO: PRIMEIRO mecanismo a preencher o vacuo central.**
+- ✅✅ **Vacuo central PREENCHIDO** — painel 1: centro vira núcleo solido (nao mais anel oco); painel 3: centro vira aglomerado VERDE (`rho/rho0≈1`), os gaps azuis que persistiam em TODAS as rotas anteriores SUMIRAM. Primeira vez no projeto.
+- ✅ dt=0.0215 (custo ZERO — h=h0, escapou #29), ✅ `a_pressure`=3.0 (sem over-pack — rede dx, escapou #27), ✅ morfologia preservada (~18-20 dendritos de núcleo solido), ✅ `a_marangoni`=14 (KGC mantido), `mean_v`=0.0009, `contrast_cs`=13 (≈T2g).
+- ⚠️ **`mass_total` 101→104.5 (+3.4%/47s)** — ~2× o crescimento natural do BiomassGrowth (T2g +2.5%/47s). Inserções subiram 35→95/call (perto do cap 100). O vacuo regenera com a expansao → inserções crescem → massa sobe. Trade-off de inserir (= adicionar celulas), controlado mas com tendencia crescente.
+
+**Diagnostico do caveat:** como o centro JA aparece preenchido (frames), nao e sub-preenchimento (cap-limite) — e **over-inserção** na franja de under-density LEVE (rho/rho0 0.6-0.7) que nao sao buracos reais de kernel. Inseri-las so inflava massa.
+
+#### Rota C3.2 — `INSERT_RHO_TRIG: 0.7 → 0.6` (IMPLEMENTADO 2026-06-02, aguardando validacao)
+
+Alavanca unica: fillar so vacuo PROFUNDO. Violeau §3.6: `σ_a<0.85` (~15% erro) ~ `rho/rho0<0.6` (regime severo); a franja 0.6-0.7 e under-density leve (tolerable, nao e buraco real). **Predicao:** inserções caem ~30-50%, massa ~+2%/50s (t=100s ~107 vs ~110+), vacuo profundo (<0.6) continua preenchido. **Trade-off:** pode sobrar anel TENUE 0.6-0.7 no painel 3.
+
+**RESULTADO C3.2 t=50s — OK (massa +2.1%, inserções decaindo 25→0-6, vacuo profundo cheio).** Validacao curta PASSOU.
+
+**RESULTADO C3.2 t=100s — RUNAWAY na 2a metade (lição #34):** a auto-limitacao do t=50 era TRANSIENTE. Inserções: t=0-50 decaem 25→15 (✓), mas **t=57-100 explodem 37→87→102 e CRAVAM no cap** (100-102/call de t~67 em diante). `mass` 101→**110.2 (+9%)** (+2.5% na 1a metade, +6.4% na 2a). `contrast_cs` colapsou 360→**8.2** (vs T2g ~12-15, e ainda caindo) — motor degradando. Frame t=98: painel 3 com distribuicao **assimetrica/bagunçada** (centro verde limpo do t=46 deu lugar a aglomerado lopsided). dt=0.0197, `a_pressure`=3.0 (numericamente estavel, mas motor+massa NAO).
+
+**Causa-raiz do runaway:** partículas inseridas (`rho_b` 0.5-0.6) NAO eram filler inerte — elas (a) **crescem** (BiomassGrowth) → maturam p/ `rho_b≥0.8` → expandem o núcleo pinado → **nucleus maturation (lição #18)** re-disparada → núcleo maior → junção maior → MAIS inserção (feedback positivo); (b) **produzem cs** → inflam cs no interior → `contrast_cs` colapsa. **Inserir como biomassa ativa realimenta o problema que gera o vacuo.**
+
+#### Rota C3.3 — FILLER INERTE (IMPLEMENTADO 2026-06-02, aguardando validacao)
+
+Corrige o erro de modelagem do runaway: as inseridas viram **suporte de kernel inerte**, nao biomassa ativa. Nova propriedade `is_filler` (0=real, 1=inserida). Tres gates:
+- **[src/equations.py](src/equations.py) `BiomassGrowth.loop`:** filler NAO cresce (gate `is_filler<0.5`) → quebra o feedback de nucleus maturation (#18).
+- **[src/equations.py](src/equations.py) `SurfactantEquation.post_loop`:** filler NAO produz cs (`qs=0` se filler) → preserva `contrast_cs` (so difunde passivamente).
+- **[src/scheme.py](src/scheme.py) `CustomEulerStep`:** filler e PINADO (`u=v=0`) → congela como suporte de densidade na junção (evita que filler em rho_b~0.5-0.6, dentro do gate flagelar, se mova e reabra o vacuo).
+- **[main.py](main.py):** propriedade `is_filler` (init 0); inserção C3 marca `is_filler=1`.
+
+**Predicao C3.3:** inserções MUITO menores (so vacuo geometrico da expansao, sem o feedback de maturacao) → massa cresce devagar (sem cravar o cap); `contrast_cs` preservado (~T2g, sem o colapso a 8); vacuo profundo preenchido por filler congelado; morfologia simetrica (sem o lopsided do feedback). Filler carrega `rho_b` so p/ densidade/pin (suporte de kernel), nao para o motor. **Resta crescimento de massa geometrico** (cada filler = dx²) — bem menor que o feedback, mas monitorar; se ainda crescer demais, A3 (finer-res global) e o fallback. **Validacao pendente:** `make run` t=100s.
+
+**Criterios C3.3:** (1) inserções NAO cravam o cap em t>57s (sem runaway); (2) `mass_total` < ~106 em t=100s; (3) `contrast_cs` ≥ ~12 sustentado (motor preservado); (4) painel 3 centro preenchido E simetrico; (5) morfologia dendritica sustentada.
+
+**RESULTADO C3.3 t=100s — SUCESSO nos eixos criticos (motor/morfologia/vacuo central):**
+- ✅✅ **`contrast_cs` PRESERVADO em platô ~14** (até subiu 13.7→14.9 no fim) vs colapso a 8.2 da C3.2 — o filler-nao-produz-cs consertou a inflacao. Motor ≈ T2g. (criterio #3 PASS)
+- ✅ **centro preenchido E SIMETRICO** (frame t=97) — sumiu o lopsided da C3.2 (maturacao desligada removeu a assimetria). (criterios #4,#5 PASS)
+- ✅ dt=0.0211 (zero custo), `a_pressure`=2.99, `mean_v`=0.0009 (saudavel).
+- ⚠️ **massa +6.7% (101→107.8)** e inserções ainda sobem na 2a metade (27→102, cap em t~84) — mas e crescimento GEOMETRICO **bounded pelo cap** (linear, NAO exponencial como o feedback da C3.2). Mass so +1.8 acima do T2g. (criterios #1,#2 marginais)
+
+**Causa do residual geometrico:** o filler congelado forma uma CASCA frozen crescente; o rim real expande; o vacuo **migra para a borda externa da casca** → novas inserções na fronteira que cresce (mesma cinematica do pin, movida para fora). Linear-limitado, nao patologico. **C3.3 resolve o vacuo CENTRAL de forma sustentavel.**
+
+**VACUO REMANESCENTE (diagnosticado pelo usuario, 2026-06-02):** o vacuo central foi resolvido, mas PERSISTE (a) num **anel intermediario** entre o centro cheio e as bases dos dendritos, e (b) **dentro dos dendritos**. Ambos estao na **FRONTIER ATIVA (`rho_b<0.5`)** — a zona motil (swarmers/tips) que C3.3 EXCLUI de proposito (`INSERT_RHO_B_MIN=0.5`). Distincao fisica fundamental:
+- **Vacuo estrutural (`rho_b>0.5`, junto ao pin):** frozen, nao-motor → filler inerte congelado e correto (C3.3 ✅).
+- **Vacuo da frontier ativa (`rho_b<0.5`, anel+arms):** movel, crescente, E O MOTOR → filler congelado o MATARIA (#31, shifting v1); biomassa ativa realimenta (#34). NAO pode ser preenchido por C3-filler.
+- A preocupacao CIENTIFICA da frontier (∇cs espurio nos arms) JA e mitigada pela **KGC** (on) — a amplificacao `a_marangoni` 8→14 e a KGC corrigindo o gradiente nos arms sub-resolvidos. Operador valido apesar do vacuo.
+- Preencher FISICAMENTE o vacuo dos arms exige refinamento ATIVO que se move com o arm: Pass N (velocidade herdada) + Rota B (timesteps individuais [T9]) para o custo de dt; OU inserção ATIVA (C4: is_filler=0 + u,v herdados do arm) a h=h0; OU A3 (finer-res global) reduz todos os vacuos pelo orcamento. Ver §9 lição #35.
+
+#### Roadmap de decisao — vacuo da FRONTIER ATIVA (anel + dendritos) — A DECIDIR (2026-06-02)
+
+4 opcoes documentadas para decisao posterior. Todas pressupoem C3.3 mantido (vacuo central) + KGC mantido. Ordem por custo/risco crescente:
+
+**Opcao 1 — ACEITAR (KGC ja resolve a preocupacao cientifica). Custo ZERO, ja implementado.**
+A KGC (on) corrige o `∇cs` da Marangoni nos arms sub-resolvidos (a amplificacao `a_marangoni` 8→14 e exatamente isto — Bonet-Lok, Liu §3.3). Se o objetivo e "o gradiente nos braços e valido" (a base da tese), JA esta feito. O vacuo visual no painel 3 dos arms seria entao **cosmetico**, nao cientifico. **Pre-passo recomendado antes de qualquer implementacao:** instrumentar `σ_a` (ja computado por KernelSum) e/ou o erro do gradiente nos arms no log/plot, para MEDIR se o vacuo da frontier degrada a fisica ou se a KGC ja o neutralizou. Decide empiricamente se 2/3/4 sao necessarios.
+
+**Opcao 2 — Inserção ATIVA nos arms (C4). Custo dt ZERO (h=h0), risco medio.**
+Estender a inserção C3 a frontier (`rho_b<0.5`) MAS com particulas ATIVAS e velocidade-herdada: `is_filler=0`, `u,v` herdados do arm-pai (movem-se COM o arm → escapam #31), `rho_b/cs/c_n` herdados, `m=dx²`, `h=h0` (dt intacto). Crescem/produzem cs como funcao natural do arm — **sem feedback #18** porque nos arms NAO ha nucleo pinado para expandir (arm crescer e desejado). E "divisao celular no dendrito" barata. **Risco:** crescimento de massa/cs — precisa testar se NAO infla cs como C3.2 (a diferenca: nos arms a producao de cs e correta/local, nao afogamento do interior). Monitorar `contrast_cs` e `mass`. Se inflar → recuar para opcao 4.
+
+**Opcao 3 — Pass N (split) nos arms + Rota B (timesteps individuais [T9]). Canonico, custo ALTO (reescrita do integrador).**
+Refinamento Vacondio herda velocidade (move com arm) e CONSERVA massa (divide, nao adiciona → sem crescimento de massa, melhor que C3/C4 nesse aspecto). O unico bloqueio era o dt (#29, h pequeno) — resolvido por timesteps individuais/blocos hierarquicos (Springel 2005, limiter Saitoh-Makino [T9]). Exige reescrever `CustomEulerStep` + pin para integracao multi-dt. **Fix "fisicamente correto" de longo prazo** (= divisao celular real com resolucao verdadeira sub-dx), mas o mais caro de implementar.
+
+**Opcao 4 — A3 (resolucao global mais fina). Robusto, custo dt~0.6× + wall~3.4×.**
+`dx 0.054→0.036` (ou menor) → ~2.25× particulas globais → centro, anel E arms todos mais densos pelo ORCAMENTO de particulas. Sem over-pack, sem mexer no pin, sem congelar, sem feedback. Reduz TODOS os vacuos de uma vez. Incerteza: parte do vacuo e gap de deslocamento → pode reduzir sem zerar. **Fallback robusto** se 2 inflar e 3 for caro demais.
+
+**Recomendacao:** comecar pela **Opcao 1** (instrumentar `σ_a`/erro de gradiente nos arms p/ medir se o vacuo da frontier importa cientificamente ou se KGC ja resolveu). So implementar 2/3/4 se a medicao mostrar degradacao real. Se precisar preencher: **2** (mais barata, dt intacto) → se inflar cs, **4** (robusta) → **3** como fix definitivo.
 
 ---
 

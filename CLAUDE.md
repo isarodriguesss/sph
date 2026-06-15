@@ -1088,6 +1088,12 @@ Calibracao pos-Passes A-I.7. **MARCO I.7:** Transicao blob→dendritico confirma
 
 25. **Refinamento "1 filha por gap angular" FALHA estruturalmente; padrão Vacondio/Feldman (7 filhas hexagonais) é obrigatório** (lição Pass N v1, 2026-05-20): Pass N implementado como "detectar gap angular > π/2 e adicionar 1 filha em direção do gap" falhou em 3 modos simultaneamente: (a) **núcleo permanece oco** porque gaps no núcleo são isotrópicos (perda em múltiplas direções por hard pin K.17 + drift do rim), e filtro `max_gap > π/2` os rejeita; (b) **braços permanecem espaçados** porque ganho de resolução por split é 2× (mãe + 1 filha) ao invés de 7× (substituição hexagonal Vacondio) — não acompanha taxa de alongamento dos braços; (c) **velocidade NÃO herdada** (filhas nascem com u=v=0) viola conservação de momentum prescrita por Soleimani 2017 §3.2.6 — gera gradiente artificial e concentra propriedades dinâmicas nas partículas originais. **Solução obrigatória**: implementar Vacondio 2013 / Feldman 2006 (cit. Soleimani §3.2.6): substituir 1 mãe por 7 filhas em padrão hexagonal 2D (1 centro + 6 vértices a 60°), `ε = α = 0.6` (offset e smoothing), massa dividida igualmente (`m_filha = m_mãe/7`), velocidade IDÊNTICA herdada (`u_filha = u_mãe`), todas propriedades (rho_b, cs, c_o, c_n) copiadas para cada filha. Mãe é DELETADA. Erro de densidade < 5% comprovado (Feldman 2006). **Regra geral**: qualquer mecanismo de refinamento SPH neste projeto deve seguir o padrão Vacondio/Feldman — substituição N×, não adição 1×. Antes de propor variação, computar: ganho de resolução = N (não fração) e verificar conservação simultânea de mass + linear momentum + angular momentum. Se algum for violado, voltar ao paper. Diagnóstico em §12 Pass N v1.
 
+36. **Inserção de filler ATIVO na frontier (C4 hibrido) REIGNITE o runaway #34 — inserção de partícula NAO consegue preencher o vácuo do motor sem afogá-lo** (lição C4 híbrido + KGC off, 2026-06-15): testou-se a Opção 2 do roadmap — preencher o vácuo da frontier por inserção (não KGC): KGC OFF, gate estendido a `rho_b>0.1`, filler congelado no anel interno (`rho_b≥0.5` ou `|v|<0.02`) + filler ATIVO (is_filler=0, velocidade herdada) nos dendritos móveis. **Falha em TODOS os eixos vs baseline C3.4 (frozen-só + KGC):** `mass_total` +28.5% (vs +7.5%) — runaway; `contrast_cs` colapso 361→4-6 (vs platô ~14) — motor afogado; `mean_cs` 0.135 (vs 0.035) — inflação química §2.4-B; dt colapsou ~4× (19400 iter p/ t=97 vs 5000) — custo-zero perdido; `frac_lowsig_arms` 0.17-0.30 (NAO melhorou — vácuo não foi preenchido). Frames: blob inchado, cs saturado em todo o domínio, zero dendritos. **Causa raiz (falsifica a hipótese otimista da Opção 2):** o filler ativo no braço (a) PRODUZ cs → infla mean_cs → afoga (#34, exatamente como o Bloqueio Químico); (b) CRESCE biomassa → incha a colônia → cria MAIS vácuo ao expandir → inserções cravam no cap → feedback +; (c) MOVE-se (herda velocidade) → não densifica, alimenta a expansão (por isso frac_lowsig não caiu). **Regra geral:** inserção de partícula só serve para vácuo ESTRUTURAL estático (frozen filler inerte, C3.3). Para o vácuo da FRONTIER ATIVA (= o próprio motor em expansão), NAO existe "filler bom": frozen mata o fingering (#31), ativo reignite o runaway (#34). O vácuo da frontier ou se ACEITA + corrige o operador com KGC (Opção 1 — ∇cs válido apesar do vácuo, e a medição #2 mostrou pontas σ_a=0.98 = sem problema científico), ou exige refinamento Vacondio com conservação de massa + timesteps individuais [T9] (Opção 3, caro). Inserção ad hoc (C4) está DESCARTADA para a frontier. Confirma definitivamente lição #35.
+
+37. **Limite de geração de refinamento por MASSA é derrotado pelo crescimento — usar contador `gen` explícito** (lição Pass N v2.5 Fase 1, 2026-06-15): o Pass N limitava a geração via `m > m_floor=m₀/7` (assumindo que dividir só reduz massa: m_d=m_m/7 ≤ floor ⇒ gen-1 não re-splita). Mas o `BiomassGrowth` CRESCE a massa (`d_m += dt·d_am`) → uma filha gen-1 cresce de volta acima do floor → fica "splittable" de novo → **gen-2,3… espúrios** (confirmado no HDF5: `min m`=m₀/49, `h_min`=0.75²·h0=0.56·h0). Combinado com o over-pack (ε/α=0.47 → `rho/rho0` até 2.94), o h menor colapsou o **dt 97×** e o run parou em t=22.5s (23%) — diagnosticado erroneamente como "afogamento" pelo usuario (mas `mean_cs`=0.023, `contrast_cs`=21, massa conservada → quimica saudavel; era puramente dt). **Regra geral:** qualquer limite de geração/profundidade de refinamento adaptativo DEVE usar um contador explícito que só incrementa (propriedade `gen`, filha=mãe+1, gate `gen<MAX_GEN`), NUNCA um proxy (massa, h, volume) que outra física pode reverter. Massa/h não são monotônicos sob crescimento/EOS. Fix: propriedade `gen` (init 0, herdada +1 nas filhas), removido `m_floor`. Distinção diagnóstica crítica (§11): dt-collapse (sim vira lesma, mas motor vivo) ≠ afogamento químico (mean_cs/contrast colapsam) — sempre cruzar antes de nomear a falha.
+
+38. **Refinar 7× sob dt GLOBAL sempre colapsa o dt — over-pack↔h-pequeno é um bind estrutural, não calibração** (lição Pass N v2.5 Fase 1, 2 runs 2026-06-15): substituir 1 mãe por 7 filhas coloca 7 partículas na área de ~1 → espaçamento ~0.38·dx. A razão de Feldman ε/α (offset/smoothing) governa o trade-off: para NÃO over-packar (ε/α≈1, densidade pós-split correta) seria preciso `h_filha ≈ 0.21·h0` (α≈0.21) → h minúsculo → `dt` colapsa por CFL/viscoso (#29). Para preservar h (α=0.75) → ε/α<1 forçado → filhas dentro do kernel umas das outras → `rho/rho0` até 3.31 → over-pack → `dt` colapsa por pressão. Comprovado: ε=0.35 colapsou em t=19.5s, ε=0.5 só adiou para t≈34s (`rho` ainda 3.31). **Não existe ε/α que escape num integrador de dt único** — é o teorema implícito por trás de [T9] (Springel/Saitoh-Makino): refinamento espacial real EXIGE timesteps locais, senão a partícula mais fina dita o dt de todas (#29). Regra: APR (Vacondio/Feldman) só é viável pareado com timesteps individuais; em PySPH (dt global, `compute_accelerations` monolítico) isso exige forkar o `acceleration_eval`. Alternativa de custo-zero que NÃO refina mas valida o operador: KGC (#2 mostrou pontas σ_a=0.98 → suficiente). Corolário viz: se o vácuo é aceito (Opção 1), o problema VISUAL é de RENDERIZAÇÃO (campo SPH reconstruído/Shepard — Price 2007 splash; ou acumulação temporal "sombra"/footprint), NUNCA de adicionar partículas ao solver (= C4 #34 / freeze #31).
+
 **Proximos diagnosticos obrigatorios (atualizado 2026-04-30 pos-K.21):**
 
 **Estado atual (K.22 aplicado):**
@@ -1844,6 +1850,71 @@ Run completo t=50s (`α=ε=0.35, σ_trig=0.85, gate rho_b∈[0.3,0.7], gen≤1` 
 
 **Validacao pendente:** `make run` com `total_sim_time=50`. Se relaxar (criterio #2 ✓) e densificar (criterio #3 ✓), estender t=100s. Se re-travar (lição #27), aplicar fallback ε=0.5.
 
+#### Pass N v2.5 — AUDITORIA contra referencias + 3 correcoes ANTES de religar (2026-06-15)
+
+A pedido do usuario, auditou-se o codigo do split v2.5 ([main.py:547-714](main.py#L547-L714)) contra Vacondio 2013 / Feldman 2006 / Soleimani §3.2.6 / Liu / Violeau ANTES de `use_pass_n=True`. **Nucleo do algoritmo FIEL** (1 mãe→7 filhas hexagonal, n_d=7 estrito Violeau §7.4.3, massa/momento linear+angular conservados Liu §3.4, velocidade herdada, escalares copiados, mãe deletada, mãe excluida da KDTree lição #26). **Tres problemas corrigidos:**
+
+1. **BUG `is_filler` (corrigido):** o dict das filhas NAO setava `is_filler` → herdava lixo do realloc → filha podia nascer `is_filler>0.5` e ser PINADA como filler congelado (scheme.py), matando o refinamento. Mesmo risco do bug `mean_c_n>max_c_n` da v2.3. Fix: `"is_filler": [0.0]*7` (filhas = biomassa real refinada). Outros campos novos (`shift_*`, `L*`, `M*`) sao recomputados a cada passo antes de usar → lixo inofensivo; **so `is_filler` e estado persistente** lido por BiomassGrowth/SurfactantEquation/CustomEulerStep.
+2. **Comentarios/print defasados (corrigido):** diziam `gen≤2 / m₀/49` mas a constante real e `1/7` = `gen≤1`. Print dizia `ε=α={eps}` (mentira — α=0.75≠ε=0.35) → corrigido p/ `ε={eps}, α={alpha}`.
+3. **Comentario do void_mask C3 (corrigido):** ainda descrevia o C4 revertido.
+
+**Dois DESVIOS de referencia sinalizados com ⚠️ no codigo (em alerta p/ seguir a referencia se nao atender):**
+- `PASS_N_SIGMA_TRIG = 0.95` (engenharia preemptiva, ~5% erro) vs **canonico 0.85** (Violeau §3.6, ~15% erro). SE over-refino/dt travado → mudar p/ 0.85.
+- `ε/α = 0.47` (ε=0.35, α=0.75) vs **otimo Feldman ε/α=1**. Autorizado pelo §10 amendment (over-pack p/ preservar dt, Liu §6.5) MAS condicionado ao criterio runtime "dt avg t>30s ≥ 0.5× inicial". RISCO #27: 0.47 e MAIS distante do otimo que a v2.3 (0.58) que travou. SE falhar → ε→0.5 ou α→0.6 (rumo à referencia); alvo Feldman ε=α custa dt (#29), so com timesteps individuais (Fase 2).
+
+**Estado:** codigo auditado e corrigido, `use_pass_n` AINDA False. Plano de 2 fases em `/Users/isa/.claude/plans/linear-dazzling-comet.md` — Fase 1 = validar v2.5 (com `use_insert=False` p/ isolar, §2.3); Fase 2 = fork block-timestep [T9] so se v2.5 over-packar. **Achado de viabilidade:** timesteps individuais fieis sao incompativeis com o PySPH (dt global = min(h); `compute_accelerations` monolitico; `one_timestep` transpilado) → exigiriam forkar o `acceleration_eval`. v2.5 (α grande, h grande) e a saida nativa.
+
+#### Pass N v2.5 — Fase 1 (use_pass_n=True, use_insert/kgc=False) FALHOU Critério #2: dt colapsou 97× (2026-06-15)
+
+Run da Fase 1 parou em **t=22.5s (23%)** — o usuario achou que "afogou", mas **NAO e afogamento**. Quimica saudavel: `mean_cs`=0.023 (baixo; afogamento seria ~0.13), `contrast_cs`=21 (sem colapso), `mass_total`=101.7 (+0.6%, conservada). Frame: halo cs limpo e radial, ~15-20 dendritos incipientes (estagio inicial t=22).
+
+**É COLAPSO DE dt (~97×):** dt 1.8e-2 (t<15s) → 1.8e-4 (pós-t≈19.5s). A sim virou lesma; t=100 exigiria ~500k iter. **Critério #2 do plano (dt avg ≥ 0.5× inicial) FALHOU** (dt ficou 0.01× inicial). `a_pressure`=3.0 e `max_v`=0.07 normais (NAO foi a explosao de pressao da v2.3).
+
+**Duas causas raiz (assinatura no HDF5 final):**
+1. **Over-pack (#27, exatamente o que o alerta ε/α=0.47 previu):** `rho/rho0` ate **2.94** (p99=1.72), 3.8% das particulas >1.3. As 7 filhas a `ε·h_m=0.35·h_m` com `h=0.75·h_m` → distancia `ε/α=0.47·h_filha` → dentro do kernel umas das outras → densidade inflada.
+2. **BUG NOVO — limite gen≤1 por massa derrotado pelo BiomassGrowth (lição #37):** `h_min`=0.0544=`0.75²·h0` e `min m`=5.9e-5=`m₀/49` → **gen-2 espúrio** apesar do "gen≤1". O gate `m > m₀/7` assumia que a massa so diminui ao dividir, mas `BiomassGrowth` cresce `m` de volta acima do floor → filha re-splita → gen-2,3… → h encolhe → dt cai (#29). **Limite de geração por massa NÃO funciona quando há crescimento.**
+
+**Fix aplicado (item 1, NAO religado ainda):**
+- **Contador `gen` explícito** (propriedade nova, init 0; filha = mãe+1; gate `gen < PASS_N_MAX_GEN=1`). Imune ao crescimento — substitui o `m > m_floor`. `PASS_N_M_FLOOR_RATIO` e `V_0` removidos.
+- **`ε`: 0.35 → 0.5** (ε/α 0.47→0.67, rumo a Feldman) p/ reduzir over-pack. RISCO #26: r_off=0.9·dx pode abortar splits no domínio empacotado → monitorar `pass_n_spawned`; se cair a ~0, reduzir `α` (0.75→0.6) em vez de subir `ε`.
+- Alertas ⚠️ e comentarios-resumo atualizados; v2.4→v2.5 no print.
+
+**Bind estrutural reconhecido:** over-pack (ε/α baixo) vs abort (#26, ε alto) vs dt-cost (#29, α baixo) é um trilema. Se o re-teste do item 1 ainda colapsar dt, é a evidência definitiva de que a rota nativa (α grande) não escapa → Fase 2 (fork) OU Opção 1 (KGC, ja suficiente cientificamente pela medição #2).
+
+#### Pass N v2.5 — Fase 1 RE-TESTE (gen-counter + ε=0.5): gen-fix OK mas over-pack↔dt é BIND FUNDAMENTAL (2026-06-15)
+
+Re-rodada com o fix do item 1 (contador `gen` + ε 0.35→0.5). **gen-fix FUNCIONOU:** `h_min`=0.0726=`0.75·h0` EXATO → só gen-1, **ZERO gen-2** (antes 0.56·h0); massa 101.1→102.3 (+1.2%, conservada). Colapso de dt ADIADO t≈19.5→**t≈34** → run foi de 23%→**37%**. Quimica saudavel de novo (`mean_cs`=0.027, `contrast_cs`=18) — NAO afogamento. Frame t=36.7: ~18-20 dendritos limpos, nucleo compacto.
+
+**MAS o over-pack ainda colapsou o dt ~35×:** `rho/rho0` ate **3.31** (p99=1.95), 8.2% >1.3. Com `h_min` só 1.33× menor (gen-1), os 35× sao DOMINADOS pelo over-pack (pressao/CFL nos clusters), nao por h. ε=0.5 (ε/α=0.67) reduziu mas NAO eliminou.
+
+**BIND FUNDAMENTAL comprovado (lição #38):** refinar 7× = 7 filhas na area de 1 mãe → espacamento ~0.38·dx. Para NAO over-packar (Feldman ε/α≈1) precisaria `h_filha≈0.21·h0` → `α≈0.21` → h minusculo → dt colapsa por CFL (#29). Manter h grande (α=0.75) força ε/α<1 → over-pack → dt colapsa por pressao. **Em framework de dt GLOBAL, refinar 7× SEMPRE colapsa o dt — por h pequeno OU por over-pack. Nao ha calibracao de ε/α que escape** (ε/α=1 exigiria α≈0.2). Por isso os timesteps individuais [T9] (Fase 2) sao o fix "fisicamente correto" — deixam filhas de h pequeno integrarem no rung curto delas sem arrastar o resto.
+
+**Veredito:** Fase 1 (rota nativa α grande) FALHOU o Critério #2 de forma IRREMEDIAVEL (2 runs). gen-fix removeu uma causa (gen-2) mas o over-pack↔dt e estrutural. Decisao: **Opção 1 (KGC, recomendado — frontier nao e problema cientifico pela medição #2)** OU **Fase 2 (fork block-timestep, semanas, só se resolucao real exigida)**. Item 3 (ε=α=0.6 Feldman ótimo) provavelmente futil (#26 abort + dt-cost). **Discussao pendente (2026-06-15): literatura sobre o problema + como tratar o VÁCUO VISUAL se optar pela Opção 1 (renderizacao de campo reconstruido / "sombras" temporais — viz, NAO solver).**
+
+#### DECISÃO: Opção 1 ADOTADA (KGC + inserção frozen) — config de baseline (2026-06-15)
+
+Flags: `use_kgc=True`, `use_insert=True` (C3.4 frozen-só), `use_pass_n=False`, `use_shift=False`. Pass N e Shifting preservados via flag (Fase 2 futura). main.py limpo (histórico migrado p/ cá). Divisão do vácuo: **KGC corrige o operador ∇cs na frontier** (tipo-B, pontas σ_a=0.98) + **inserção frozen preenche o vácuo estrutural** (tipo-C, núcleo/junção).
+
+**DEFESA DE LITERATURA — KGC resolve o vácuo e NÃO é erro de fundamentação:**
+
+O vácuo degrada o **operador SPH**, não a física. A estimativa de gradiente SPH `∇A_i ≈ Σ_j V_j (A_j−A_i) ∇W_ij` só reproduz `∇A` exatamente se a **condição de consistência de 1ª ordem** `Σ_j V_j (x_j−x_i)⊗∇W_ij = I` valer. Com suporte completo/regular ela vale; com suporte INCOMPLETO (superfície livre, braços esparsos) ela falha → o gradiente puro tem erro O(1) (inconsistência de ordem zero). KGC/CSPM multiplica por `L = M⁻¹` (M = a matriz acima) e **RESTAURA a condição exata**: o gradiente corrigido reproduz campos lineares EXATAMENTE, independente da completude do suporte. É **restauração de consistência matematicamente rigorosa**, não um remendo.
+
+Por que NÃO "esconde" o vácuo: KGC não finge que há partículas onde não há — calcula o MELHOR gradiente 1ª-ordem-consistente a partir das partículas que existem. A força de Marangoni precisa de `∇cs`; KGC entrega o `∇cs` correto para a distribuição real. A física (`F=−β∇cs`) é inalterada; só a *estimativa numérica* de `∇cs` é corrigida. O auto-gating por `det(M)`: bulk (det≈1) → L≈I (não toca); frontier (det<1) → corrige exatamente onde o suporte é incompleto. Empiricamente (medição #2): pontas σ_a=0.98 → L≈I (KGC quase não altera onde já está bom); a amplificação `a_marangoni` 8→14 é a correção agindo onde o suporte é deficiente.
+
+**Referências bibliográficas:**
+- **Bonet & Lok (1999)**, *CMAME* 180:97-115 — formulação KGC; gradiente corrigido `L=(Σ V_j(x_j−x_i)⊗∇W)⁻¹` restaura consistência linear com distribuição irregular.
+- **Liu, M.B. & Liu, G.R. (2006)**, *Applied Numerical Mathematics* 56:19-36, "Restoring particle consistency in SPH" — referência canônica: trata DIRETAMENTE a inconsistência por suporte incompleto (fronteira/superfície livre) e prova que formulações corretivas restauram consistência C0/C1. **É exatamente o nosso caso (braços = suporte truncado tipo superfície-livre).**
+- **Chen, Beraun & Carney (1999)**, *IJNME* 46:231-252 — CSPM, consistência perto de fronteiras/suporte incompleto.
+- **Randles & Libersky (1996)**, *CMAME* 139:375-408 — SPH normalizado/corrigido para consistência.
+- **Oger et al. (2007)**, *JCP* 225:1472-1492 — gradiente renormalizado (Bonet-Lok) é exato para campos lineares, melhora convergência.
+- **Liu & Liu (2003)** [T6] §3.3 (inconsistência por deficiência de fronteira; CSPM); **Violeau (2012)** [T7] §3.4-3.6 (consistência discreta; σ_a = medida do erro).
+
+**Caveat honesto (documentado):** a forma gather corrigida `L_i·∇W` NÃO é pairwise-antisimétrica → conservação de momento é aproximada. Origem do trade-off: **Bonet & Lok (1999)** — o título é "Variational and **momentum preservation** aspects of SPH" — mostram que a correção ingênua sacrifica conservação e derivam a forma variacional simétrica que a restaura; princípio geral (antissimetria⟺momento) em Liu §3.4 / Violeau §5.3 / Monaghan 1992. Aceitável aqui porque a colônia é hard-pinada + drag-dominada → momento já não é conservado (pin e drag são forças externas). Sem erro escondido.
+
+**VALIDAÇÃO OBJETIVA (teste-ouro, 2026-06-15):** [test_kgc_consistency.py](test_kgc_consistency.py) replica a matemática do solver (KernelGradientCorrection + L·DWIJ em MarangoniForce) com o mesmo CubicSpline e mede ∇ de um campo LINEAR (∇ exato conhecido) em suporte completo vs. truncado. Resultado: **KGC reproduz o gradiente a ~1e-16 (precisão de máquina) em TODO ponto** — interior E bordas sub-resolvidas (det(M) de 0.99 até 0.34) — enquanto o SPH puro erra 1% (interior, ordem-zero M_xx=0.988≠1) → 62% (borda). Isto é a definição matemática de consistência de 1ª ordem restaurada (Liu §3.3); prova que a implementação é FIEL a Bonet-Lok 1999, não remendo post-hoc (fórmula errada não reproduziria campo linear a 1e-16 sob suporte truncado). As 3 escolhas de engenharia (det_min=0.25, escopo no ∇cs, forma gather) não afetam a correção — teste roda com det_min=0.25 e KGC é exata até det=0.34.
+
+**Vácuo VISUAL (separado da física):** mesmo com KGC, o painel `rho/rho0` (scatter) mostra buracos. Solução = RENDERIZAÇÃO (pós-processamento, não solver): (a) campo SPH reconstruído + interpolante de Shepard/σ-normalizado (**Price 2007, splash, PASA 24:159**) — buracos somem por interpolação de kernel; (b) ocupação/"sombra" temporal `∫ρ_b dt` — casa com a pegada acumulada da `reference.jpg` (que é ela própria um footprint integrado da frente de swarming). AMBOS puro pós-processamento — pôr "sombras" no solver = C4 #34/#31.
+
 ---
 
 ### Rotas para o problema do vacuo — analise comparativa (2026-06-02)
@@ -2012,6 +2083,23 @@ Corrige o erro de modelagem do runaway: as inseridas viram **suporte de kernel i
 
 **Causa do residual geometrico:** o filler congelado forma uma CASCA frozen crescente; o rim real expande; o vacuo **migra para a borda externa da casca** → novas inserções na fronteira que cresce (mesma cinematica do pin, movida para fora). Linear-limitado, nao patologico. **C3.3 resolve o vacuo CENTRAL de forma sustentavel.**
 
+#### Rota C3.4 — TRIGGER CANONICO `σ_a < 0.85` (IMPLEMENTADO 2026-06-02, aguardando validacao)
+
+Substitui o proxy `rho/rho0 < 0.6` (C3.2) pela metrica DIRETA da partição da unidade `σ_a < 0.85` ([main.py](main.py) `void_mask = rho_b>0.5 & sigma_a<0.85`). Motivo (auditoria de rigor — §10): o trigger de deficit de kernel deve usar `σ_a` (Violeau §3.6, Liu §3.3.3 — ~15% erro), nao `rho/rho0` que e enviesado por massa (lição #28). `σ_a` ja era calculado por `KernelSum` (so usado no Pass N ate agora). O gate estrutural `rho_b>0.5` protege contra falso-positivo de free-surface (Liu §6.5 — rim diluido tem σ_a<1 por kernel truncado, nao por vacuo real).
+
+**Valor:** `0.85` e o limiar canonico (vs o `0.6` em rho/rho0, que correspondia a σ_a≈0.6 ~40% erro — ESTRITO demais, escolhido so p/ conter massa). Em massa uniforme `ρ_a/ρ0 ≈ σ_a` (lição #28), entao C3.4 e MAIS PERMISSIVO que C3.2: pega vacuos MODERADOS (σ_a 0.6-0.85) que o 0.6 ignorava.
+
+**Predicao:** mais particulas-vacuo detectadas → mais inserções → `mass_total` provavelmente cresce MAIS que +6.7% da C3.3. **Trade-off rigor↔massa explicito:** o controle de massa agora e responsabilidade dos parametros de ENGENHARIA (`INSERT_MAX`, `INSERT_FREQ`), NAO de deturpar o threshold fisico. Se a massa for inaceitavel, a discussao e sobre o cap, nao sobre afrouxar o critério de Violeau.
+
+**RESULTADO C3.4 (2026-06-10, t=97s) — KEEP: melhoria de rigor sem custo, resultado ≈ C3.3.**
+- ✅ dt=0.0203 (4800 iter/97s — custo ZERO), `a_pressure`=3.01 platô (sem over-pack), `contrast_cs` platô **~14** (NAO colapsa — = C3.3, vs 8 da C3.2), `a_marangoni` 12-16 (KGC on), `mean_v` 0.0007-0.0009 (tip-only vivo).
+- ✅ **Vacuo CENTRAL preenchido** — painel 3 (frames 12/25): centro verde solido (`rho/rho0≈1`), como na C3.3.
+- ⚠️ `mass_total` 101.1 → **108.7 (+7.5%)** — só **+0.8% acima** da C3.3 (+6.7%). Predicao confirmada (0.85 mais permissivo → mais massa) MAS ganho pequeno.
+- **DESCOBERTA (cap binding):** `pass_n_spawned` crava **100-102/call de t≈54s em diante** (cap `INSERT_MAX=100`). Ou seja, `σ_a<0.85` detecta MAIS vacuo estrutural do que o cap permite preencher → **a escolha do threshold (proxy 0.6 vs canonico 0.85) quase NAO afeta o regime permanente; quem controla a massa e `INSERT_MAX`/`INSERT_FREQ`**. Isso **valida empiricamente** o claim C3.4: o controle de massa e engenharia, nao deturpar o critério fisico de Violeau. Migrar para o trigger canonico foi de graca (mesmo resultado validado da C3.3) e mais defensavel em revisao ("déficit de partição da unidade σ_a<0.85, Violeau §3.6").
+- Vacuo da **frontier ativa** (anel + dendritos, `rho_b<0.5`) intocado — gate `INSERT_RHO_B_MIN=0.5` exclui de proposito (escopo do #2, lição #35).
+
+**Constantes de engenharia (declaradas explicitamente, NAO derivadas):** `INSERT_FREQ=200` (cadencia), `INSERT_MAX=100` (cap de massa), `INSERT_PROX=0.7·dx` (anti-over-pack, conceito Liu §6.4 mas valor empirico), `INSERT_RHO_B_MIN=0.5` (gate estrutural↔frontier do modelo, lição #35 — posicionado acima do pico flagelar 0.4). So `σ_a<0.85` e literatura-derivado.
+
 **VACUO REMANESCENTE (diagnosticado pelo usuario, 2026-06-02):** o vacuo central foi resolvido, mas PERSISTE (a) num **anel intermediario** entre o centro cheio e as bases dos dendritos, e (b) **dentro dos dendritos**. Ambos estao na **FRONTIER ATIVA (`rho_b<0.5`)** — a zona motil (swarmers/tips) que C3.3 EXCLUI de proposito (`INSERT_RHO_B_MIN=0.5`). Distincao fisica fundamental:
 - **Vacuo estrutural (`rho_b>0.5`, junto ao pin):** frozen, nao-motor → filler inerte congelado e correto (C3.3 ✅).
 - **Vacuo da frontier ativa (`rho_b<0.5`, anel+arms):** movel, crescente, E O MOTOR → filler congelado o MATARIA (#31, shifting v1); biomassa ativa realimenta (#34). NAO pode ser preenchido por C3-filler.
@@ -2035,6 +2123,28 @@ Refinamento Vacondio herda velocidade (move com arm) e CONSERVA massa (divide, n
 `dx 0.054→0.036` (ou menor) → ~2.25× particulas globais → centro, anel E arms todos mais densos pelo ORCAMENTO de particulas. Sem over-pack, sem mexer no pin, sem congelar, sem feedback. Reduz TODOS os vacuos de uma vez. Incerteza: parte do vacuo e gap de deslocamento → pode reduzir sem zerar. **Fallback robusto** se 2 inflar e 3 for caro demais.
 
 **Recomendacao:** comecar pela **Opcao 1** (instrumentar `σ_a`/erro de gradiente nos arms p/ medir se o vacuo da frontier importa cientificamente ou se KGC ja resolveu). So implementar 2/3/4 se a medicao mostrar degradacao real. Se precisar preencher: **2** (mais barata, dt intacto) → se inflar cs, **4** (robusta) → **3** como fix definitivo.
+
+#### #2 MEDIDO — instrumentacao σ_a nos braços (2026-06-10) → OPCAO 1 JUSTIFICADA
+
+Implementada a Opcao 1 (medir antes de agir): 3 colunas no log ([main.py](main.py) — `min_sig_arms`, `mean_sig_arms`, `frac_lowsig_arms` na frontier `rho_b∈[0.1,0.5]`, lição #35) + 4º painel `σ_a` no [plot.py](plot.py) (RdYlGn, braços<0.85 contornados). `sigma_a` adicionado a `add_output_arrays`. `KernelSum` ja computava σ_a todo passo (independente do Pass N).
+
+**Resultado (run t=99s, HDF5 final):** o déficit de σ_a na frontier NAO esta nas pontas — esta no **anel interno da junção**. Perfil radial dos braços:
+
+| Anel radial | n | mean σ_a | frac<0.85 |
+|---|---|:---:|:---:|
+| r<0.8 (junção interna) | 38 | 0.936 | **0.18** |
+| r[0.8,1.5) | 17 | 0.983 | 0.12 |
+| r[1.5,2.5) | 8 | 0.901 | 0.12 |
+| **PONTAS r≥2.33 (outer 25%)** | 21 | **0.977** | **0.05** |
+
+mean σ_a braços (agregado) = 0.95; 11 partículas (13%) com σ_a<0.85, concentradas em r≈0.93.
+
+**Conclusao — vácuo da frontier NAO e problema científico:**
+1. **Pontas (onde Marangoni dirige Mullins-Sekerka, base da comparacao Trinschek) bem resolvidas:** σ_a=0.977, ~2% erro, só 5% em déficit. O ∇cs que dirige o fingering NAO e espurio ali.
+2. **O déficit real e o anel interno** (r<0.8, 18% em déficit) — ATRAS da frente ativa, cinematico (pin congela núcleo + rim expande, #32/#35), NAO dirige morfologia.
+3. **KGC ja cobre o residual** — corrige ∇cs onde σ_a<1 (Liu §3.3); a amplificacao a_mar 8→14 e a prova. `contrast_cs` platô ~14, `a_pressure` 3.0.
+
+**Veredito: Opcao 1 (aceitar+KGC) confirmada pelos dados.** Nao precisa C4/PassN/finer-res para validade científica. Limpar o anel interno (r<0.8, rho_b∈[0.1,0.5]) seria decisao ESTETICA (C3 estendido com cuidados #34/#35), nao científica.
 
 ---
 

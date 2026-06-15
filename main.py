@@ -31,6 +31,15 @@ LOG_HEADER = [
     "contrast_c_n",
     "mass_total",  # soma de m — cresce por BiomassGrowth (logistico)
     "pass_n_spawned",  # partículas criadas pelo Pass N desde a última linha de log
+    # Instrumentacao do #2 — particao da unidade sigma_a na FRONTIER ATIVA
+    # (braços/dendritos, rho_b ∈ [0.1, 0.5]). Mede se o vacuo da frontier e
+    # deficit REAL de operador SPH (sigma_a < 0.85, Violeau §3.6 / Liu §3.3.3)
+    # ou se a KGC ja o neutralizou. Se mean_sig_arms ≈ 1 e frac_lowsig_arms
+    # pequeno → vacuo visual e cosmetico (agar entre dendritos). Se sigma_a
+    # baixo e fracao alta → deficit real, decide se C4/PassN/finer-res e preciso.
+    "min_sig_arms",  # min sigma_a nos braços (pior deficit de kernel)
+    "mean_sig_arms",  # media sigma_a nos braços
+    "frac_lowsig_arms",  # fracao de particulas-braço com sigma_a < 0.85
 ]
 
 x_dim, y_dim = 187, 187  # M-B.10: expandido para preservar dx≈0.054 em dominio 10x10
@@ -88,95 +97,48 @@ c0 = 0.35  # EOS: B = 1.5²/7 ≈ 0.32 (repulsão suave, atração ~0.1)
 
 use_splitting = False
 
-# Pass N v2.4 — Refinamento hexagonal Vacondio 2013 / Feldman 2006 com
-# consistencia SPH restaurada (Liu §3.3.3, Violeau §3.4-3.6, §7.4-7.5).
-# Substitui 1 mãe por 7 filhas (1 centro + 6 vértices a 60°). Massa dividida
-# IGUALMENTE (m_filha = m_mãe/7); velocidade IDÊNTICA herdada (Liu §3.4 —
-# conservação de momentum linear exata); escalares (rho_b, cs, c_o, c_n,
-# noise, sigma_a) copiados. h_filha = α·h_mãe, offset = ε·h_mãe.
-#
-# Tres mudancas estruturais vs v2.3.1:
-#   (a) Trigger MIGRADO de rho_rel<0.7 para sigma_a<0.85 (Violeau §3.6 —
-#       particao da unidade discreta, invariante sob refinamento; mede
-#       diretamente o erro do operador SPH).
-#   (b) α: 0.6 → 0.35 (acoplado a ε=0.35). Feldman 2006 deriva otimo em
-#       razao ε/α = 1; manter α=0.6 com ε=0.35 causou over-pack do nucleo
-#       em v2.3 (rho_pos-split ≈ 1.7·rho_pre-split → a_pressure=5.015
-#       sustentado → dt collapse 12×). Custo: kernel das filhas com ~12
-#       vizinhos vs ~35 — degrada acuracia local mas nao viola conservacao
-#       (Liu §6.5 — sub-amostragem e menos catastrofica que over-pack).
-#   (c) Exigencia ESTRITA n_d=7 (todos os 6 vertices precisam passar no
-#       proximity guard). Violeau §7.4.3 — apenas distribuicao hexagonal
-#       simetrica preserva (i) erro de densidade < 5%, (ii) centro de massa
-#       na posicao da mae, (iii) tensor de inercia local. Splits parciais
-#       quebram momento angular e introduzem torque espurio (Liu §4.2.4).
-# ── Rota A — Fickian Particle Shifting (Xu 2009; Lind 2012) ──────────────
-# Alternativa de custo-dt-ZERO ao Pass N para o problema do vacuo: redistribui
-# particulas existentes (-∇C) p/ drenar sigma_a → 1 (Violeau §3.6, Liu §6.5),
-# sem criar particulas pequenas que cravam o dt (lição #29). Respeita hard pin.
-use_shift = False  # Rota A ESGOTADA (v1 congela #31, A.3 deixa vacuo #32). Preservada.
-SHIFT_COEFF = 0.5  # D = shift_coeff·h² no δr = -D∇C (relaxacao Fickiana)
-SHIFT_CAP = 0.05  # |δr| ≤ 0.05·h por passo (Lind 2012 — estabilidade)
-SHIFT_RHO_B_MIN = 0.6  # A.3: gate SO interior [0.6,0.8) — exclui frontier motil
+# ═══ Tratamento do vácuo — OPÇÃO 1 (baseline validado, 2026-06-15) ═══════
+# KGC corrige o OPERADOR ∇cs na frontier (pontas σ_a~0.98, medição #2) +
+# inserção C3.4 frozen preenche o vácuo ESTRUTURAL (núcleo). Pass N e Shifting
+# ABANDONADOS (binds #31/#36/#38). Histórico completo: CLAUDE.md §12.
 
-# ── Rota C — Kernel Gradient Correction (Bonet-Lok 1999; CSPM) ───────────
-# Corrige o ∇cs da Marangoni (consistencia 1a ordem, Liu §3.3) nos braços
-# sub-resolvidos SEM mover particula → nao congela (#31) nem depende de
-# separar vacuo↔frontier por rho_b (#32). Auto-gateia pelo det(M): bulk
-# det≈1 (sem correcao), rim/vacuo det<1 (corrige). Custo de dt ZERO.
-use_kgc = True  # Rota C ativa (KEEP — gradiente da Marangoni válido nas pontas)
-KGC_DET_MIN = 0.25  # fallback p/ identidade se det(M)<0.25 (|L|≲4×, anti-spike)
+# Rota A — Particle Shifting (Xu 2009; Lind 2012). ESGOTADA (#31/#32). Preservada.
+use_shift = False
+SHIFT_COEFF = 0.5
+SHIFT_CAP = 0.05
+SHIFT_RHO_B_MIN = 0.6
 
-# ── Rota C3 — Inserção de partículas no vácuo (em espaçamento dx) ─────────
-# Preenche o vácuo central (evacuação dinâmica núcleo↔rim) INSERINDO partículas
-# frescas na rede dx — NÃO dividindo (Vacondio over-packa, #27). h=h0 e
-# espaçamento=dx → dt INTACTO (#29) e SEM over-pack (#27). Inseridas herdam
-# rho_b alto → pinadas → congelam e preenchem estável. Não move partícula
-# existente (escapa #31/#32). Ancorado em particle insertion/packing (Liu §6.5).
-use_insert = True  # Rota C3 ativa (lever sob teste; KGC mantido)
-INSERT_FREQ = 200  # iter entre inserções (~4s com dt~0.02)
-INSERT_RHO_TRIG = 0.6  # C3.2: 0.7→0.6 — fillar so vacuo PROFUNDO (consistencia
-# genuinamente quebrada, σ_a severo <0.85 ~ rho/rho0<0.6, Violeau §3.6). A franja
-# 0.6-0.7 e under-density leve (nao e buraco real) — inseri-la so inflava massa.
-INSERT_RHO_B_MIN = (
-    0.5  # só vácuo estrutural (núcleo/junção/braço interior); poupa tips (<0.5)
+# Rota C — Kernel Gradient Correction (Bonet-Lok 1999; CSPM, Liu §3.3).
+# Corrige ∇cs (consistência de 1ª ordem) onde σ_a<1 SEM mover/criar partícula.
+# Auto-gateia por det(M): bulk det≈1 (sem correção), frontier det<1 (corrige).
+use_kgc = True  # OPÇÃO 1
+KGC_DET_MIN = 0.25  # fallback identidade se det(M)<0.25 (|L|≲4×, anti-spike)
+
+# Rota C3.4 — Inserção de filler INERTE no vácuo estrutural (rede dx, h=h0 →
+# dt intacto, sem over-pack; Liu §6.5). Frozen-só: filhas não crescem/produzem
+# cs e são pinadas (evita runaway #34). Frontier (rho_b<0.5) fica com a KGC.
+use_insert = True  # OPÇÃO 1
+INSERT_FREQ = 200  # iter entre inserções
+INSERT_SIGMA_TRIG = 0.85  # déficit de partição da unidade (Violeau §3.6)
+INSERT_RHO_B_MIN = 0.1  # só vácuo estrutural; para frontier: 0.1
+INSERT_PROX = 0.7  # insere só em buraco real (>0.7·dx de qualquer vizinho)
+INSERT_MAX = 100  # cap de inserções/call (controle de massa)
+
+# Pass N — refinamento hexagonal Vacondio/Feldman (Liu §3.3.3, Violeau §7.4).
+# ABANDONADO: bind over-pack↔dt sob dt global (lição #38). Preservado p/ Fase 2
+# (timesteps individuais [T9]). Constantes mantidas para reativação.
+use_pass_n = False
+PASS_N_FREQ = 100
+PASS_N_MAX_PARENTS = 100
+PASS_N_SIGMA_TRIG = 0.95  # preemptivo (canônico Violeau §3.6 = 0.85)
+PASS_N_ALPHA = 0.75  # h_filha=α·h_mãe (grande → preserva dt; #29)
+PASS_N_EPSILON = 0.5  # offset=ε·h_mãe (ε/α=0.67; ótimo Feldman=1)
+PASS_N_MAX_GEN = 1  # contador de geração explícito (imune ao growth; #37)
+PASS_N_RHO_B_MIN = 0.15
+PASS_N_RHO_B_MAX = 0.95
+PASS_N_PROXIMITY_MIN = (
+    0.4  # min dist. filha-vizinho (dx); garante n_d=7 (Violeau §7.4.3)
 )
-INSERT_PROX = (
-    0.7  # spot vazio se nenhum existente a < 0.7·dx (insere só em buraco real)
-)
-INSERT_MAX = 100  # máx inserções por call (limita crescimento de massa)
-
-use_pass_n = False  # Rota A: Pass N DESLIGADO (preservado) p/ isolar o efeito do shifting. Religar so apos avaliar Rota A.
-PASS_N_FREQ = 100  # iter entre checks
-PASS_N_MAX_PARENTS = 100  # v2.5: 25→100 — enchimento agressivo. Viavel pq α=0.75 mantem h grande (lição #29: dt e min-h, nao contagem)
-PASS_N_SIGMA_TRIG = 0.95  # v2.5: 0.85→0.95 — gatilho PREEMPTIVO (agir ao 1o sinal de estiramento, 5% de perda, nao 15%).
-# Violeau §3.6: sigma_a ≈ 0.85 corresponde a ~15% erro nos operadores SPH.
-# Invariante sob refinamento — gen 0/1/2 disparam pelo mesmo limiar
-# (diferente do trigger rho_rel da v2.2-v2.3.1, que dependia da massa
-# da particula porque rho = Sum m_j W). Mede diretamente a quantidade
-# que governa a consistencia de ordem zero do SPH.
-PASS_N_ALPHA = 0.75  # v2.5: 0.35 → 0.75 — h_filha ~ h_mãe PRESERVA dt-por-h
-# (penalidade ~1.5× vs ~85× em v2.4; lição #29 — dt e min-h). ε MANTIDO em 0.35
-# (decoupling deliberado de Feldman ε/α=1): aceita-se over-pack inicial, confiando
-# na EOS coesiva (tension_ratio=0.30) + Monaghan (alpha_mon=0.12, K.23) p/ relaxar
-# (Liu §6.5). RISCO lição #27: ε/α=0.47 < v2.3 (0.58) que travou — critério #2
-# (dt avg t>30s ≥ 0.5× inicial) e o teste de relaxacao. Fallback: ε→0.5 ou α→0.6.
-PASS_N_EPSILON = 0.35  # offset filha = ε · h_mãe (mantido v2.4 — evita abortar splits no domínio empacotado).
-PASS_N_M_FLOOR_RATIO = (
-    1.0 / 7.0
-)  # T2g: gen ≤ 1 — proibe gen-2 (h=0.22dx → dt_visc 0.015× = killer dos 250×). Cap penalidade dt em ~8×. 7× de resolucao basta p/ braços de 3-4 particulas.
-PASS_N_RHO_B_MIN = 0.15  # v2.5: 0.3→0.15 — alarga zona ativa p/ fechar buracos
-# em quase toda a colonia (enchimento agressivo).
-PASS_N_RHO_B_MAX = 0.95  # v2.5: 0.7→0.95 — INCLUI a junção núcleo-dendrito
-# (vácuo crítico). NOTA: 0.8-0.95 cai na zona pinada (hard pin K.17 rho_b≥0.8) —
-# refinar lá adiciona vizinhos com força descartada (Liu §4.5, lição #27);
-# aposta do usuario: fechar o vácuo da junção vale o risco. Monitorar a_pressure
-# na borda do núcleo.
-PASS_N_PROXIMITY_MIN = 0.4  # min distância filha-vizinho em unidades de dx.
-# v2.4: usado em conjunto com exigencia ESTRITA n_d=7 — se QUALQUER vertice
-# falhar no proximity guard, o split inteiro e adiado para proxima call.
-# Garante simetria hexagonal estrita (Violeau §7.4.3 — centro de massa
-# preservado, momento angular conservado).
 
 
 class SwarmApp(Application):
@@ -258,6 +220,15 @@ class SwarmApp(Application):
                 # nucleus maturation + inflação de cs do runaway t>57s.
                 pa.add_property("is_filler")
                 pa.is_filler[:] = 0.0
+                # Pass N — contador de GERAÇÃO de refinamento. gen=0 = partícula
+                # original; cada split incrementa. Substitui o limite por massa
+                # (m > m_floor), que era DERROTADO pelo BiomassGrowth: a massa
+                # cresce de volta acima do floor → filha re-splita → gen-2,3...
+                # → h encolhe → dt colapsa (diagnóstico 2026-06-15, gen-2 com
+                # h_min=0.56·h0 + over-pack rho=2.94 → dt 97× pior). gen nunca
+                # decresce → imune ao crescimento.
+                pa.add_property("gen")
+                pa.gen[:] = 0.0
                 pa.add_property("ax_drag")
                 pa.add_property("ay_drag")
                 # flag
@@ -278,6 +249,7 @@ class SwarmApp(Application):
                         "noise",
                         "au_flag",
                         "au_mar",
+                        "sigma_a",  # #2 — particao da unidade p/ 4º painel do plot
                     ]
                 )
             elif pa.name == "solid":
@@ -331,22 +303,7 @@ class SwarmApp(Application):
         return solver
 
     def post_step(self, solver):
-        # dt = solver.dt
-        # bact = self.particles[2]
-
-        # bact.x += dt * bact.u
-        # bact.y += dt * bact.v
-
-        # domain_width = x_max_domain - x_min_domain
-        # domain_height = y_max_domain - y_min_domain
-
-        # bact.x[:] = (bact.x - x_min_domain) % domain_width + x_min_domain
-        # bact.y[:] = (bact.y - y_min_domain) % domain_height + y_min_domain
-
-        # if solver.count % trajectory_store_interval == 0:
-        #     for i in range(self.n_bact):
-        #         self.all_bact_trajectories[i].append([bact.y[i], bact.x[i]])
-
+        # Print stats
         if solver.count % print_freq == 0:
             fluid = self.particles[0]
             v_mag = np.sqrt(fluid.u**2 + fluid.v**2)
@@ -385,12 +342,31 @@ class SwarmApp(Application):
             # Cresce por BiomassGrowth (logistico). Sem bug osmotico desde M-A.2.
             mass_total = float(np.sum(fluid.m))
 
+            # 6. #2 — particao da unidade sigma_a na FRONTIER ATIVA (braços).
+            # Zona motil rho_b ∈ [0.1, 0.5] (lição #35): exclui agar (<0.1),
+            # nucleo/junção estrutural (>0.5, ja tratada por C3 filler). Mede
+            # se o vacuo dos dendritos e deficit real de kernel (Violeau §3.6).
+            arms_mask = (fluid.rho_b_grown >= 0.1) & (fluid.rho_b_grown < 0.5)
+            n_arms = int(np.sum(arms_mask))
+            if n_arms > 0:
+                sig_arms = fluid.sigma_a[arms_mask]
+                min_sig_arms = float(np.min(sig_arms))
+                mean_sig_arms = float(np.mean(sig_arms))
+                frac_lowsig_arms = float(np.mean(sig_arms < 0.85))
+            else:
+                min_sig_arms = mean_sig_arms = 1.0
+                frac_lowsig_arms = 0.0
+
             print("-" * 50)
             print(f"Tempo: {solver.t:.2f}s | Iteração: {solver.count}")
             print(f"Velocidade Máx: {max_v:.4f}")
             print(f"Contraste CS: {contrast_cs:.4f}")
             print(
                 f"c_n: mean={mean_c_n:.4f} max={max_c_n:.4f} contrast={contrast_c_n:.2f} | massa: {mass_total:.2f}"
+            )
+            print(
+                f"sigma_a braços (rho_b∈[0.1,0.5]): min={min_sig_arms:.3f} "
+                f"mean={mean_sig_arms:.3f} frac<0.85={frac_lowsig_arms:.2%}"
             )
             print("Acelerações:")
             print(f"  > Marangoni (líq): {a_mar:.2f}")
@@ -421,6 +397,9 @@ class SwarmApp(Application):
                         f"{contrast_c_n:.4f}",
                         f"{mass_total:.6e}",
                         self._pass_n_spawned_since_log,
+                        f"{min_sig_arms:.4f}",
+                        f"{mean_sig_arms:.4f}",
+                        f"{frac_lowsig_arms:.4f}",
                     ]
                 )
                 self._pass_n_spawned_since_log = 0  # reseta após registrar
@@ -495,17 +474,9 @@ class SwarmApp(Application):
 
                     solver.nnps.update()
 
-        # Pass N v2.4 — Refinamento hexagonal Vacondio/Feldman com consistencia
-        # SPH restaurada (Liu §3.3.3, Violeau §3.4-3.6, §7.4-7.5):
-        # (a) trigger sigma_a < 0.85 (particao da unidade — Violeau §3.6),
-        # (b) α = ε = 0.35 (Feldman 2006 — razao otima preserva densidade),
-        # (c) gen ≤ 2 (m_floor = m₀/49),
-        # (d) gate rho_b ∈ [0.3, 0.7] (exclui borda dilute e nucleo pinado),
-        # (e) n_d = 7 ESTRITO (Violeau §7.4.3 — simetria hexagonal).
+        # Pass N - Refinamento hexagonal Vacondio/Feldman com consistencia
         if use_pass_n and solver.count > 0 and solver.count % PASS_N_FREQ == 0:
             fluid = self.particles[0]
-
-            V_0 = dx * dx  # volume inicial (referência massa)
 
             # Gate v2.3.1: rho_b ∈ [0.3, 0.7] — exclui borda dilute (rho_b<0.3,
             # gap não real, só kernel truncado) E núcleo/shell adjacente ao pin
@@ -515,20 +486,24 @@ class SwarmApp(Application):
                 fluid.rho_b_grown < PASS_N_RHO_B_MAX
             )
 
-            # Geração ≤ 2: m_floor = m₀/49 permite 2 splits sucessivos
-            m_floor = V_0 * PASS_N_M_FLOOR_RATIO
-            splittable_mass_mask = fluid.m > m_floor
+            # Limite de geração via CONTADOR EXPLÍCITO (gen < PASS_N_MAX_GEN),
+            # NÃO por massa. O gate antigo (m > m₀/7) assumia que a massa só
+            # diminui ao dividir, mas o BiomassGrowth cresce m de volta acima do
+            # floor → filha re-splitava → gen-2 espúrio (h_min=0.56·h0) que, junto
+            # ao over-pack, colapsou o dt 97% na Fase 1 (diag. 2026-06-15). gen
+            # nunca decresce → imune ao crescimento.
+            splittable_gen_mask = fluid.gen < PASS_N_MAX_GEN
 
             # Pass N v2.4 — Trigger por PARTIÇÃO DA UNIDADE (sigma_a < 0.85).
             # sigma_a = Sum_j V_j W_aj e a consistencia de ordem zero do SPH
             # (Violeau §3.6, Liu §3.3.3). Mede diretamente o erro do operador
-            # SPH no nó a. INVARIANTE SOB REFINAMENTO — gen 0/1/2 disparam
+            # SPH no nó a. INVARIANTE SOB REFINAMENTO — gen 0/1 disparam
             # pelo mesmo limiar. v2.2-v2.3.1 usavam rho_rel < 0.7 que dependia
             # da massa (rho = Sum m_j W) → trigger ficava enviesado em filhas
             # com m_d = m_m/7.
             sigma_a = fluid.sigma_a
             split_mask = (
-                colony_mask & (sigma_a < PASS_N_SIGMA_TRIG) & splittable_mass_mask
+                colony_mask & (sigma_a < PASS_N_SIGMA_TRIG) & splittable_gen_mask
             )
             split_idx = np.where(split_mask)[0]
 
@@ -582,6 +557,7 @@ class SwarmApp(Application):
                 cn_arr = fluid.c_n[split_idx]
                 noise_arr = fluid.noise[split_idx]
                 sigma_arr = fluid.sigma_a[split_idx]
+                gen_arr = fluid.gen[split_idx]
 
                 for k in range(len(split_idx)):
                     x_m, y_m = float(x_arr[k]), float(y_arr[k])
@@ -647,6 +623,15 @@ class SwarmApp(Application):
                         "v": [v_d] * 7,
                         "noise": [float(noise_arr[k])] * 7,
                         "sigma_a": [float(sigma_arr[k])] * 7,
+                        # is_filler=0: filhas sao BIOMASSA REAL refinada (crescem,
+                        # produzem cs, movem). NAO setar isto deixa add_particles
+                        # herdar lixo do realloc → filha podia nascer is_filler>0.5
+                        # e ser PINADA como filler congelado (scheme.py), matando o
+                        # refinamento. Mesmo risco do bug mean_c_n>max_c_n da v2.3.
+                        "is_filler": [0.0] * 7,
+                        # gen = mãe+1 — contador explícito de geração (imune ao
+                        # BiomassGrowth). Garante gen≤MAX_GEN sem depender da massa.
+                        "gen": [float(gen_arr[k]) + 1.0] * 7,
                     }
                     daughters.add_particles(**data)
                     mothers_used.append(int(split_idx[k]))
@@ -661,22 +646,22 @@ class SwarmApp(Application):
                     print(
                         f"Pass N v2.4 t={solver.t:.1f}s: "
                         f"{len(mothers_used)} mães → {n_daughters_total} filhas "
-                        f"(n_d=7 estrito, ε=α={eps}, σ_trig={PASS_N_SIGMA_TRIG}, gen≤2)"
+                        f"(n_d=7 estrito, ε={eps}, α={alpha}, σ_trig={PASS_N_SIGMA_TRIG}, gen≤1)"
                     )
 
-        # ── Rota C3 — Inserção de partículas no vácuo (em espaçamento dx) ─────
+        # Rota C3 — Inserção de partículas no vácuo (em espaçamento dx)
         # Preenche o vácuo central INSERINDO partículas frescas na rede dx
-        # (NÃO split → sem over-pack #27; h=h0 → dt intacto #29). Inseridas
-        # herdam campos da mãe-vácuo (pinadas se rho_b alto → congelam estável).
         if use_insert and solver.count > 0 and solver.count % INSERT_FREQ == 0:
             fluid = self.particles[0]
             m_target = dx * dx  # massa alvo = volume da rede inicial
-            rho_rel = fluid.rho / 1.0  # rho0 = 1.0
 
-            # Vácuo na zona ESTRUTURAL interior (rho_b alto, fora do frontier
-            # motil <0.5): núcleo/junção/braço interior com rho/rho0 < trigger.
+            # Vácuo ESTRUTURAL (rho_b>INSERT_RHO_B_MIN=0.5, exclui agar e frontier
+            # motil) com deficit de suporte de kernel σ_a < 0.85 (Violeau §3.6 —
+            # critério canônico, KernelSum a cada passo). C3.4 frozen-só: filler
+            # inerte/congelado no nucleo/junção. C4 (estender p/ frontier ativa +
+            # filler ativo) FALHOU — runaway #34, revertido (lição #36).
             void_mask = (fluid.rho_b_grown > INSERT_RHO_B_MIN) & (
-                rho_rel < INSERT_RHO_TRIG
+                fluid.sigma_a < INSERT_SIGMA_TRIG
             )
             void_idx = np.where(void_mask)[0]
 

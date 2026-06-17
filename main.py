@@ -532,10 +532,12 @@ class SwarmApp(Application):
             if len(void_idx) > 0:
                 positions = np.column_stack([fluid.x, fluid.y])
                 tree = cKDTree(positions)
-                prox = INSERT_PROX * dx
-                prox_sq = prox * prox
+                prox = INSERT_PROX * dx  # distância de segurança entre duas partículas
+                prox_sq = prox * prox  # o quadrado da distância de segurança
 
-                angles_hex = np.arange(6) * (np.pi / 3.0)
+                angles_hex = np.arange(6) * (
+                    np.pi / 3.0
+                )  # angulos hexagonais 0°, 60°, 120°, 180°, 240°, 300°
                 cos_a = np.cos(angles_hex)
                 sin_a = np.sin(angles_hex)
 
@@ -548,6 +550,7 @@ class SwarmApp(Application):
                     xk = float(fluid.x[k])
                     yk = float(fluid.y[k])
                     for j in range(6):
+                        # coordenadas polares
                         vx = xk + dx * cos_a[j]
                         vy = yk + dx * sin_a[j]
                         d_existing, _ = tree.query([vx, vy])

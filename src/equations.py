@@ -24,10 +24,6 @@ class BiomassGrowth(Equation):
     ):
         d_a_rho_b_grown[d_idx] = 0.0
         d_am[d_idx] = 0.0
-        # C3.3 — filler inerte (Rota C3): partículas inseridas para suporte de
-        # kernel NAO crescem (is_filler=1). Quebra o feedback de "nucleus
-        # maturation" (lição #18) que causou o runaway de inserções em t>57s:
-        # filler maturando → núcleo maior → junção maior → mais inserção.
         if (
             d_rho_b_grown[d_idx] > 1e-12
             and d_rho_b_grown[d_idx] < 0.8
@@ -96,52 +92,17 @@ class BiomassGradient(Equation):
 
 
 class KernelSum(Equation):
-    # Pass N v2.4 — Partição da unidade discreta (Violeau §3.4-3.6, Liu §3.3.3).
-    # sigma_a = Sum_j V_j W(r_aj, h_aj). Mede a consistencia de ordem zero
-    # do SPH na particula a: sigma_a → 1 para distribuicao uniforme com
-    # vizinhanca completa; sigma_a < 1 quando o kernel esta truncado por gap.
-    # Trigger Pass N v2.4: sigma_a < 0.85 (~15% erro nos operadores SPH).
-    # Invariante sob refinamento — gen 0/1/2 disparam pelo mesmo limiar
-    # (diferente do trigger absoluto V_a, que ficava 7x cego apos gen 1).
-    # DEVE rodar em Group SEPARADO apos SummationDensity para que s_rho
-    # esteja totalmente acumulado.
     def initialize(self, d_idx, d_sigma_a):
         d_sigma_a[d_idx] = 0.0
 
     def loop(self, d_idx, s_idx, s_m, s_rho, WIJ, d_sigma_a):
-        rho_safe = s_rho[s_idx]
-        if rho_safe < 1e-6:
+        rho_safe = s_rho[s_idx]  # densidade da particula vizinha
+        if rho_safe < 1e-6:  # minimo para evitar NaN
             rho_safe = 1e-6
         d_sigma_a[d_idx] += (s_m[s_idx] / rho_safe) * WIJ
 
 
 class KernelGradientCorrection(Equation):
-    # ── Rota C — Kernel Gradient Correction (Bonet & Lok 1999; CSPM) ────────
-    # [T10], Liu §3.3 (CSPM e de Chen-Beraun/Liu-Liu, dentro do proprio T6).
-    #
-    # Restaura CONSISTENCIA DE 1a ORDEM do operador de gradiente: reproduz ∇
-    # de um campo linear EXATAMENTE mesmo com vizinhanca incompleta/irregular
-    # (braços sub-resolvidos, junção do vacuo). Sem isso, o ∇cs da Marangoni
-    # nos dendritos e numericamente ESPURIO (Liu §3.3) — o que invalidaria a
-    # comparacao com Trinschek.
-    #
-    # Diferente da Rota A (shifting), KGC NAO move nem cria particulas:
-    #   - nao pode congelar a morfologia (lição #31) — nao mexe na distribuicao;
-    #   - nao depende de separar vacuo↔frontier por rho_b (lição #32) —
-    #     auto-gateia pelo determinante (bulk: det≈1 → sem correcao; rim/vacuo:
-    #     det<1 → corrige).
-    #   - custo de dt ZERO.
-    #
-    # Matriz de renormalizacao (2D):
-    #     M_i = Σ_j V_j (x_j - x_i) ⊗ ∇_i W_ij      (→ I p/ vizinhanca completa)
-    #     L_i = M_i^{-1}                            (correcao do kernel gradient)
-    # Gradiente corrigido: ∇φ_i = L_i · Σ_j V_j (φ_j-φ_i) ∇W_ij.
-    # Aplicado em MarangoniForce.loop substituindo DWIJ por L_i·DWIJ.
-    #
-    # FALLBACK (CSPM standard, Liu §6.5): se det(M) < det_min a vizinhanca e
-    # degradada demais p/ correcao confiavel → reverte a IDENTIDADE (SPH padrao,
-    # sem amplificar). Limita a amplificacao de L e evita spike de forca em
-    # particulas quasi-isoladas. det_min=0.25 ⇒ |L| ≲ 4×.
     def __init__(self, dest, sources, det_min=0.25):
         self.det_min = det_min
         super().__init__(dest, sources)
@@ -154,7 +115,6 @@ class KernelGradientCorrection(Equation):
 
     def loop(self, d_idx, s_idx, s_m, s_rho, XIJ, DWIJ, d_Mxx, d_Mxy, d_Myx, d_Myy):
         vol_j = s_m[s_idx] / s_rho[s_idx]
-        # (x_j - x_i) = -XIJ ; M_ab = Σ_j V_j (x_j-x_i)_a · DWIJ_b → I (completo)
         dxx = -XIJ[0]
         dyy = -XIJ[1]
         d_Mxx[d_idx] += vol_j * dxx * DWIJ[0]
@@ -164,7 +124,6 @@ class KernelGradientCorrection(Equation):
 
     def post_loop(self, d_idx, d_Mxx, d_Mxy, d_Myx, d_Myy, d_Lxx, d_Lxy, d_Lyx, d_Lyy):
         det = d_Mxx[d_idx] * d_Myy[d_idx] - d_Mxy[d_idx] * d_Myx[d_idx]
-        # Fallback p/ identidade se M singular/degradada (CSPM, Liu §6.5):
         if det < self.det_min:
             d_Lxx[d_idx] = 1.0
             d_Lxy[d_idx] = 0.0
@@ -179,46 +138,6 @@ class KernelGradientCorrection(Equation):
 
 
 class ParticleShift(Equation):
-    # ── Rota A — Fickian Particle Shifting Technique (PST) ──────────────────
-    # Xu, Stansby & Laurence 2009; Lind, Xu, Stansby & Rogers 2012 (JCP).
-    #
-    # PREENCHE VACUOS REDISTRIBUINDO as particulas existentes — NAO cria
-    # particulas novas. Logo NAO encolhe h e NAO crava o dt (custo de dt ZERO),
-    # ao contrario do Pass N (lição #29: dt = min-h global). Cada particula e
-    # deslocada na direcao -∇C (C = concentracao de particulas) — de regioes
-    # densas para vacuos — drenando a particao da unidade sigma_a → 1
-    # (Violeau §3.6) por GEOMETRIA, em vez de por contagem.
-    #
-    # Ancoragem teorica:
-    #   - Liu §6.5 (free surface / kernel truncado): PST foi criada por Lind
-    #     justamente para o caso de suporte de kernel incompleto na borda —
-    #     o nosso rim/dendrito sub-resolvido.
-    #   - Liu §6.4 (tensile instability): a homogeneizacao reduz clumping/voids
-    #     que disparam p<0 → kernel atrativo espurio.
-    #   - Violeau §3.4-3.6: sigma_a e a medida do erro; o shift a leva a 1.
-    #
-    # Formulacao (Fickiana, dt-independente — relaxacao geometrica por passo):
-    #     ∇C_i = Σ_j (m_j/ρ_j) ∇W_ij        (gradiente da concentracao)
-    #     δr_i = -shift_coeff · h_i² · ∇C_i  (cap |δr| ≤ shift_cap · h_i)
-    # Auto-limitante: distribuicao uniforme → ∇C = 0 → δr = 0.
-    #
-    # RESPEITA O HARD PIN K.17: nucleo (rho_b ≥ rho_b_pin) e starvation
-    # (c_n < c_n_pin) tem shift = 0 — mesma condicao do CustomEulerStep.
-    #
-    # A.3 (2026-06-02) — GATE SO PARA O INTERIOR: rho_b_min=0.6 EXCLUI o
-    # frontier motil (rho_b < 0.6, zona dos swarmers/pontas e do gate flagelar
-    # [0.1,0.6]). v1 (rho_b_min=0.05) deslocava as pontas isotropicamente →
-    # amortecia as sementes de Mullins-Sekerka → colonia congelou em disco
-    # lumpy r≈1.0 sem dendritos (mean_v≈0). A.3 desloca SO a banda interior
-    # [0.6, 0.8) — a junção núcleo↔rim onde vive o vacuo — deixando o frontier
-    # (<0.6) livre para formar dedos. Inspirado no tratamento de superficie
-    # livre de Lind 2012 [T8] (nao mexer na interface em movimento).
-    #
-    # SIMPLIFICACAO v1 (documentada): aplica-se o shift APENAS a posicao; os
-    # campos carregados (rho_b, cs, c_n) acompanham a particula sem a correcao
-    # de Taylor δr·∇φ de Lind 2012. Justificado por shift pequeno (cap≈0.05h),
-    # campo de densidade recomputado a cada passo (SummationDensity), e cs/c_n
-    # difusivos. TODO: adicionar correcao δr·∇φ se observar drift de campo.
     def __init__(
         self,
         dest,
@@ -259,8 +178,6 @@ class ParticleShift(Equation):
         rho_b = d_rho_b_grown[d_idx]
         sx = 0.0
         sy = 0.0
-        # Gate: so particulas MOVEIS (inverso do hard pin K.17) e nao-agar.
-        # Sem early-return: o transpiler Cython do PySPH exige fluxo unico.
         if (
             rho_b >= self.rho_b_min
             and rho_b < self.rho_b_pin
@@ -271,7 +188,6 @@ class ParticleShift(Equation):
             sx = -D * d_shift_dC_x[d_idx]
             sy = -D * d_shift_dC_y[d_idx]
 
-            # Cap |δr| ≤ shift_cap · h (Lind 2012 — shifts grandes desestabilizam).
             mag = (sx * sx + sy * sy) ** 0.5
             cap = self.shift_cap * h
             if mag > cap:
@@ -323,11 +239,7 @@ class SurfactantEquation(Equation):
         d_rho_b_grown,
         s_rho_b_grown,
     ):
-        # Difusao bi-escala: D_int dentro da colonia, D_ext no agar exterior.
-        # Ramnolipideo difunde rapido no agar livre e lento dentro do biofilme (EPS).
-        # Usa a media geometrica dos rho_b do par para transicao suave.
         rho_b_avg = 0.5 * (d_rho_b_grown[d_idx] + s_rho_b_grown[s_idx])
-        # Smoothstep gate: D_ext para rho_b<0.1, D_int para rho_b>0.5
         if rho_b_avg < 0.1:
             D_eff = self.D_ext
         elif rho_b_avg < 0.5:
@@ -340,7 +252,6 @@ class SurfactantEquation(Equation):
         cs_ij = d_cs[d_idx] - s_cs[s_idx]
         rij_sq = RIJ**2 + 0.01 * d_h[d_idx] ** 2
         dot_product = XIJ[0] * DWIJ[0] + XIJ[1] * DWIJ[1]
-
         term = (s_m[s_idx] / s_rho[s_idx]) * (cs_ij / rij_sq) * dot_product
         d_a_c_s[d_idx] += 2.0 * D_eff * term
 
@@ -356,38 +267,17 @@ class SurfactantEquation(Equation):
     ):
         rho_b = d_rho_b_grown[d_idx]
         qs = rho_b * rho_b / (rho_b * rho_b + 0.01)
-        # C3.3 — filler inerte NAO produz cs (so difunde passivamente): evita a
-        # inflacao de cs no interior que colapsou contrast_cs (360→8) em t=100s.
         if d_is_filler[d_idx] > 0.5:
             qs = 0.0
 
-        # Pass T1 (Trinschek-like, §3.0 [T1] painel (b)): producao satura
-        # localmente em cs_max via (1 - cs/cs_max). Substitui a combinacao
-        # growth_headroom + tip_boost + motile_boost + c_n_factor + k_consume
-        # por uma unica forma analoga a Trinschek 2018 eq. para Γ.
-        # Resultado esperado (validado §3.3.6): cs uniforme = cs_max em rho_b>0.5,
-        # decai monotonicamente no rim+agar — perfil §3.3-compliant.
         saturation = 1.0 - d_cs[d_idx] / self.cs_max
         if saturation < 0.0:
             saturation = 0.0
 
         c_n_factor = d_c_n[d_idx] / (d_c_n[d_idx] + 0.1)
 
-        # Pontas rápidas produzem mais surfactante
-        # Problema: os dendritos correm mais rápido do que a química conseguiu acompanhar.
-        # Splitting resolveria o problema
-        # v_mag = sqrt(d_u[d_idx] * d_u[d_idx] + d_v[d_idx] * d_v[d_idx])
-        # if v_mag > 0.1:
-        #     v_mag = 0.1
-        # motile_boost = 1.0 + 100.0 * v_mag  # 1x em estatico, 3.5x em v=0.1
-
-        # revisar: qual diferença com e sem c_n_factor?
         production = self.sigma * qs * saturation * d_noise[d_idx] * c_n_factor
 
-        # Decaimento somente no agar (rho_b < 0.1). No biofilme a saturacao
-        # via (1-cs/cs_max) ja limita cs em cs_max — nao precisa de sumidouro.
-        # Isto reproduz a forma de Γ uniforme em Trinschek (b): biomassa cheia,
-        # halo no agar com decaimento finito.
         if rho_b < 0.1:
             lambda_eff = self.lambda_ * 2.0  # Decaimento LENTO no ágar (gera o halo)
         else:
@@ -397,18 +287,6 @@ class SurfactantEquation(Equation):
 
 
 class MarangoniForce(Equation):
-    """
-    Força de Marangoni aplicada APENAS na interface da colônia.
-
-    Detecção de interface: usa d_grad_rho_b_mag (calculado por BiomassGradient).
-    No bulk interior grad_rho_b ≈ 0 → força zero. No border do dendrito
-    grad_rho_b é grande → força máxima. Isso previne empuxo espúrio por
-    ruído de cs no interior.
-
-    gate = smoothstep(grad_rho_b_mag, grad_low, grad_high)
-    F = gate · (-β) · ∇cs
-    """
-
     def __init__(self, dest, sources, beta, grad_low=0.15, grad_high=0.5):
         self.beta = -beta
         self.grad_low = grad_low
@@ -439,7 +317,6 @@ class MarangoniForce(Equation):
         d_Lyy,
         DWIJ,
     ):
-        # Gate de interface: só atua onde |∇rho_b| é significativo
         grad_mag = d_grad_rho_b_mag[d_idx]
         if grad_mag >= self.grad_low:
             gate_raw = (grad_mag - self.grad_low) / (self.grad_high - self.grad_low)
@@ -451,9 +328,6 @@ class MarangoniForce(Equation):
             vol_j = s_m[s_idx] / s_rho[s_idx]
             cs_ij = s_cs[s_idx] - d_cs[d_idx]
 
-            # Rota C — KGC (Bonet-Lok): kernel gradient corrigido cDWIJ = L_i·DWIJ
-            # restaura consistencia de 1a ordem do ∇cs nos braços sub-resolvidos.
-            # L = identidade (init) se KGC desligado → reduz ao SPH padrao.
             cdwij_x = d_Lxx[d_idx] * DWIJ[0] + d_Lxy[d_idx] * DWIJ[1]
             cdwij_y = d_Lyx[d_idx] * DWIJ[0] + d_Lyy[d_idx] * DWIJ[1]
 
@@ -466,32 +340,12 @@ class MarangoniForce(Equation):
             d_ay_mar[d_idx] += acc_y
 
     def post_loop(self, d_idx, d_au_mar, d_ax_mar, d_ay_mar):
-        # Registra a magnitude da aceleração vetorial LÍQUIDA de Marangoni
-        # (após cancelamento de contribuições de vizinhos).
         d_au_mar[d_idx] = (
             d_ax_mar[d_idx] * d_ax_mar[d_idx] + d_ay_mar[d_idx] * d_ay_mar[d_idx]
         ) ** 0.5
 
 
 class LinearDrag(Equation):
-    """
-    Drag linear com GRADIENTE DE MOBILIDADE biológico.
-
-    Modelo: γ_eff = γ_base + γ_mature · rho_b²
-
-    - Partículas com rho_b ≈ 0 (fluido livre): γ_eff = γ_base (mobilidade total)
-    - Partículas com rho_b ≈ 0.3 (interface/edge swarm): γ_eff ≈ γ_base + 0.09·γ_mature
-    - Partículas com rho_b ≈ 1.0 (núcleo maduro / biofilme): γ_eff = γ_base + γ_mature
-
-    Justificativa biológica: em P. aeruginosa swarming, células no núcleo
-    estão embebidas em matriz EPS (biofilme) e são essencialmente imóveis,
-    enquanto células no edge swarm são motoras (flagelo + surfactante).
-    Sem esse gradiente, o transiente inicial varre todo o material para
-    fora junto com a interface, criando o anel oco que vimos.
-
-    Use γ_mature ~5–10× γ_base para diferenciar fortemente os regimes.
-    """
-
     def __init__(self, dest, sources, gamma_base, gamma_mature=0.0):
         self.gamma_base = -gamma_base
         self.gamma_mature = -gamma_mature
@@ -510,7 +364,6 @@ class LinearDrag(Equation):
         d_ay_drag,
     ):
         rho_b = d_rho_b_grown[d_idx]
-        # Quadrático em rho_b: edge mobile, núcleo congelado
         gamma_eff = self.gamma_base + self.gamma_mature * rho_b * rho_b
         acc_x = gamma_eff * d_u[d_idx]
         acc_y = gamma_eff * d_v[d_idx]
@@ -569,9 +422,6 @@ class ViscousForce(Equation):
 
         common_term = (s_m[s_idx] / rho_j) * (dot_product / rij_sq)
 
-        # Viscosidade ponderada pela densidade: interface (rho < rho0) é menos viscosa,
-        # permitindo que as pontas dos dendritos se deformem livremente. O interior denso
-        # (rho ~ rho0) mantém a coesão da colônia com viscosidade plena.
         rho_avg = 0.5 * (d_rho[d_idx] + rho_j)
         mu_eff = self.mu * min(rho_avg, 1.0)
 
@@ -583,26 +433,6 @@ class ViscousForce(Equation):
 
 
 class BiomassEOS(Equation):
-    """
-    EOS "Soft Interior, Cohesive Edge" com tensão superficial intrínseca.
-
-    Dois regimes:
-    - Compressão (ρ > ρ₀): pressão repulsiva quadrática (evita overlap)
-    - Rarefação (ρ < ρ₀): pressão levemente NEGATIVA (tensão superficial)
-
-    Via MomentumEquation do PySPH, p < 0 cria força atrativa entre vizinhos
-    → substitui a OsmoticForce como mecanismo de coesão. O regime atrativo
-    é modulado pelo edge_fade: zero na borda livre (rho_b < 0.1), máximo
-    no interior (rho_b > 0.5).
-
-    P = B · excess² · edge_fade          se ρ > ρ₀
-    P = -B_tension · deficit · edge_fade  se ρ < ρ₀
-
-    - B = ρ₀·c₀²/γ — repulsão forte para impedir colapso
-    - B_tension = B · tension_ratio — atração fraca para coesão (ratio ~0.3)
-    - edge_fade: smoothstep em rho_b ∈ [0.1, 0.5]
-    """
-
     def __init__(self, dest, sources, rho0, c0, gamma_eos=7.0, tension_ratio=0.02):
         self.rho0 = rho0
         self.c0 = c0
@@ -614,11 +444,6 @@ class BiomassEOS(Equation):
         ratio = d_rho[d_idx] / self.rho0
         rho_b = d_rho_b_grown[d_idx]
 
-        # K.16e: edge_fade ASSIMETRICO — repulsao e atracao desacopladas.
-        # Repulsao (compressao): zerada no agar (rho_b<0.1) E no nucleo (rho_b>=0.8)
-        #   → elimina a_pressure no core saturado (alavanca §2.4).
-        # Atracao (rarefacao): zerada so no agar (rho_b<0.1), preservada no core
-        #   → mantem coesao estrutural do nucleo EPS, evita colapso K.16c.
         if rho_b < 0.1:
             fade_rep = 0.0
             fade_att = 0.0
@@ -637,12 +462,9 @@ class BiomassEOS(Equation):
             fade_att = 1.0
 
         if ratio > 1.0:
-            # Compressão: repulsão quadrática suave (zerada no core)
             excess = ratio - 1.0
             d_p[d_idx] = self.B * excess * excess * fade_rep
         else:
-            # Rarefação: tensão superficial (atração leve, preservada no core)
-            # Limitamos o deficit a 0.3 para evitar atração excessiva em gaps
             deficit = 1.0 - ratio
             if deficit > 0.3:
                 deficit = 0.3
@@ -650,20 +472,6 @@ class BiomassEOS(Equation):
 
 
 class OsmoticForce(Equation):
-    """
-    Força osmótica anisotrópica: preenche buracos no interior sem circularizar.
-
-    Princípio: A força aponta na direção ∇(rho_SPH) — detecta rarefação
-    mecânica (gaps no fluido). Modulada por quão "interior" a partícula é.
-    Na borda da colônia (rho_b baixo) a força é ZERO.
-
-    F = k_osm · interior_gate(rho_b) · ∇(rho_SPH)
-
-    - interior_gate: smoothstep 0→1 para rho_b ∈ [0.3, 0.7]
-    - ∇(rho_SPH) calculado par-a-par no loop SPH
-    - k_osm pequeno (ratio Marangoni/Osmótica ≈ 20:1)
-    """
-
     def __init__(self, dest, sources, k_osm=0.5, rho_b_threshold=0.3):
         self.k_osm = k_osm
         self.rho_b_threshold = rho_b_threshold
@@ -677,7 +485,6 @@ class OsmoticForce(Equation):
     ):
         rho_b = d_rho_b_grown[d_idx]
 
-        # Gate: só no interior (rho_b > 0.3), smoothstep até 0.7
         if rho_b >= self.rho_b_threshold:
             gate_raw = (rho_b - self.rho_b_threshold) / 0.4
             if gate_raw > 1.0:
@@ -685,7 +492,6 @@ class OsmoticForce(Equation):
             else:
                 gate = gate_raw * gate_raw * (3.0 - 2.0 * gate_raw)
 
-            # Gradiente da densidade SPH — detecta gaps no fluido
             vol_j = s_m[s_idx] / s_rho[s_idx]
             rho_diff = s_rho[s_idx] - d_rho[d_idx]
 
@@ -698,20 +504,6 @@ class OsmoticForce(Equation):
 
 
 class OsmolyteProduction(Equation):
-    """
-    Pass M-A — Campo de osmolito c_o produzido pelas bacterias (Frente 6).
-
-    Mecanismo (Srinivasan 2019, Bru 2023): bacterias secretam LPS/EPS que
-    funcionam como osmolitos. c_o satura nas baias (agar confinado entre
-    dois dendritos) e fica ~0 nas pontas (agar virgem). |∇c_o| pequeno
-    nas baias → influxo zero. |∇c_o| grande nas pontas → influxo de massa
-    via van't Hoff (V0 ∝ |∇c_o|). Resultado: pontas incham, baias estagnam.
-
-    Loop: difusao SPH (Brookshaw) + acumulo de gradiente simetrico.
-    Post_loop: producao biomassa-dependente, decaimento, e influxo de massa
-    proporcional a |∇c_o| · gate(rho_b).
-    """
-
     def __init__(self, dest, sources, D_o=1e-3, k_o=0.5, lambda_o=0.05, Q0=5e-4):
         self.D_o = D_o
         self.k_o = k_o
@@ -762,22 +554,13 @@ class OsmolyteProduction(Equation):
     ):
         rho_b = d_rho_b_grown[d_idx]
 
-        # Producao: bacterias secretam osmolito (proporcional a densidade)
-        # qs = Hill QS, satura em c_o=1 via (1 - c_o)
         qs = rho_b * rho_b / (rho_b * rho_b + 0.01)
         production = self.k_o * qs * (1.0 - d_c_o[d_idx])
 
-        # Decaimento lento (osmolitos persistem mais que cs)
         decay = self.lambda_o * d_c_o[d_idx]
 
         d_a_c_o[d_idx] += production - decay
 
-        # Forca osmotica de Darcy: F = -Q0 * gate * nabla(c_o)
-        # c_o alto dentro, baixo fora -> nabla(c_o) aponta para dentro.
-        # -nabla(c_o) aponta para fora (expansao do rim), mesmo sinal de FlagellarForce.
-        # Forma proporcional ao gradiente (nao normalizada): preserva diferenciacao
-        # tip/baia — pontas tem |nabla(c_o)| maior que baias confinadas (2x).
-        # Gate smoothstep em rho_b in [0.1, 0.6] com pico em rho_b = 0.35
         if rho_b < 0.1:
             gate = 0.0
         elif rho_b > 0.6:
@@ -796,23 +579,6 @@ class OsmolyteProduction(Equation):
 
 
 class FlagellarForce(Equation):
-    """
-    Pass K — Motilidade flagelar orientada por gradiente (Frente 5, CLAUDE.md).
-
-    F_flag = -f0 * gate(rho_b) * n̂(∇cs)
-
-    Forca propulsiva constante em magnitude (f0), alinhada a -∇cs (mesma direcao
-    de Marangoni — para agar fresco). Sobrevive a saturacao do reservatorio de cs
-    porque depende apenas da DIRECAO do gradiente, nao da magnitude. Modela o
-    flagelo polar de P. aeruginosa como motor ativo quimiotactico.
-
-    Gate rho_b em [0.1, 0.6] com pico em 0.35: so swarmers de borda recebem a forca,
-    nucleo maduro (rho_b~1) e agar livre (rho_b~0) sao imunes.
-
-    Loop: acumula gradiente SPH completo de cs em grad_cs_x/y.
-    Post_loop: normaliza o vetor total e aplica com sinal correto.
-    """
-
     def __init__(self, dest, sources, f0):
         self.f0 = f0
         super().__init__(dest, sources)
@@ -862,9 +628,6 @@ class FlagellarForce(Equation):
             gy = d_grad_cs_y[d_idx]
             mag = (gx * gx + gy * gy) ** 0.5 + 1e-9
 
-            # Sinal negativo: forca aponta na direcao de -∇cs (mesma de Marangoni,
-            # para o agar fresco). Magnitude constante = f0 * gate, independente
-            # de |∇cs|, por isso sobrevive a saturacao do reservatorio.
             acc_x = -self.f0 * gate * gx / mag
             acc_y = -self.f0 * gate * gy / mag
             d_au[d_idx] += acc_x
@@ -873,26 +636,9 @@ class FlagellarForce(Equation):
 
 
 class OxigenConsumption(Equation):
-    """Pass M-B.4 (Frente 6): campo de nutriente/oxigenio consumivel c_n com difusao bi-escala.
-
-    dc_n/dt = D_n_eff * Laplacian(c_n) - k_n * rho_b * c_n
-
-    D_n_eff = D_n_int dentro do biofilme (EPS bloqueia transporte)
-            = D_n_ext no agar livre
-    Smoothstep em rho_b_avg [0.1, 0.5].
-
-    A difusao bi-escala e o equivalente de Pass I.6 para c_n:
-    - D_n_int << D_n_ext cria L_D_n_int = sqrt(D_n_int/(k_n*rho_b)) ~ 0.018
-      (vs L_D_n = 0.258 com D_n uniforme).
-    - Transicao entre nucleo e baia e depletada em <2s: c_n_factor ~ 0 no interior.
-    - Baias geometricamente fechadas pelo biofilme nao recebem reabastecimento
-      de c_n do agar exterior — producao cs e crescimento rho_b parados.
-    - Tips em agar virgem (D_n_ext ativo) recebem c_n fresco — crescem normalmente.
-    """
-
     def __init__(self, dest, sources, D_n=0.02, D_n_int=1e-4, k_n=0.5):
-        self.D_n = D_n  # D_n_ext: difusao no agar livre
-        self.D_n_int = D_n_int  # difusao dentro do biofilme (EPS bloqueia)
+        self.D_n = D_n
+        self.D_n_int = D_n_int
         self.k_n = k_n
         super(OxigenConsumption, self).__init__(dest, sources)
 
@@ -915,9 +661,6 @@ class OxigenConsumption(Equation):
         d_rho_b_grown,
         s_rho_b_grown,
     ):
-        # M-B.6: barreira EPS [0.05, 0.3]. Em rho_b=0.3 (baia tipica) D_eff = D_n_int.
-        # Transicao um pouco mais larga que M-B.5 [0.05, 0.25] — preserva blocking
-        # nas baias mas suaviza descontinuidade na fronteira agar/biofilme.
         rho_b_avg = 0.5 * (d_rho_b_grown[d_idx] + s_rho_b_grown[s_idx])
         if rho_b_avg < 0.05:
             D_eff = self.D_n
@@ -936,6 +679,5 @@ class OxigenConsumption(Equation):
         d_a_c_n[d_idx] += 2.0 * D_eff * Vj * (cn_ij / rij_sq) * dot_product
 
     def post_loop(self, d_idx, d_a_c_n, d_c_n, d_rho_b_grown):
-        # Consumo biomassa-dependente
         consumption = self.k_n * d_rho_b_grown[d_idx] * d_c_n[d_idx]
         d_a_c_n[d_idx] -= consumption

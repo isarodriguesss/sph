@@ -1158,6 +1158,18 @@ Resultado: pulsacoes episodicas (n_fast pico=114 em t=1.5s via perturbacao inici
 3. Implementar com testes minimos de sanidade (ex: verificar que forcas somam zero em equilibrio).
 4. Documentar a mudanca neste arquivo na secao apropriada.
 
+### Politica de Comentarios em Codigo
+
+**Regra geral:** Codigo limpo, sem poluicao de comentarios explicativos. Comentarios sao permitidos APENAS em dois casos:
+
+1. **Comentarios de seguranca** (obrigatorios): validacoes de limite ou guarda contra NaN / overflow que nao sao obvias da logica do codigo. Exemplo: `rho_safe = s_rho[s_idx]  # densidade da particula vizinha` + `if rho_safe < 1e-6:  # minimo para evitar NaN`.
+
+2. **Comentarios de contexto historico** (apenas se nao-obvio): Solver customizado, integradores especiais, ou fixes para bugs SPH nao-triviais. **Devem ser movidos para CLAUDE.md**, nao ficar no codigo. O codigo propriamente nao explica o "por que", apenas o "o que". Ver exemplos em §3.0 (referencias da literatura), §2.4 (bloqueios mecanico/quimico), §9 (historico de Passes).
+
+**Proibido:** Comentarios explicativos de algoritmo, detalhe de equacoes, logica de gates, ou historico de decisoes. Tudo isso vai para CLAUDE.md alem do numero de linha (ex: "MarangoniForce.loop" + "gate de interface"). O codigo valida-se por si — bem nomes, estrutura clara, parametros significativos.
+
+**Violacoes encontradas (2026-06-17):** 40+ comentarios explicativos removidos de [src/equations.py](src/equations.py) (docstrings, algoritmo, historico de Passes, estagio de desenvolvimento). Arquivo mantido limpo com APENAS comentarios de seguranca em KernelSum.
+
 ### Proibicoes explicitas:
 - **Nao** alterar parametros fisicos sem antes ler `log.csv`.
 - **Nao** declarar sucesso de um Pass sem evidencia visual da morfologia comparada a `reference.jpg`.

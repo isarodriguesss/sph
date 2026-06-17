@@ -56,14 +56,6 @@ class CustomEulerStep(EulerStep):
         d_c_o[d_idx] = max(0.0, min(d_c_o[d_idx], 1.0))
         d_c_n[d_idx] = max(1e-9, min(d_c_n[d_idx], 1.0))
 
-        # M-B.9b: revert ao pin quimico hard de M-B.8 (c_n<0.4) — M-B.9a
-        # demonstrou que drag suave + coesao baixa gera fragmentacao
-        # distribuida (lição §22). Esta versao testa se reforcar coesao
-        # (tension_ratio 0.02→0.08 em BiomassEOS) reduz a fragmentacao
-        # interna pos-t=50s observada com pin hard. Mantem K.17 mecanico.
-        # C3.3 — filler inerte (is_filler=1) tambem e pinado: puro suporte de
-        # densidade/kernel na junção, congelado como o nucleo. Evita que filler
-        # (rho_b~0.5-0.6, dentro do gate flagelar) se mova e reabra o vacuo.
         if (
             d_rho_b_grown[d_idx] >= 0.8
             or d_c_n[d_idx] < 0.6
@@ -75,24 +67,12 @@ class CustomEulerStep(EulerStep):
             d_u[d_idx] += dt * d_au[d_idx]
             d_v[d_idx] += dt * d_av[d_idx]
 
-        d_x[d_idx] += dt * d_u[d_idx]  # x avança com u (que é 0 se pinnado)
+        d_x[d_idx] += dt * d_u[d_idx]
         d_y[d_idx] += dt * d_v[d_idx]
         d_m[d_idx] += dt * d_am[d_idx]
 
-        # Rota A — Fickian Particle Shifting (Xu 2009; Lind 2012). Correcao
-        # geometrica de posicao para drenar sigma_a → 1 (Violeau §3.6) sem
-        # criar particulas. shift_x/y = 0 para nucleo pinado e agar (gate na
-        # equacao ParticleShift), entao soma-se incondicionalmente aqui.
         d_x[d_idx] += d_shift_x[d_idx]
         d_y[d_idx] += d_shift_y[d_idx]
-
-        # vmax = 5.0
-
-        # v = np.sqrt(d_u[d_idx]**2 + d_v[d_idx]**2)
-        # if v > vmax:
-        #     scale = vmax / v
-        #     d_u[d_idx] *= scale
-        #     d_v[d_idx] *= scale
 
 
 class MyBiomassScheme(Scheme):
@@ -163,20 +143,12 @@ class MyBiomassScheme(Scheme):
                     sources=None,
                     rho0=1.0,
                     c0=self.c0,
-                    tension_ratio=0.30,  # M-B.9b: 0.02 → 0.08 (4x) — coesao reforcada
-                    # contra fragmentacao interna pos-t=50s (lição §15/§22). B_tension
-                    # sobe de 0.00069 → 0.00275. Risco: re-aparecer halo nas baias.
+                    tension_ratio=0.30,
                 ),
             ],
             real=False,
         )
 
-        # Pass N v2.4: sigma_a (partição da unidade) calculado em Group separado
-        # APOS SummationDensity, para que s_rho esteja totalmente acumulado
-        # quando KernelSum.loop ler s_rho[s_idx]. Se KernelSum estivesse no
-        # mesmo Group de SummationDensity, s_rho seria parcial durante o loop
-        # (Violeau §3.4-3.6, Liu §3.3.3 — consistencia de ordem zero exige
-        # densidades completas).
         equations_kernel_sum = Group(
             equations=[
                 KernelSum(dest="fluid", sources=["fluid"]),
@@ -186,9 +158,6 @@ class MyBiomassScheme(Scheme):
 
         equations_main = Group(
             equations=[
-                # MomentumEquation com Monaghan artificial viscosity forte
-                # (alpha=0.5) para manter continuidade no braço dendrítico.
-                # Pressão do EOS já faz repulsão E coesão (p<0 → atração).
                 MomentumEquation(
                     dest="fluid",
                     sources=["fluid"],
@@ -211,8 +180,7 @@ class MyBiomassScheme(Scheme):
                     dest="fluid",
                     sources=None,
                     gamma_base=self.gamma,
-                    gamma_mature=self.gamma
-                    * 1.5,  # K.16c: revertido a baseline K.15; pinning via edge_fade invertido
+                    gamma_mature=self.gamma * 1.5,
                 ),
                 SurfactantEquation(
                     dest="fluid",
@@ -221,9 +189,9 @@ class MyBiomassScheme(Scheme):
                     D_ext=self.D_ext,
                     sigma=self.sigma,
                     lambda_=self.lambda_,
-                    lambda_ext_ratio=5.0,  # decaimento no agar mantem halo finito (Trinschek-like)
-                    k_consume=0.0,  # Pass T1: sumidouro removido — saturacao agora via (1-cs/cs_max)
-                    cs_max=0.5,  # Pass T1: Γ_max do painel (b) Trinschek 2018 — alvo de saturacao
+                    lambda_ext_ratio=5.0,
+                    k_consume=0.0,
+                    cs_max=0.5,
                 ),
                 OxigenConsumption(
                     dest="fluid",
@@ -232,9 +200,6 @@ class MyBiomassScheme(Scheme):
                     D_n_int=self.D_n_int,
                     k_n=self.k_n,
                 ),
-                # Pass M-A (Frente 6): osmolitos secretados pelas bacterias.
-                # |∇c_o| dispara influxo de massa (van't Hoff) — pontas incham,
-                # baias estagnam. DEVE preceder FlagellarForce (que usa cs).
                 # OsmolyteProduction(
                 #     dest="fluid",
                 #     sources=["fluid"],
@@ -246,17 +211,13 @@ class MyBiomassScheme(Scheme):
                 FlagellarForce(
                     dest="fluid",
                     sources=["fluid"],
-                    f0=3.0,  # K.22: 0.5→3.0 — restaura ignição nas pontas (alvo §8: f0~γ·v_term/2=3)
+                    f0=3.0,
                 ),
             ],
         )
 
         groups = [equations_pre, equations_kernel_sum]
 
-        # Rota C — Kernel Gradient Correction (Bonet-Lok 1999). Group SEPARADO
-        # ANTES do main: a matriz L_i precisa estar invertida (post_loop do KGC)
-        # antes que MarangoniForce.loop a use. Corrige o ∇cs nos braços
-        # sub-resolvidos (consistencia 1a ordem, Liu §3.3) sem mover particula.
         if self.use_kgc:
             equations_kgc = Group(
                 equations=[
@@ -272,10 +233,6 @@ class MyBiomassScheme(Scheme):
 
         groups.append(equations_main)
 
-        # Rota A — Fickian Particle Shifting (Xu 2009; Lind 2012). Group SEPARADO
-        # apos o main: usa s_rho final (do equations_pre) e popula shift_x/y, que
-        # o CustomEulerStep.stage1 aplica a posicao. Alternativa de custo-dt-ZERO
-        # ao Pass N para o problema do vacuo (Liu §6.5, Violeau §3.6).
         if self.use_shift:
             equations_shift = Group(
                 equations=[
@@ -284,7 +241,7 @@ class MyBiomassScheme(Scheme):
                         sources=["fluid"],
                         shift_coeff=self.shift_coeff,
                         shift_cap=self.shift_cap,
-                        rho_b_min=self.shift_rho_b_min,  # A.3: 0.6 — só interior
+                        rho_b_min=self.shift_rho_b_min,
                     ),
                 ],
             )

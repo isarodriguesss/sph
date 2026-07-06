@@ -17,3 +17,6 @@ src/__pycache__/
 
 # Ignorar logs
 log.csv
+
+# Estado interno dos hooks do harness Claude Code (por sessao, nao versionar)
+.claude/.state/

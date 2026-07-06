@@ -92,6 +92,7 @@ class BiomassGradient(Equation):
 
 
 class KernelSum(Equation):
+    # Soma dos volumes dos vizinhos ponderados pelo kernel
     def initialize(self, d_idx, d_sigma_a):
         d_sigma_a[d_idx] = 0.0
 

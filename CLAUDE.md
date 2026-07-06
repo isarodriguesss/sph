@@ -2,6 +2,8 @@
 
 Este arquivo governa todas as interações do Claude Code com este repositório. As regras aqui descritas sao **obrigatorias** e tem precedencia sobre qualquer comportamento padrao.
 
+> **Harness em `.claude/`:** este repositorio tem agents ([.claude/agents/](.claude/agents/): `analista-log`, `analista-morfologia`, `guardiao-literatura`, `explorador`), skills ([.claude/skills/](.claude/skills/): `analisar-log-csv`, `protocolo-cs-zonas`, `validar-morfologia`, `formatar-pass-historico`), comandos ([.claude/commands/](.claude/commands/): `/novo-pass`, `/validar-pass`, `/registrar-pass`, `/checar-orcamento`) e hooks ([.claude/hooks/](.claude/hooks/)) que operacionalizam os protocolos abaixo — o hook `guard_param_change.py` **bloqueia** editar um parametro fisico em `main.py`/`src/equations.py`/`src/scheme.py` sem leitura fresca de `log.csv` na sessao (§10), e `guard_pass_l.py` bloqueia introduzir geometria de contorno rugosa antes do criterio de §2.2. Prefira `/novo-pass` para iniciar uma calibracao e `/validar-pass` para fechar o ciclo — eles ja encadeiam os agents/skills certos na ordem certa. Nenhum destes arquivos duplica secoes deste CLAUDE.md (que ja e sempre carregado por inteiro); eles so automatizam a aplicacao dos protocolos.
+
 ---
 
 ## 1. Projeto e Referencial Teorico

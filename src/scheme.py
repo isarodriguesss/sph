@@ -59,7 +59,7 @@ class CustomEulerStep(EulerStep):
         if (
             d_rho_b_grown[d_idx] >= 0.8
             or d_c_n[d_idx] < 0.6
-            or d_is_filler[d_idx] > 0.5
+            or (d_is_filler[d_idx] > 0.5 and d_is_filler[d_idx] < 1.5)
         ):
             d_u[d_idx] = 0.0
             d_v[d_idx] = 0.0

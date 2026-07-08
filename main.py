@@ -64,7 +64,7 @@ D_n_int = 1e-4
 k_n = 0.5
 
 dt_global = 0.001
-total_sim_time = 100.0
+total_sim_time = 50.0
 print_freq = 200
 
 trajectory_store_interval = 20
@@ -79,15 +79,13 @@ SHIFT_COEFF = 0.5
 SHIFT_CAP = 0.05
 SHIFT_RHO_B_MIN = 0.6
 
-use_kgc = False
+use_kgc = True
 KGC_DET_MIN = 0.25
 
 use_insert = True
 INSERT_FREQ = 200
-INSERT_SIGMA_TRIG = 0.85 # 15% de erro
-INSERT_RHO_B_MIN = 0.1  # só vácuo estrutural no núcleo. 0.1 para tudo
-INSERT_RHO_B_CORE = 0.5  # rho_b > core: núcleo (frozen isotrópico); abaixo: braço
-INSERT_TANGENTIAL_EPS = 0.5  # |offset·n̂| < eps*dx → candidato tangencial ao braço
+INSERT_SIGMA_TRIG = 0.85
+INSERT_RHO_B_MIN = 0.5  # C3.4 validado: filler frozen so no nucleo estrutural (licao #31/#35)
 INSERT_PROX = 0.7
 INSERT_MAX = 100
 
@@ -537,8 +535,6 @@ class SwarmApp(Application):
                 prox = INSERT_PROX * dx  # distância de segurança entre duas partículas
                 prox_sq = prox * prox  # o quadrado da distância de segurança
 
-                tang_eps = INSERT_TANGENTIAL_EPS * dx
-
                 angles_hex = np.arange(6) * (
                     np.pi / 3.0
                 )  # angulos hexagonais 0°, 60°, 120°, 180°, 240°, 300°
@@ -548,39 +544,15 @@ class SwarmApp(Application):
                 new_x = []
                 new_y = []
                 parent_idx = []
-                new_u = []
-                new_v = []
-                new_filler = []
                 added_pts = []  # dedupe entre candidatos da mesma call
 
                 for k in void_idx:
                     xk = float(fluid.x[k])
                     yk = float(fluid.y[k])
-
-                    is_arm = float(fluid.rho_b_grown[k]) < INSERT_RHO_B_CORE
-                    nx_hat = 0.0
-                    ny_hat = 0.0
-                    if is_arm:
-                        gx = float(fluid.grad_rho_b_x[k])
-                        gy = float(fluid.grad_rho_b_y[k])
-                        gmag = (gx * gx + gy * gy) ** 0.5
-                        if gmag > 1e-9:
-                            nx_hat = gx / gmag
-                            ny_hat = gy / gmag
-                        else:
-                            is_arm = False
-
                     for j in range(6):
-                        ox = dx * cos_a[j]
-                        oy = dx * sin_a[j]
-                        if is_arm:
-                            proj = ox * nx_hat + oy * ny_hat
-                            if proj < 0.0:
-                                proj = -proj
-                            if proj > tang_eps:
-                                continue
-                        vx = xk + ox
-                        vy = yk + oy
+                        # coordenadas polares
+                        vx = xk + dx * cos_a[j]
+                        vy = yk + dx * sin_a[j]
                         d_existing, _ = tree.query([vx, vy])
                         if d_existing < prox:
                             continue
@@ -594,14 +566,6 @@ class SwarmApp(Application):
                         new_x.append(vx)
                         new_y.append(vy)
                         parent_idx.append(int(k))
-                        if is_arm:
-                            new_u.append(float(fluid.u[k]))
-                            new_v.append(float(fluid.v[k]))
-                            new_filler.append(2.0)
-                        else:
-                            new_u.append(0.0)
-                            new_v.append(0.0)
-                            new_filler.append(1.0)
                         added_pts.append((vx, vy))
                     if len(new_x) >= INSERT_MAX:
                         break
@@ -620,10 +584,10 @@ class SwarmApp(Application):
                         "cs": list(fluid.cs[p]),
                         "c_o": list(fluid.c_o[p]),
                         "c_n": list(fluid.c_n[p]),
-                        "u": new_u,
-                        "v": new_v,
+                        "u": [0.0] * n_ins,
+                        "v": [0.0] * n_ins,
                         "noise": list(fluid.noise[p]),
-                        "is_filler": new_filler,
+                        "is_filler": [1.0] * n_ins,
                     }
                     inserted.add_particles(**data)
                     fluid.append_parray(inserted)

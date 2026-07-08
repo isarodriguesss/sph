@@ -2160,6 +2160,19 @@ mean σ_a braços (agregado) = 0.95; 11 partículas (13%) com σ_a<0.85, concent
 
 **Veredito: Opcao 1 (aceitar+KGC) confirmada pelos dados.** Nao precisa C4/PassN/finer-res para validade científica. Limpar o anel interno (r<0.8, rho_b∈[0.1,0.5]) seria decisao ESTETICA (C3 estendido com cuidados #34/#35), nao científica.
 
+#### PROBLEMA VISUAL RESOLVIDO por renderizacao + A3 ENGATILHADO (2026-07-08)
+
+Fechamento da linha do "vacuo dos dendritos". Confirmou-se que o problema era **de VISUALIZACAO, nao de fisica** (consistente com #2 / Opcao 1): o `plot.py` antigo (scatter de `rho_b` em campo Shepard, janela `[-3,3]`) **nao conseguia mostrar** a morfologia dendritica que o PySPH viewer (`make view`) exibe corretamente. Tres causas medidas no HDF5 (`main_02000.hdf5`, t=40.65s): (a) janela `[-3,3]` **cortava os braços** (colonia chega a r=4.53, p95=3.44); (b) a biomassa `rho_b` e um **esqueleto esparso** (~298 particulas de 35k; ~44 nos braços r>1.2) — campo Shepard de densidade e a ferramenta errada para skeleton esparso; (c) o swarm dendritico e revelado por **`rho`** (empacotamento SPH: agar~0.85, cristas de braço~1.1), nao por `rho_b`.
+
+**Solucao (viz pura, solver intocado — licao #38):** `plot.py` reescrito — dominio cheio `[-5,5]`, render de `rho` por **pontos grandes** (como o viewer), painel de 4: (1) `rho` cientifico (fiel ao viewer, validado contra screenshot = verdade-fundamental), (2) `rho` estilo-reference.jpg (fundo escuro, cristas de braço acesas), (3) **footprint temporal** — acumula via `max` no tempo a ocupacao das cristas de `rho` (`rho>1.05`) + nucleo de biomassa (`rho_b>0.5`), suavizada (`gaussian_filter`), preenchendo o tubo fino do braço → **dendritos PREENCHIDOS estilo reference.jpg** (o footprint de `rho_b` puro falhou — biomassa avanca, nao deixa rastro denso), (4) `cs`. Funcoes Shepard preservadas (validadas por `test_shepard_fill.py`, teste-ouro gap-preenche/quebra-preserva) mas nao sao mais os paineis principais. **Baseline do run: C3.4 revertido** (tangencial desfeito — `use_kgc=True`, `INSERT_RHO_B_MIN=0.5`); t=50 saudavel (`a_marangoni`=13 com KGC, massa +2.3%, sem runaway).
+
+**A3 (resolucao global mais fina) — ENGATILHADO, NAO EXECUTADO:** e a **unica rota fisica remanescente** para o vacuo da frontier, agora reservada para um gatilho de FISICA (nao estetica — a estetica ja esta resolvida pela renderizacao acima).
+- **Alavanca:** `dx 0.0538→~0.036`; `x_dim, y_dim: 187→~280` (preservar dominio `[-5,5]`). Uma alavanca (§2.3).
+- **Efeito:** ~2.25× particulas globais → braços deixam de ser esqueleto de ~44 particulas; `σ_a` na frontier sobe (Liu §3.3 — mais vizinhos → consistencia de 1a ordem; Violeau §3.6 — `σ_a→1` por amostragem densa). Reduz muito o vacuo por ORCAMENTO de particulas, sem over-pack (#27), sem colapso catastrofico de dt (cai ~0.6× UNIFORME, nao 35-97× do splitting #29/#38), sem mexer no pin, sem congelar (#31), sem feedback (#34).
+- **Custo:** dt~0.6×, wall~3.4× (t=100 iria de ~23min para ~80min).
+- **GATILHO (obrigatorio antes de executar):** so disparar se uma medicao `σ_a` por anel radial no braço mostrar que o `∇cs` do braço degrada o MOTOR de forma mensuravel (ex.: `a_marangoni` nas pontas cair vs baseline, ou morfologia regredir). A medicao #2 (2026-06-10) mostrou o oposto — pontas em `σ_a`=0.98, deficit so no anel interno r<0.8 (atras da frente ativa) — entao **hoje NAO ha gatilho**. Reavaliar so se um Pass futuro alterar o regime da frontier.
+- **Fallback definitivo (se A3 nao bastar):** Pass N (Vacondio, conserva massa, herda velocidade) + timesteps individuais [T9] — caro (fork do integrador), documentado em "Rotas para o vacuo".
+
 ---
 
 ### Pass L — Superficies rugosas (Objetivo 1) — **BLOQUEADO ate Pass M**

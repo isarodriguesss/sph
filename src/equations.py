@@ -102,6 +102,12 @@ class KernelSum(Equation):
             rho_safe = 1e-6
         d_sigma_a[d_idx] += (s_m[s_idx] / rho_safe) * WIJ
 
+        # fazer teste sem particulas vizinhas e com quantidade padrao de particulas
+        # o d_sigma_a pode dar negativo?
+        # plotar as particulas dos 8%
+        # pensar em um valor default para regiões nao parecem ter partículas
+        # pensar uma inserção de partículas que nao interfira nas restantes
+
 
 class KernelGradientCorrection(Equation):
     def __init__(self, dest, sources, det_min=0.25):

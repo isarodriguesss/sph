@@ -19,4 +19,4 @@ run_view:
 	make view
 
 plot:
-	python plot.py
+	python plots/plot.py

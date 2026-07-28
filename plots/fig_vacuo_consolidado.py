@@ -51,5 +51,5 @@ fig.suptitle(
     fontsize=14, weight="bold",
 )
 plt.tight_layout(rect=[0, 0, 1, 0.94])
-plt.savefig("docs/fig_vacuo_nao_fisico.png", dpi=120, bbox_inches="tight")
-print("salvo docs/fig_vacuo_nao_fisico.png")
+plt.savefig("assets/fig_vacuo_nao_fisico.png", dpi=120, bbox_inches="tight")
+print("salvo assets/fig_vacuo_nao_fisico.png")

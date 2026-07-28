@@ -79,7 +79,7 @@ SHIFT_COEFF = 0.5
 SHIFT_CAP = 0.05
 SHIFT_RHO_B_MIN = 0.6
 
-use_kgc = True
+use_kgc = False
 KGC_DET_MIN = 0.25
 
 use_insert = True

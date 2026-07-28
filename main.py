@@ -1,5 +1,6 @@
 import csv
 import numpy as np
+from scipy.spatial import cKDTree
 from pysph.solver.application import Application
 from pysph.base.kernels import CubicSpline
 from pysph.solver.solver import Solver
@@ -23,68 +24,81 @@ LOG_HEADER = [
     "max_cs",
     "mean_cs",
     "constrast_cs",
-    # Pass M-B — campo de nutriente consumivel c_n (Frente 6)
     "min_c_n",
     "max_c_n",
     "mean_c_n",
     "contrast_c_n",
-    "mass_total",  # soma de m — cresce por BiomassGrowth (logistico)
+    "mass_total",
+    "pass_n_spawned",
+    "min_sig_arms",
+    "mean_sig_arms",
+    "frac_lowsig_arms",
 ]
 
-x_dim, y_dim = 187, 187  # M-B.10: expandido para preservar dx≈0.054 em dominio 10x10
+x_dim, y_dim = 187, 187
 
-# Domínio 10×10 centrado na origem (M-B.10: era 8x8 [-4,4]; ampliado para
-# evitar colisao de dendritos com paredes invisiveis em t>50s — diagnosticado
-# em M-B.9b como mecanismo dominante de fragmentacao pos-50s)
 x_min_domain, x_max_domain = -5.0, 5.0
 y_min_domain, y_max_domain = -5.0, 5.0
 
 dx = (x_max_domain - x_min_domain) / (x_dim - 1)
 
 
-# ── Parâmetros Calibrados (Coesão Viscosa + Interface Gateada) ──────────
-# Meta: v_term ≈ 0.1, acelerações totais 10–50, Marangoni só na interface.
-# Coesão vem de: (a) EOS com ramo atrativo (p<0 se rho<rho0),
-#                (b) viscosidade maior, (c) Monaghan artificial viscosity forte,
-#                (d) kernel com ~35 vizinhos (h_factor=1.8).
-mu = 0.020  # K.23: I.2 revert parcial — fortalecer coesão viscosa (I.2 era 0.012, pre-I.2 era 0.025)
-gamma = 60.0  # Drag: a_drag = gamma * v_term = 60 * 0.1 = 6
-beta = 5.0  # Pass T2d: T1 β=10 → 5 (reduz tracao amplificada na fronteira); razao |F_mar|/B_tension ~4800×
-sigma = 20.0  # Pass T2d: T1 σ=5 → 20 (acelera saturacao em cs_max=0.5); |F_mar| final depende de β·|∇cs|, nao de σ
-D = 1.5e-3  # Pass I.3: D_int dentro do biofilme — gradiente afiado na interface
-D_ext = 0.08  # K.18: 4x — L_D_ext=0.298 (~2x maior); habilita focalizacao Mullins-Sekerka pos-K.17
-lambda_ = 0.15  # Decaimento: confina cs mas permite penetracao de ~L_D_ext no exterior
-r_growth = 0.02  # M-B.7: 0.05→0.02 — reduz tip pumping (mass cresceu 9.7× em M-B.6 via growth nas pontas com c_n>0.8 a taxa plena)
+mu = 0.020
+gamma = 60.0
+beta = 5.0
+sigma = 10.0
+D = 1.5e-3
+D_ext = 0.08
+lambda_ = 0.15
+r_growth = 0.02
 rho_max = 1.0
-alpha_mon = 0.12  # K.23: I.2 revert parcial — previne instabilidade de tração SPH (I.2 era 0.06, pre-I.2 era 0.15)
+alpha_mon = 0.12
 
-# Pass M-A (Frente 6): osmolito c_o secretado pelas bacterias.
-# Mecanismo: c_o satura nas baias (agar confinado entre dendritos), fica ~0
-# nas pontas (agar virgem). |∇c_o| dispara influxo de massa via van't Hoff.
-D_o = 0.04  # Pass M-A.2: L_D_o = sqrt(0.04/0.05) = 0.894 ~ d_tip-tip (Mullins-Sekerka)
-k_o = 0.5  # taxa de producao por bacteria
-lambda_o = 0.05  # decaimento lento (osmolitos persistem mais que cs)
-Q0 = 5.0  # Pass M-A.2: forca osmotica Darcy — a_osm_tip ~ Q0*gate*|grad_c_o| ~ 2.8
+D_o = 0.04
+k_o = 0.5
+lambda_o = 0.05
+Q0 = 5.0
 
-# Pass M-B (Frente 6): nutriente consumivel c_n.
-# c_n inicia em 1.0 (agar virgem). Bacterias consomem na taxa k_n*rho_b.
-# Difusao tem que dominar consumo (tau_cons/tau_dif > 4) para evitar morte
-# quimica global. Lição da rodada inicial M-B (k_n=1.0, D_n=1e-3): consumo
-# dominava → motor cs morria em t<2s. Calibracao corrigida: razao = 25.
-D_n = 0.02  # difusao do nutriente no agar (D_n_ext — livre)
-D_n_int = 1e-4  # M-B.4: difusao dentro do biofilme (EPS bloqueia transporte)
-k_n = 0.5  # taxa de consumo por unidade de biomassa
+D_n = 0.02
+D_n_int = 1e-4
+k_n = 0.5
 
 dt_global = 0.001
-total_sim_time = 100.0  # Validacao T2d ate t=100s antes de aplicar Pass N (pre-requisito morfologia base)
+total_sim_time = 50.0
 print_freq = 200
 
 trajectory_store_interval = 20
 
 prob_of_splitting = 0.03
-c0 = 0.35  # EOS: B = 1.5²/7 ≈ 0.32 (repulsão suave, atração ~0.1)
+c0 = 0.35
 
 use_splitting = False
+
+use_shift = False
+SHIFT_COEFF = 0.5
+SHIFT_CAP = 0.05
+SHIFT_RHO_B_MIN = 0.6
+
+use_kgc = False
+KGC_DET_MIN = 0.25
+
+use_insert = True
+INSERT_FREQ = 200
+INSERT_SIGMA_TRIG = 0.85
+INSERT_RHO_B_MIN = 0.5  # C3.4 validado: filler frozen so no nucleo estrutural (licao #31/#35)
+INSERT_PROX = 0.7
+INSERT_MAX = 100
+
+use_pass_n = False
+PASS_N_FREQ = 100
+PASS_N_MAX_PARENTS = 100
+PASS_N_SIGMA_TRIG = 0.95
+PASS_N_ALPHA = 0.75
+PASS_N_EPSILON = 0.5
+PASS_N_MAX_GEN = 1
+PASS_N_RHO_B_MIN = 0.15
+PASS_N_RHO_B_MAX = 0.95
+PASS_N_PROXIMITY_MIN = 0.4
 
 
 class SwarmApp(Application):
@@ -94,6 +108,7 @@ class SwarmApp(Application):
         self._m_initial = (
             None  # snapshot da massa total em t=0 (preenchido em post_step)
         )
+        self._pass_n_spawned_since_log = 0  # acumula spawns entre linhas de log
 
     def create_particles(self):
         fluid_solid = create_initial_state(
@@ -117,25 +132,48 @@ class SwarmApp(Application):
                 )
                 pa.add_property("dt_force")
                 pa.add_property("dt_cfl")
-                # debug das acelerações (componentes vetoriais + magnitude)
-                pa.add_property("au_mar")  # |aceleração Marangoni| (líquida)
-                pa.add_property("ax_mar")  # aceleração Marangoni componente x
-                pa.add_property("ay_mar")  # aceleração Marangoni componente y
-                pa.add_property("au_drag")  # |aceleração Drag|
-                # gradiente da densidade
+                pa.add_property("au_mar")
+                pa.add_property("ax_mar")
+                pa.add_property("ay_mar")
+                pa.add_property("au_drag")
                 pa.add_property("grad_rho_b_x")
                 pa.add_property("grad_rho_b_y")
                 pa.add_property("grad_rho_b_mag")
-                # gradiente do surfactante (usado por FlagellarForce)
                 pa.add_property("grad_cs_x")
                 pa.add_property("grad_cs_y")
-                # gradiente do osmolito c_o (Pass M-A — usado por OsmolyteProduction)
                 pa.add_property("grad_co_x")
                 pa.add_property("grad_co_y")
+                pa.add_property("sigma_a")
+                pa.sigma_a[:] = 1.0
+                pa.add_property("shift_dC_x")
+                pa.add_property("shift_dC_y")
+                pa.add_property("shift_x")
+                pa.add_property("shift_y")
+                pa.shift_x[:] = 0.0
+                pa.shift_y[:] = 0.0
+                pa.add_property("Mxx")
+                pa.add_property("Mxy")
+                pa.add_property("Myx")
+                pa.add_property("Myy")
+                pa.add_property("Lxx")
+                pa.add_property("Lxy")
+                pa.add_property("Lyx")
+                pa.add_property("Lyy")
+                pa.Lxx[:] = 1.0
+                pa.Lxy[:] = 0.0
+                pa.Lyx[:] = 0.0
+                pa.Lyy[:] = 1.0
+                pa.add_property("is_filler")
+                pa.is_filler[:] = 0.0
+                pa.add_property("gen")
+                pa.gen[:] = 0.0
                 pa.add_property("ax_drag")
                 pa.add_property("ay_drag")
-                # flag
                 pa.add_property("au_flag")
+                pa.add_property("x_spawn_ref")
+                pa.add_property("y_spawn_ref")
+                pa.x_spawn_ref[:] = pa.x[:]
+                pa.y_spawn_ref[:] = pa.y[:]
                 pa.add_output_arrays(
                     [
                         "rho_b_grown",
@@ -147,6 +185,7 @@ class SwarmApp(Application):
                         "noise",
                         "au_flag",
                         "au_mar",
+                        "sigma_a",
                     ]
                 )
             elif pa.name == "solid":
@@ -177,6 +216,12 @@ class SwarmApp(Application):
             D_n=D_n,
             D_n_int=D_n_int,
             k_n=k_n,
+            use_shift=use_shift,
+            shift_coeff=SHIFT_COEFF,
+            shift_cap=SHIFT_CAP,
+            shift_rho_b_min=SHIFT_RHO_B_MIN,
+            use_kgc=use_kgc,
+            kgc_det_min=KGC_DET_MIN,
         )
 
     def create_solver(self):
@@ -194,22 +239,7 @@ class SwarmApp(Application):
         return solver
 
     def post_step(self, solver):
-        # dt = solver.dt
-        # bact = self.particles[2]
-
-        # bact.x += dt * bact.u
-        # bact.y += dt * bact.v
-
-        # domain_width = x_max_domain - x_min_domain
-        # domain_height = y_max_domain - y_min_domain
-
-        # bact.x[:] = (bact.x - x_min_domain) % domain_width + x_min_domain
-        # bact.y[:] = (bact.y - y_min_domain) % domain_height + y_min_domain
-
-        # if solver.count % trajectory_store_interval == 0:
-        #     for i in range(self.n_bact):
-        #         self.all_bact_trajectories[i].append([bact.y[i], bact.x[i]])
-
+        # Print stats
         if solver.count % print_freq == 0:
             fluid = self.particles[0]
             v_mag = np.sqrt(fluid.u**2 + fluid.v**2)
@@ -217,36 +247,36 @@ class SwarmApp(Application):
             mean_v = np.mean(v_mag)
             n_fast = int(np.sum(v_mag > 0.1))
 
-            # Marangoni líquido (magnitude do vetor, não soma de normas)
             a_mar = np.max(np.abs(fluid.au_mar))
             a_drag = np.max(np.abs(fluid.au_drag))
-            # Aceleração total (inclui pressão via MomentumEquation + tudo)
             a_total = np.max(np.sqrt(fluid.au**2 + fluid.av**2))
-            # ax_pressure = au_total - ax_mar - ax_drag
             ax_p = fluid.au - fluid.ax_mar - fluid.ax_drag
             ay_p = fluid.av - fluid.ay_mar - fluid.ay_drag
             a_pressure = np.max(np.sqrt(ax_p**2 + ay_p**2))
             a_flag = np.max(np.abs(fluid.au_flag))
 
-            # 3. Estatísticas do Surfactante (cs)
             min_cs = np.min(fluid.cs)
             max_cs = np.max(fluid.cs)
             mean_cs = np.mean(fluid.cs)
             contrast_cs = (max_cs - min_cs) / (mean_cs + 1e-9)
 
-            # 4. Pass M-B — Estatísticas do nutriente c_n
-            # c_n inicia em 1.0 (agar virgem). Bacterias consomem na taxa k_n*rho_b.
-            # mean_c_n esperado: cair de 1.0 mas estabilizar em ~0.3-0.5 (difusao
-            # repoe nutriente do exterior). Se cai para <0.1, motor cs vai morrer.
-            # contrast_c_n alto = baias esgotadas vs pontas em agar virgem (selecao).
             min_c_n = np.min(fluid.c_n)
             max_c_n = np.max(fluid.c_n)
             mean_c_n = np.mean(fluid.c_n)
             contrast_c_n = (max_c_n - min_c_n) / (mean_c_n + 1e-9)
 
-            # 5. Massa total
-            # Cresce por BiomassGrowth (logistico). Sem bug osmotico desde M-A.2.
             mass_total = float(np.sum(fluid.m))
+
+            arms_mask = (fluid.rho_b_grown >= 0.1) & (fluid.rho_b_grown < 0.5)
+            n_arms = int(np.sum(arms_mask))
+            if n_arms > 0:
+                sig_arms = fluid.sigma_a[arms_mask]
+                min_sig_arms = float(np.min(sig_arms))
+                mean_sig_arms = float(np.mean(sig_arms))
+                frac_lowsig_arms = float(np.mean(sig_arms < 0.85))
+            else:
+                min_sig_arms = mean_sig_arms = 1.0
+                frac_lowsig_arms = 0.0
 
             print("-" * 50)
             print(f"Tempo: {solver.t:.2f}s | Iteração: {solver.count}")
@@ -254,6 +284,10 @@ class SwarmApp(Application):
             print(f"Contraste CS: {contrast_cs:.4f}")
             print(
                 f"c_n: mean={mean_c_n:.4f} max={max_c_n:.4f} contrast={contrast_c_n:.2f} | massa: {mass_total:.2f}"
+            )
+            print(
+                f"sigma_a braços (rho_b∈[0.1,0.5]): min={min_sig_arms:.3f} "
+                f"mean={mean_sig_arms:.3f} frac<0.85={frac_lowsig_arms:.2%}"
             )
             print("Acelerações:")
             print(f"  > Marangoni (líq): {a_mar:.2f}")
@@ -283,11 +317,15 @@ class SwarmApp(Application):
                         f"{mean_c_n:.4f}",
                         f"{contrast_c_n:.4f}",
                         f"{mass_total:.6e}",
+                        self._pass_n_spawned_since_log,
+                        f"{min_sig_arms:.4f}",
+                        f"{mean_sig_arms:.4f}",
+                        f"{frac_lowsig_arms:.4f}",
                     ]
                 )
+                self._pass_n_spawned_since_log = 0  # reseta após registrar
 
         if use_splitting:
-            print("Iniciando processo de divisão celular...")
             if solver.count > 0 and solver.count % 500 == 0:
                 fluid = self.particles[0]
                 min_rho_b_for_division = 0.05
@@ -356,8 +394,209 @@ class SwarmApp(Application):
 
                     solver.nnps.update()
 
-        else:
-            pass
+        if use_pass_n and solver.count > 0 and solver.count % PASS_N_FREQ == 0:
+            fluid = self.particles[0]
+
+            colony_mask = (fluid.rho_b_grown > PASS_N_RHO_B_MIN) & (
+                fluid.rho_b_grown < PASS_N_RHO_B_MAX
+            )
+
+            splittable_gen_mask = fluid.gen < PASS_N_MAX_GEN
+
+            sigma_a = fluid.sigma_a
+            split_mask = (
+                colony_mask & (sigma_a < PASS_N_SIGMA_TRIG) & splittable_gen_mask
+            )
+            split_idx = np.where(split_mask)[0]
+
+            if len(split_idx) > 0:
+                if len(split_idx) > PASS_N_MAX_PARENTS:
+                    order = np.argsort(sigma_a[split_idx])
+                    split_idx = split_idx[order][:PASS_N_MAX_PARENTS]
+
+                eps = PASS_N_EPSILON
+                alpha = PASS_N_ALPHA
+                prox_min = PASS_N_PROXIMITY_MIN * dx
+                prox_min_sq = prox_min * prox_min
+
+                # Padrão hexagonal: 6 vértices a 60°
+                angles_hex = np.arange(6) * (np.pi / 3.0)
+                cos_a = np.cos(angles_hex)
+                sin_a = np.sin(angles_hex)
+
+                tree_mask = np.ones(len(fluid.x), dtype=bool)
+                tree_mask[split_idx] = False
+                positions = np.column_stack([fluid.x[tree_mask], fluid.y[tree_mask]])
+                tree = cKDTree(positions)
+
+                daughters = fluid.empty_clone()
+                new_positions = []  # filhas já adicionadas nesta call
+                mothers_used = []  # índices de mães que efetivamente splitaram
+                n_daughters_total = 0
+
+                # Snapshot dos campos (índices estáveis até o remove)
+                x_arr = fluid.x[split_idx]
+                y_arr = fluid.y[split_idx]
+                h_arr = fluid.h[split_idx]
+                m_arr = fluid.m[split_idx]
+                u_arr = fluid.u[split_idx]
+                v_arr = fluid.v[split_idx]
+                rho_arr = fluid.rho[split_idx]
+                rhob_arr = fluid.rho_b_grown[split_idx]
+                cs_arr = fluid.cs[split_idx]
+                co_arr = fluid.c_o[split_idx]
+                cn_arr = fluid.c_n[split_idx]
+                noise_arr = fluid.noise[split_idx]
+                sigma_arr = fluid.sigma_a[split_idx]
+                gen_arr = fluid.gen[split_idx]
+
+                for k in range(len(split_idx)):
+                    x_m, y_m = float(x_arr[k]), float(y_arr[k])
+                    h_m = float(h_arr[k])
+                    m_m = float(m_arr[k])
+                    r_off = eps * h_m
+
+                    valid_vertices = []
+                    for j in range(6):
+                        vx = x_m + r_off * cos_a[j]
+                        vy = y_m + r_off * sin_a[j]
+                        d_existing, _ = tree.query([vx, vy])
+                        if d_existing < prox_min:
+                            continue
+                        too_close = False
+                        for nx, ny in new_positions:
+                            if (vx - nx) ** 2 + (vy - ny) ** 2 < prox_min_sq:
+                                too_close = True
+                                break
+                        if too_close:
+                            continue
+                        valid_vertices.append((vx, vy))
+
+                    n_d = 1 + len(valid_vertices)
+                    if n_d != 7:
+                        continue
+
+                    m_d = m_m / 7.0
+                    h_d = alpha * h_m
+                    u_d = float(u_arr[k])
+                    v_d = float(v_arr[k])
+
+                    xs = [x_m] + [p[0] for p in valid_vertices]
+                    ys = [y_m] + [p[1] for p in valid_vertices]
+
+                    new_positions.append((x_m, y_m))
+                    new_positions.extend(valid_vertices)
+
+                    data = {
+                        "x": xs,
+                        "y": ys,
+                        "m": [m_d] * 7,
+                        "h": [h_d] * 7,
+                        "rho": [float(rho_arr[k])] * 7,
+                        "rho_b_grown": [float(rhob_arr[k])] * 7,
+                        "cs": [float(cs_arr[k])] * 7,
+                        "c_o": [float(co_arr[k])] * 7,
+                        "c_n": [float(cn_arr[k])] * 7,
+                        "u": [u_d] * 7,
+                        "v": [v_d] * 7,
+                        "noise": [float(noise_arr[k])] * 7,
+                        "sigma_a": [float(sigma_arr[k])] * 7,
+                        "is_filler": [0.0] * 7,
+                        "gen": [float(gen_arr[k]) + 1.0] * 7,
+                    }
+                    daughters.add_particles(**data)
+                    mothers_used.append(int(split_idx[k]))
+                    n_daughters_total += 7
+
+                if mothers_used:
+                    fluid.append_parray(daughters)
+                    fluid.remove_particles(np.asarray(mothers_used, dtype=np.uint32))
+                    solver.nnps.update()
+
+                    self._pass_n_spawned_since_log += n_daughters_total
+                    print(
+                        f"Pass N v2.4 t={solver.t:.1f}s: "
+                        f"{len(mothers_used)} mães → {n_daughters_total} filhas "
+                        f"(n_d=7 estrito, ε={eps}, α={alpha}, σ_trig={PASS_N_SIGMA_TRIG}, gen≤1)"
+                    )
+
+        if use_insert and solver.count > 0 and solver.count % INSERT_FREQ == 0:
+            fluid = self.particles[0]
+            m_target = dx * dx
+
+            void_mask = (fluid.rho_b_grown > INSERT_RHO_B_MIN) & (
+                fluid.sigma_a < INSERT_SIGMA_TRIG
+            )
+            void_idx = np.where(void_mask)[0]
+
+            if len(void_idx) > 0:
+                positions = np.column_stack([fluid.x, fluid.y])
+                tree = cKDTree(positions)
+                prox = INSERT_PROX * dx  # distância de segurança entre duas partículas
+                prox_sq = prox * prox  # o quadrado da distância de segurança
+
+                angles_hex = np.arange(6) * (
+                    np.pi / 3.0
+                )  # angulos hexagonais 0°, 60°, 120°, 180°, 240°, 300°
+                cos_a = np.cos(angles_hex)
+                sin_a = np.sin(angles_hex)
+
+                new_x = []
+                new_y = []
+                parent_idx = []
+                added_pts = []  # dedupe entre candidatos da mesma call
+
+                for k in void_idx:
+                    xk = float(fluid.x[k])
+                    yk = float(fluid.y[k])
+                    for j in range(6):
+                        # coordenadas polares
+                        vx = xk + dx * cos_a[j]
+                        vy = yk + dx * sin_a[j]
+                        d_existing, _ = tree.query([vx, vy])
+                        if d_existing < prox:
+                            continue
+                        too_close = False
+                        for ax_, ay_ in added_pts:
+                            if (vx - ax_) ** 2 + (vy - ay_) ** 2 < prox_sq:
+                                too_close = True
+                                break
+                        if too_close:
+                            continue
+                        new_x.append(vx)
+                        new_y.append(vy)
+                        parent_idx.append(int(k))
+                        added_pts.append((vx, vy))
+                    if len(new_x) >= INSERT_MAX:
+                        break
+
+                if len(new_x) > 0:
+                    n_ins = len(new_x)
+                    p = np.asarray(parent_idx, dtype=int)
+                    inserted = fluid.empty_clone()
+                    data = {
+                        "x": new_x,
+                        "y": new_y,
+                        "m": [m_target] * n_ins,
+                        "h": list(fluid.h[p]),
+                        "rho": list(fluid.rho[p]),
+                        "rho_b_grown": list(fluid.rho_b_grown[p]),
+                        "cs": list(fluid.cs[p]),
+                        "c_o": list(fluid.c_o[p]),
+                        "c_n": list(fluid.c_n[p]),
+                        "u": [0.0] * n_ins,
+                        "v": [0.0] * n_ins,
+                        "noise": list(fluid.noise[p]),
+                        "is_filler": [1.0] * n_ins,
+                    }
+                    inserted.add_particles(**data)
+                    fluid.append_parray(inserted)
+                    solver.nnps.update()
+
+                    self._pass_n_spawned_since_log += n_ins
+                    print(
+                        f"C3 inserção t={solver.t:.1f}s: {n_ins} partículas inseridas"
+                    )
 
 
 if __name__ == "__main__":

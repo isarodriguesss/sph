@@ -9,8 +9,11 @@ from .equations import (
     BiomassEOS,
     BiomassGrowth,
     FlagellarForce,
+    KernelGradientCorrection,
+    KernelSum,
     MarangoniForce,
     OxigenConsumption,
+    ParticleShift,
     SurfactantEquation,
     LinearDrag,
     ViscousForce,
@@ -38,6 +41,9 @@ class CustomEulerStep(EulerStep):
         d_a_c_o,
         d_c_n,
         d_a_c_n,
+        d_shift_x,
+        d_shift_y,
+        d_is_filler,
         dt,
     ):
         d_rho_b_grown[d_idx] += dt * d_a_rho_b_grown[d_idx]
@@ -50,29 +56,23 @@ class CustomEulerStep(EulerStep):
         d_c_o[d_idx] = max(0.0, min(d_c_o[d_idx], 1.0))
         d_c_n[d_idx] = max(1e-9, min(d_c_n[d_idx], 1.0))
 
-        # M-B.9b: revert ao pin quimico hard de M-B.8 (c_n<0.4) — M-B.9a
-        # demonstrou que drag suave + coesao baixa gera fragmentacao
-        # distribuida (lição §22). Esta versao testa se reforcar coesao
-        # (tension_ratio 0.02→0.08 em BiomassEOS) reduz a fragmentacao
-        # interna pos-t=50s observada com pin hard. Mantem K.17 mecanico.
-        if d_rho_b_grown[d_idx] >= 0.8 or d_c_n[d_idx] < 0.6:
+        if (
+            d_rho_b_grown[d_idx] >= 0.8
+            or d_c_n[d_idx] < 0.6
+            or d_is_filler[d_idx] > 0.5
+        ):
             d_u[d_idx] = 0.0
             d_v[d_idx] = 0.0
         else:
             d_u[d_idx] += dt * d_au[d_idx]
             d_v[d_idx] += dt * d_av[d_idx]
 
-        d_x[d_idx] += dt * d_u[d_idx]  # x avança com u (que é 0 se pinnado)
+        d_x[d_idx] += dt * d_u[d_idx]
         d_y[d_idx] += dt * d_v[d_idx]
         d_m[d_idx] += dt * d_am[d_idx]
 
-        # vmax = 5.0
-
-        # v = np.sqrt(d_u[d_idx]**2 + d_v[d_idx]**2)
-        # if v > vmax:
-        #     scale = vmax / v
-        #     d_u[d_idx] *= scale
-        #     d_v[d_idx] *= scale
+        d_x[d_idx] += d_shift_x[d_idx]
+        d_y[d_idx] += d_shift_y[d_idx]
 
 
 class MyBiomassScheme(Scheme):
@@ -100,7 +100,19 @@ class MyBiomassScheme(Scheme):
         D_n=0.02,
         D_n_int=1e-4,
         k_n=0.5,
+        use_shift=False,
+        shift_coeff=0.5,
+        shift_cap=0.05,
+        shift_rho_b_min=0.6,
+        use_kgc=False,
+        kgc_det_min=0.25,
     ):
+        self.use_shift = use_shift
+        self.shift_coeff = shift_coeff
+        self.shift_cap = shift_cap
+        self.shift_rho_b_min = shift_rho_b_min
+        self.use_kgc = use_kgc
+        self.kgc_det_min = kgc_det_min
         self.mu = mu
         self.gamma = gamma
         self.beta = beta
@@ -131,19 +143,21 @@ class MyBiomassScheme(Scheme):
                     sources=None,
                     rho0=1.0,
                     c0=self.c0,
-                    tension_ratio=0.30,  # M-B.9b: 0.02 → 0.08 (4x) — coesao reforcada
-                    # contra fragmentacao interna pos-t=50s (lição §15/§22). B_tension
-                    # sobe de 0.00069 → 0.00275. Risco: re-aparecer halo nas baias.
+                    tension_ratio=0.30,
                 ),
+            ],
+            real=False,
+        )
+
+        equations_kernel_sum = Group(
+            equations=[
+                KernelSum(dest="fluid", sources=["fluid"]),
             ],
             real=False,
         )
 
         equations_main = Group(
             equations=[
-                # MomentumEquation com Monaghan artificial viscosity forte
-                # (alpha=0.5) para manter continuidade no braço dendrítico.
-                # Pressão do EOS já faz repulsão E coesão (p<0 → atração).
                 MomentumEquation(
                     dest="fluid",
                     sources=["fluid"],
@@ -166,8 +180,7 @@ class MyBiomassScheme(Scheme):
                     dest="fluid",
                     sources=None,
                     gamma_base=self.gamma,
-                    gamma_mature=self.gamma
-                    * 1.5,  # K.16c: revertido a baseline K.15; pinning via edge_fade invertido
+                    gamma_mature=self.gamma * 1.5,
                 ),
                 SurfactantEquation(
                     dest="fluid",
@@ -176,9 +189,9 @@ class MyBiomassScheme(Scheme):
                     D_ext=self.D_ext,
                     sigma=self.sigma,
                     lambda_=self.lambda_,
-                    lambda_ext_ratio=5.0,  # decaimento no agar mantem halo finito (Trinschek-like)
-                    k_consume=0.0,  # Pass T1: sumidouro removido — saturacao agora via (1-cs/cs_max)
-                    cs_max=0.5,  # Pass T1: Γ_max do painel (b) Trinschek 2018 — alvo de saturacao
+                    lambda_ext_ratio=5.0,
+                    k_consume=0.0,
+                    cs_max=0.5,
                 ),
                 OxigenConsumption(
                     dest="fluid",
@@ -187,9 +200,6 @@ class MyBiomassScheme(Scheme):
                     D_n_int=self.D_n_int,
                     k_n=self.k_n,
                 ),
-                # Pass M-A (Frente 6): osmolitos secretados pelas bacterias.
-                # |∇c_o| dispara influxo de massa (van't Hoff) — pontas incham,
-                # baias estagnam. DEVE preceder FlagellarForce (que usa cs).
                 # OsmolyteProduction(
                 #     dest="fluid",
                 #     sources=["fluid"],
@@ -201,12 +211,43 @@ class MyBiomassScheme(Scheme):
                 FlagellarForce(
                     dest="fluid",
                     sources=["fluid"],
-                    f0=3.0,  # K.22: 0.5→3.0 — restaura ignição nas pontas (alvo §8: f0~γ·v_term/2=3)
+                    f0=3.0,
                 ),
             ],
         )
 
-        return [equations_pre, equations_main]
+        groups = [equations_pre, equations_kernel_sum]
+
+        if self.use_kgc:
+            equations_kgc = Group(
+                equations=[
+                    KernelGradientCorrection(
+                        dest="fluid",
+                        sources=["fluid"],
+                        det_min=self.kgc_det_min,
+                    ),
+                ],
+                real=False,
+            )
+            groups.append(equations_kgc)
+
+        groups.append(equations_main)
+
+        if self.use_shift:
+            equations_shift = Group(
+                equations=[
+                    ParticleShift(
+                        dest="fluid",
+                        sources=["fluid"],
+                        shift_coeff=self.shift_coeff,
+                        shift_cap=self.shift_cap,
+                        rho_b_min=self.shift_rho_b_min,
+                    ),
+                ],
+            )
+            groups.append(equations_shift)
+
+        return groups
 
     def get_integrator(self):
         return EulerIntegrator(fluid=CustomEulerStep())

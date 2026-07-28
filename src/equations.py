@@ -318,6 +318,7 @@ class MarangoniForce(Equation):
         d_ax_mar,
         d_ay_mar,
         d_grad_rho_b_mag,
+        d_is_filler,
         d_Lxx,
         d_Lxy,
         d_Lyx,
@@ -325,7 +326,7 @@ class MarangoniForce(Equation):
         DWIJ,
     ):
         grad_mag = d_grad_rho_b_mag[d_idx]
-        if grad_mag >= self.grad_low:
+        if grad_mag >= self.grad_low and d_is_filler[d_idx] < 0.5:
             gate_raw = (grad_mag - self.grad_low) / (self.grad_high - self.grad_low)
             if gate_raw > 1.0:
                 gate = 1.0
@@ -621,10 +622,11 @@ class FlagellarForce(Equation):
         d_au,
         d_av,
         d_au_flag,
+        d_is_filler,
     ):
         rho_b = d_rho_b_grown[d_idx]
         # Gate: swarmers na borda apenas, pico em rho_b=0.35
-        if rho_b >= 0.2 and rho_b <= 0.6:
+        if rho_b >= 0.2 and rho_b <= 0.6 and d_is_filler[d_idx] < 0.5:
             if rho_b < 0.4:
                 t = (rho_b - 0.2) / 0.2
             else:

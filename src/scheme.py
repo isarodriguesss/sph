@@ -44,6 +44,7 @@ class CustomEulerStep(EulerStep):
         d_shift_x,
         d_shift_y,
         d_is_filler,
+        d_is_wake,
         dt,
     ):
         d_rho_b_grown[d_idx] += dt * d_a_rho_b_grown[d_idx]
@@ -60,7 +61,7 @@ class CustomEulerStep(EulerStep):
             d_rho_b_grown[d_idx] >= 0.8
             or d_c_n[d_idx] < 0.6
             or d_is_filler[d_idx] > 0.5
-        ):
+        ) and d_is_wake[d_idx] < 0.5:
             d_u[d_idx] = 0.0
             d_v[d_idx] = 0.0
         else:

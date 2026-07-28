@@ -89,6 +89,13 @@ INSERT_RHO_B_MIN = 0.5  # C3.4 validado: filler frozen so no nucleo estrutural (
 INSERT_PROX = 0.7
 INSERT_MAX = 100
 
+use_wake = True
+WAKE_FREQ = 100
+WAKE_DISP = 1.0
+WAKE_PROX = 0.7
+WAKE_RHO_B_MIN = 0.05
+WAKE_MAX = 150
+
 use_pass_n = False
 PASS_N_FREQ = 100
 PASS_N_MAX_PARENTS = 100
@@ -165,6 +172,12 @@ class SwarmApp(Application):
                 pa.Lyy[:] = 1.0
                 pa.add_property("is_filler")
                 pa.is_filler[:] = 0.0
+                pa.add_property("is_wake")
+                pa.is_wake[:] = 0.0
+                pa.add_property("x_dep")
+                pa.add_property("y_dep")
+                pa.x_dep[:] = pa.x[:]
+                pa.y_dep[:] = pa.y[:]
                 pa.add_property("gen")
                 pa.gen[:] = 0.0
                 pa.add_property("ax_drag")
@@ -186,6 +199,7 @@ class SwarmApp(Application):
                         "au_flag",
                         "au_mar",
                         "sigma_a",
+                        "is_wake",
                     ]
                 )
             elif pa.name == "solid":
@@ -503,6 +517,9 @@ class SwarmApp(Application):
                         "sigma_a": [float(sigma_arr[k])] * 7,
                         "is_filler": [0.0] * 7,
                         "gen": [float(gen_arr[k]) + 1.0] * 7,
+                        "is_wake": [0.0] * 7,
+                        "x_dep": xs,
+                        "y_dep": ys,
                     }
                     daughters.add_particles(**data)
                     mothers_used.append(int(split_idx[k]))
@@ -588,6 +605,9 @@ class SwarmApp(Application):
                         "v": [0.0] * n_ins,
                         "noise": list(fluid.noise[p]),
                         "is_filler": [1.0] * n_ins,
+                        "is_wake": [0.0] * n_ins,
+                        "x_dep": new_x,
+                        "y_dep": new_y,
                     }
                     inserted.add_particles(**data)
                     fluid.append_parray(inserted)
@@ -596,6 +616,79 @@ class SwarmApp(Application):
                     self._pass_n_spawned_since_log += n_ins
                     print(
                         f"C3 inserção t={solver.t:.1f}s: {n_ins} partículas inseridas"
+                    )
+
+        if use_wake and solver.count > 0 and solver.count % WAKE_FREQ == 0:
+            fluid = self.particles[0]
+            m_target = dx * dx
+
+            disp = np.hypot(fluid.x - fluid.x_dep, fluid.y - fluid.y_dep)
+            wake_idx = np.where(
+                (fluid.rho_b_grown > WAKE_RHO_B_MIN) & (disp >= WAKE_DISP * dx)
+            )[0]
+
+            if len(wake_idx) > 0:
+                tree = cKDTree(np.column_stack([fluid.x, fluid.y]))
+                prox = WAKE_PROX * dx
+                prox_sq = prox * prox
+
+                new_x = []
+                new_y = []
+                parent_idx = []
+                added_pts = []
+
+                for k in wake_idx:
+                    sx = float(fluid.x_dep[k])
+                    sy = float(fluid.y_dep[k])
+                    fluid.x_dep[k] = fluid.x[k]  # reset: deslocamento ja consumido
+                    fluid.y_dep[k] = fluid.y[k]
+
+                    d_existing, _ = tree.query([sx, sy])
+                    if d_existing < prox:  # rastro ja refluido: nao ha vazio
+                        continue
+                    too_close = False
+                    for ax_, ay_ in added_pts:
+                        if (sx - ax_) ** 2 + (sy - ay_) ** 2 < prox_sq:
+                            too_close = True
+                            break
+                    if too_close:
+                        continue
+                    new_x.append(sx)
+                    new_y.append(sy)
+                    parent_idx.append(int(k))
+                    added_pts.append((sx, sy))
+                    if len(new_x) >= WAKE_MAX:
+                        break
+
+                if len(new_x) > 0:
+                    n_ins = len(new_x)
+                    p = np.asarray(parent_idx, dtype=int)
+                    inserted = fluid.empty_clone()
+                    data = {
+                        "x": new_x,
+                        "y": new_y,
+                        "m": [m_target] * n_ins,
+                        "h": list(fluid.h[p]),
+                        "rho": list(fluid.rho[p]),
+                        "rho_b_grown": list(fluid.rho_b_grown[p]),
+                        "cs": list(fluid.cs[p]),
+                        "c_o": list(fluid.c_o[p]),
+                        "c_n": list(fluid.c_n[p]),
+                        "u": [0.0] * n_ins,
+                        "v": [0.0] * n_ins,
+                        "noise": list(fluid.noise[p]),
+                        "is_filler": [1.0] * n_ins,
+                        "is_wake": [1.0] * n_ins,
+                        "x_dep": new_x,
+                        "y_dep": new_y,
+                    }
+                    inserted.add_particles(**data)
+                    fluid.append_parray(inserted)
+                    solver.nnps.update()
+
+                    self._pass_n_spawned_since_log += n_ins
+                    print(
+                        f"wake inserção t={solver.t:.1f}s: {n_ins} partículas inseridas"
                     )
 
 

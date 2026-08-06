@@ -245,22 +245,25 @@ class SurfactantEquation(Equation):
         d_h,
         d_rho_b_grown,
         s_rho_b_grown,
+        d_is_filler,
+        s_is_filler,
     ):
-        rho_b_avg = 0.5 * (d_rho_b_grown[d_idx] + s_rho_b_grown[s_idx])
-        if rho_b_avg < 0.1:
-            D_eff = self.D_ext
-        elif rho_b_avg < 0.5:
-            t = (rho_b_avg - 0.1) / 0.4
-            gate = t * t * (3.0 - 2.0 * t)
-            D_eff = self.D_ext + (self.D - self.D_ext) * gate
-        else:
-            D_eff = self.D
+        if d_is_filler[d_idx] < 0.5 and s_is_filler[s_idx] < 0.5:
+            rho_b_avg = 0.5 * (d_rho_b_grown[d_idx] + s_rho_b_grown[s_idx])
+            if rho_b_avg < 0.1:
+                D_eff = self.D_ext
+            elif rho_b_avg < 0.5:
+                t = (rho_b_avg - 0.1) / 0.4
+                gate = t * t * (3.0 - 2.0 * t)
+                D_eff = self.D_ext + (self.D - self.D_ext) * gate
+            else:
+                D_eff = self.D
 
-        cs_ij = d_cs[d_idx] - s_cs[s_idx]
-        rij_sq = RIJ**2 + 0.01 * d_h[d_idx] ** 2
-        dot_product = XIJ[0] * DWIJ[0] + XIJ[1] * DWIJ[1]
-        term = (s_m[s_idx] / s_rho[s_idx]) * (cs_ij / rij_sq) * dot_product
-        d_a_c_s[d_idx] += 2.0 * D_eff * term
+            cs_ij = d_cs[d_idx] - s_cs[s_idx]
+            rij_sq = RIJ**2 + 0.01 * d_h[d_idx] ** 2
+            dot_product = XIJ[0] * DWIJ[0] + XIJ[1] * DWIJ[1]
+            term = (s_m[s_idx] / s_rho[s_idx]) * (cs_ij / rij_sq) * dot_product
+            d_a_c_s[d_idx] += 2.0 * D_eff * term
 
     def post_loop(
         self,
@@ -272,25 +275,26 @@ class SurfactantEquation(Equation):
         d_c_n,
         d_is_filler,
     ):
-        rho_b = d_rho_b_grown[d_idx]
-        qs = rho_b * rho_b / (rho_b * rho_b + 0.01)
         if d_is_filler[d_idx] > 0.5:
-            qs = 0.0
-
-        saturation = 1.0 - d_cs[d_idx] / self.cs_max
-        if saturation < 0.0:
-            saturation = 0.0
-
-        c_n_factor = d_c_n[d_idx] / (d_c_n[d_idx] + 0.1)
-
-        production = self.sigma * qs * saturation * d_noise[d_idx] * c_n_factor
-
-        if rho_b < 0.1:
-            lambda_eff = self.lambda_ * 2.0  # Decaimento LENTO no ágar (gera o halo)
+            d_a_c_s[d_idx] = 0.0
         else:
-            lambda_eff = self.lambda_ * 1.0
+            rho_b = d_rho_b_grown[d_idx]
+            qs = rho_b * rho_b / (rho_b * rho_b + 0.01)
 
-        d_a_c_s[d_idx] += production - lambda_eff * d_cs[d_idx]
+            saturation = 1.0 - d_cs[d_idx] / self.cs_max
+            if saturation < 0.0:
+                saturation = 0.0
+
+            c_n_factor = d_c_n[d_idx] / (d_c_n[d_idx] + 0.1)
+
+            production = self.sigma * qs * saturation * d_noise[d_idx] * c_n_factor
+
+            if rho_b < 0.1:
+                lambda_eff = self.lambda_ * 2.0
+            else:
+                lambda_eff = self.lambda_ * 1.0
+
+            d_a_c_s[d_idx] += production - lambda_eff * d_cs[d_idx]
 
 
 class MarangoniForce(Equation):
@@ -319,6 +323,7 @@ class MarangoniForce(Equation):
         d_ay_mar,
         d_grad_rho_b_mag,
         d_is_filler,
+        s_is_filler,
         d_Lxx,
         d_Lxy,
         d_Lyx,
@@ -326,7 +331,11 @@ class MarangoniForce(Equation):
         DWIJ,
     ):
         grad_mag = d_grad_rho_b_mag[d_idx]
-        if grad_mag >= self.grad_low and d_is_filler[d_idx] < 0.5:
+        if (
+            grad_mag >= self.grad_low
+            and d_is_filler[d_idx] < 0.5
+            and s_is_filler[s_idx] < 0.5
+        ):
             gate_raw = (grad_mag - self.grad_low) / (self.grad_high - self.grad_low)
             if gate_raw > 1.0:
                 gate = 1.0
@@ -606,12 +615,14 @@ class FlagellarForce(Equation):
         d_cs,
         d_grad_cs_x,
         d_grad_cs_y,
+        s_is_filler,
         DWIJ,
     ):
-        vol_j = s_m[s_idx] / s_rho[s_idx]
-        cs_ij = s_cs[s_idx] - d_cs[d_idx]
-        d_grad_cs_x[d_idx] += vol_j * cs_ij * DWIJ[0]
-        d_grad_cs_y[d_idx] += vol_j * cs_ij * DWIJ[1]
+        if s_is_filler[s_idx] < 0.5:
+            vol_j = s_m[s_idx] / s_rho[s_idx]
+            cs_ij = s_cs[s_idx] - d_cs[d_idx]
+            d_grad_cs_x[d_idx] += vol_j * cs_ij * DWIJ[0]
+            d_grad_cs_y[d_idx] += vol_j * cs_ij * DWIJ[1]
 
     def post_loop(
         self,
@@ -645,10 +656,13 @@ class FlagellarForce(Equation):
 
 
 class OxigenConsumption(Equation):
-    def __init__(self, dest, sources, D_n=0.02, D_n_int=1e-4, k_n=0.5):
+    def __init__(
+        self, dest, sources, D_n=0.02, D_n_int=1e-4, k_n=0.5, filler_transparent=0
+    ):
         self.D_n = D_n
         self.D_n_int = D_n_int
         self.k_n = k_n
+        self.filler_transparent = filler_transparent
         super(OxigenConsumption, self).__init__(dest, sources)
 
     def initialize(self, d_idx, d_a_c_n):
@@ -687,6 +701,9 @@ class OxigenConsumption(Equation):
 
         d_a_c_n[d_idx] += 2.0 * D_eff * Vj * (cn_ij / rij_sq) * dot_product
 
-    def post_loop(self, d_idx, d_a_c_n, d_c_n, d_rho_b_grown):
-        consumption = self.k_n * d_rho_b_grown[d_idx] * d_c_n[d_idx]
+    def post_loop(self, d_idx, d_a_c_n, d_c_n, d_rho_b_grown, d_is_filler):
+        if self.filler_transparent == 1 and d_is_filler[d_idx] > 0.5:
+            consumption = 0.0
+        else:
+            consumption = self.k_n * d_rho_b_grown[d_idx] * d_c_n[d_idx]
         d_a_c_n[d_idx] -= consumption

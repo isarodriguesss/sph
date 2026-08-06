@@ -8,6 +8,42 @@ from pysph.solver.solver import Solver
 from src.particles import create_initial_state
 from src.scheme import MyBiomassScheme
 
+def cubic_spline_w(r, h):
+    # W do CubicSpline 2D (PySPH) — usado so na logica de insercao em numpy
+    q = np.asarray(r) / h
+    fac = 10.0 / (7.0 * np.pi * h * h)
+    w = np.zeros_like(q, dtype=float)
+    m1 = q <= 1.0
+    m2 = (q > 1.0) & (q <= 2.0)
+    w[m1] = fac * (1.0 - 1.5 * q[m1] ** 2 + 0.75 * q[m1] ** 3)
+    w[m2] = fac * 0.25 * (2.0 - q[m2]) ** 3
+    return w
+
+
+def void_fraction(x, y, rho_b, dx, thresholds=(0.7, 1.0, 1.5), n_grid=200):
+    """Fracao da AREA da colonia sem nenhuma particula dentro de thr*dx.
+
+    Metrica primaria do Criterio Obrigatorio de Validacao: ao contrario de sigma_a
+    (que so existe onde ha particula), esta mede o vacuo geometrico e portanto
+    enxerga a quebra de cobertura espacial exigida pela Particao da Unidade
+    (Violeau §3.4; consistencia de interpolacao Liu §3.3).
+    """
+    colony = rho_b > 0.1
+    if int(np.sum(colony)) < 10:
+        return {t: 0.0 for t in thresholds}
+    r = np.hypot(x, y)
+    R = float(np.percentile(r[colony], 99))
+    if R <= 0:
+        return {t: 0.0 for t in thresholds}
+    g = np.linspace(-R, R, n_grid)
+    GX, GY = np.meshgrid(g, g)
+    inside = (GX * GX + GY * GY) <= R * R
+    d, _ = cKDTree(np.column_stack([x, y])).query(
+        np.column_stack([GX[inside], GY[inside]])
+    )
+    return {t: float(np.mean(d > t * dx)) for t in thresholds}
+
+
 LOG_FILE = "log.csv"
 LOG_HEADER = [
     "t",
@@ -30,9 +66,20 @@ LOG_HEADER = [
     "contrast_c_n",
     "mass_total",
     "pass_n_spawned",
-    "min_sig_arms",
-    "mean_sig_arms",
-    "frac_lowsig_arms",
+    "min_sig_bio",
+    "mean_sig_bio",
+    "frac_lowsig_bio",
+    "mean_sig_all",
+    "frac_lowsig_all",
+    "n_bio_arms",
+    "n_ins_arms",
+    "void_07",
+    "void_10",
+    "void_15",
+    "a_mar_bio_med",
+    "a_mar_bio_p95",
+    "cs_bio_arms",
+    "c_n_bio_arms",
 ]
 
 x_dim, y_dim = 187, 187
@@ -67,6 +114,8 @@ dt_global = 0.001
 total_sim_time = 50.0
 print_freq = 200
 
+SEED = 20260806
+
 trajectory_store_interval = 20
 
 prob_of_splitting = 0.03
@@ -74,13 +123,17 @@ c0 = 0.35
 
 use_splitting = False
 
-use_shift = False
+use_shift = True
 SHIFT_COEFF = 0.5
-SHIFT_CAP = 0.05
-SHIFT_RHO_B_MIN = 0.6
+SHIFT_CAP = 0.001
+SHIFT_RHO_B_MIN = 0.1
 
-use_kgc = False
+use_kgc = True
 KGC_DET_MIN = 0.25
+
+# S4 = transparencia quimica de cs (sempre ativa em equations.py)
+# S5 = + filler nao consome nutriente (alavanca isolada)
+FILLER_NUTRIENT_TRANSPARENT = 0
 
 use_insert = True
 INSERT_FREQ = 200
@@ -95,6 +148,16 @@ WAKE_DISP = 1.0
 WAKE_PROX = 0.7
 WAKE_RHO_B_MIN = 0.05
 WAKE_MAX = 150
+WAKE_MODE = 2
+WAKE_CLUSTER_MAX = 7
+WAKE_RING_RATIO = 0.75
+WAKE_MASS_BUDGET = 0.05
+# Rota C (ABORTADA 2026-08-06) — realocar agar ocioso conservaria massa, MAS o agar
+# tem pressao ZERO (BiomassEOS: fade_rep=fade_att=0 para rho_b<0.1), entao o buraco
+# deixado pelo doador NAO cicatriza: cada doacao e uma puncao permanente no campo.
+# Codigo preservado para referencia; so reativar se o agar ganhar resposta de pressao.
+WAKE_RECYCLE = False
+WAKE_DONOR_MARGIN = 0.6
 
 use_pass_n = False
 PASS_N_FREQ = 100
@@ -118,6 +181,7 @@ class SwarmApp(Application):
         self._pass_n_spawned_since_log = 0  # acumula spawns entre linhas de log
 
     def create_particles(self):
+        np.random.seed(SEED)
         fluid_solid = create_initial_state(
             x_dim,
             y_dim,
@@ -127,6 +191,7 @@ class SwarmApp(Application):
             x_max=x_max_domain,
             y_min=y_min_domain,
             y_max=y_max_domain,
+            seed=SEED,
         )
 
         for pa in fluid_solid:
@@ -200,6 +265,10 @@ class SwarmApp(Application):
                         "au_mar",
                         "sigma_a",
                         "is_wake",
+                        "is_filler",
+                        "c_n",
+                        "m",
+                        "rho",
                     ]
                 )
             elif pa.name == "solid":
@@ -236,6 +305,7 @@ class SwarmApp(Application):
             shift_rho_b_min=SHIFT_RHO_B_MIN,
             use_kgc=use_kgc,
             kgc_det_min=KGC_DET_MIN,
+            filler_nutrient_transparent=FILLER_NUTRIENT_TRANSPARENT,
         )
 
     def create_solver(self):
@@ -253,6 +323,9 @@ class SwarmApp(Application):
         return solver
 
     def post_step(self, solver):
+        if self._m_initial is None:
+            self._m_initial = float(np.sum(self.particles[0].m))
+
         # Print stats
         if solver.count % print_freq == 0:
             fluid = self.particles[0]
@@ -269,9 +342,14 @@ class SwarmApp(Application):
             a_pressure = np.max(np.sqrt(ax_p**2 + ay_p**2))
             a_flag = np.max(np.abs(fluid.au_flag))
 
-            min_cs = np.min(fluid.cs)
-            max_cs = np.max(fluid.cs)
-            mean_cs = np.mean(fluid.cs)
+            # Filler e quimicamente transparente: seu cs fica CONGELADO no valor
+            # herdado e nao representa o campo. Incluí-lo infla mean_cs e deprime
+            # contrast_cs artificialmente.
+            _chem = fluid.is_filler < 0.5
+            _cs_real = fluid.cs[_chem] if np.any(_chem) else fluid.cs
+            min_cs = np.min(_cs_real)
+            max_cs = np.max(_cs_real)
+            mean_cs = np.mean(_cs_real)
             contrast_cs = (max_cs - min_cs) / (mean_cs + 1e-9)
 
             min_c_n = np.min(fluid.c_n)
@@ -282,15 +360,45 @@ class SwarmApp(Application):
             mass_total = float(np.sum(fluid.m))
 
             arms_mask = (fluid.rho_b_grown >= 0.1) & (fluid.rho_b_grown < 0.5)
-            n_arms = int(np.sum(arms_mask))
-            if n_arms > 0:
-                sig_arms = fluid.sigma_a[arms_mask]
-                min_sig_arms = float(np.min(sig_arms))
-                mean_sig_arms = float(np.mean(sig_arms))
-                frac_lowsig_arms = float(np.mean(sig_arms < 0.85))
+            bio_mask = arms_mask & (fluid.is_filler < 0.5)
+            n_bio_arms = int(np.sum(bio_mask))
+            n_ins_arms = int(np.sum(arms_mask)) - n_bio_arms
+
+            if n_bio_arms > 0:
+                sig_bio = fluid.sigma_a[bio_mask]
+                min_sig_bio = float(np.min(sig_bio))
+                mean_sig_bio = float(np.mean(sig_bio))
+                frac_lowsig_bio = float(np.mean(sig_bio < 0.85))
             else:
-                min_sig_arms = mean_sig_arms = 1.0
-                frac_lowsig_arms = 0.0
+                min_sig_bio = mean_sig_bio = 1.0
+                frac_lowsig_bio = 0.0
+
+            if int(np.sum(arms_mask)) > 0:
+                sig_all = fluid.sigma_a[arms_mask]
+                mean_sig_all = float(np.mean(sig_all))
+                frac_lowsig_all = float(np.mean(sig_all < 0.85))
+            else:
+                mean_sig_all = 1.0
+                frac_lowsig_all = 0.0
+
+            vf = void_fraction(fluid.x, fluid.y, fluid.rho_b_grown, dx)
+
+            # Motor medido SO na biomassa real: 'a_marangoni' acima e um MAXIMO
+            # (invariante #1 do §9 — max e cego ao tipico).
+            _bio = (fluid.rho_b_grown > 0.1) & (fluid.is_filler < 0.5)
+            if int(np.sum(_bio)) > 0:
+                _r = np.hypot(fluid.x, fluid.y)
+                _R = float(np.percentile(_r[fluid.rho_b_grown > 0.1], 99))
+                _arm = _bio & (_r > 0.3 * _R)
+                a_mar_bio_med = float(np.median(fluid.au_mar[_bio]))
+                a_mar_bio_p95 = float(np.percentile(fluid.au_mar[_bio], 95))
+                if int(np.sum(_arm)) > 0:
+                    cs_bio_arms = float(np.mean(fluid.cs[_arm]))
+                    c_n_bio_arms = float(np.mean(fluid.c_n[_arm]))
+                else:
+                    cs_bio_arms = c_n_bio_arms = 0.0
+            else:
+                a_mar_bio_med = a_mar_bio_p95 = cs_bio_arms = c_n_bio_arms = 0.0
 
             print("-" * 50)
             print(f"Tempo: {solver.t:.2f}s | Iteração: {solver.count}")
@@ -300,8 +408,19 @@ class SwarmApp(Application):
                 f"c_n: mean={mean_c_n:.4f} max={max_c_n:.4f} contrast={contrast_c_n:.2f} | massa: {mass_total:.2f}"
             )
             print(
-                f"sigma_a braços (rho_b∈[0.1,0.5]): min={min_sig_arms:.3f} "
-                f"mean={mean_sig_arms:.3f} frac<0.85={frac_lowsig_arms:.2%}"
+                f"sigma_a braços biomassa (n={n_bio_arms}): min={min_sig_bio:.3f} "
+                f"mean={mean_sig_bio:.3f} frac<0.85={frac_lowsig_bio:.2%} | "
+                f"c/ inseridas (n={n_ins_arms}): mean={mean_sig_all:.3f} "
+                f"frac<0.85={frac_lowsig_all:.2%}"
+            )
+            print(
+                f"vazio areal: >0.7dx={vf[0.7]:.2%} >1.0dx={vf[1.0]:.2%} "
+                f">1.5dx={vf[1.5]:.2%}  (alvo: >1.5dx -> 0)"
+            )
+            print(
+                f"motor na biomassa: a_mar med={a_mar_bio_med:.3f} "
+                f"p95={a_mar_bio_p95:.2f} | bracos: cs={cs_bio_arms:.4f} "
+                f"c_n={c_n_bio_arms:.3f}   (S0: med=3.38 p95=9.46 cs=0.353 c_n=0.552)"
             )
             print("Acelerações:")
             print(f"  > Marangoni (líq): {a_mar:.2f}")
@@ -332,9 +451,20 @@ class SwarmApp(Application):
                         f"{contrast_c_n:.4f}",
                         f"{mass_total:.6e}",
                         self._pass_n_spawned_since_log,
-                        f"{min_sig_arms:.4f}",
-                        f"{mean_sig_arms:.4f}",
-                        f"{frac_lowsig_arms:.4f}",
+                        f"{min_sig_bio:.4f}",
+                        f"{mean_sig_bio:.4f}",
+                        f"{frac_lowsig_bio:.4f}",
+                        f"{mean_sig_all:.4f}",
+                        f"{frac_lowsig_all:.4f}",
+                        n_bio_arms,
+                        n_ins_arms,
+                        f"{vf[0.7]:.4f}",
+                        f"{vf[1.0]:.4f}",
+                        f"{vf[1.5]:.4f}",
+                        f"{a_mar_bio_med:.4f}",
+                        f"{a_mar_bio_p95:.4f}",
+                        f"{cs_bio_arms:.5f}",
+                        f"{c_n_bio_arms:.4f}",
                     ]
                 )
                 self._pass_n_spawned_since_log = 0  # reseta após registrar
@@ -627,10 +757,21 @@ class SwarmApp(Application):
                 (fluid.rho_b_grown > WAKE_RHO_B_MIN) & (disp >= WAKE_DISP * dx)
             )[0]
 
+            budget_ok = (
+                self._m_initial is None
+                or float(np.sum(fluid.m)) < (1.0 + WAKE_MASS_BUDGET) * self._m_initial
+            )
+            if not budget_ok:
+                wake_idx = np.array([], dtype=int)
+
             if len(wake_idx) > 0:
                 tree = cKDTree(np.column_stack([fluid.x, fluid.y]))
                 prox = WAKE_PROX * dx
                 prox_sq = prox * prox
+                h0 = float(fluid.h[0])
+                w_self = float(cubic_spline_w(np.array([0.0]), h0)[0])
+                r_ring = WAKE_RING_RATIO * dx
+                w_ring = float(cubic_spline_w(np.array([r_ring]), h0)[0])
 
                 new_x = []
                 new_y = []
@@ -653,43 +794,124 @@ class SwarmApp(Application):
                             break
                     if too_close:
                         continue
+
+                    n_extra = 0
+                    if WAKE_MODE == 2:
+                        nn = tree.query_ball_point([sx, sy], 2.0 * h0)
+                        if len(nn) > 0:
+                            nn = np.asarray(nn, dtype=int)
+                            d_nn = np.hypot(fluid.x[nn] - sx, fluid.y[nn] - sy)
+                            rho_void = float(
+                                np.sum(fluid.m[nn] * cubic_spline_w(d_nn, h0))
+                            )
+                            rho_local = float(np.mean(fluid.rho[nn]))
+                            deficit = rho_local - (rho_void + m_target * w_self)
+                            if deficit > 0.0:
+                                n_extra = int(
+                                    round(deficit / (m_target * w_ring))
+                                )
+                            n_extra = max(0, min(n_extra, WAKE_CLUSTER_MAX - 1))
+
                     new_x.append(sx)
                     new_y.append(sy)
                     parent_idx.append(int(k))
                     added_pts.append((sx, sy))
+
+                    for j in range(n_extra):
+                        ang = 2.0 * np.pi * j / max(n_extra, 1)
+                        vx = sx + r_ring * np.cos(ang)
+                        vy = sy + r_ring * np.sin(ang)
+                        d_ex, _ = tree.query([vx, vy])
+                        if d_ex < prox:
+                            continue
+                        bad = False
+                        for ax_, ay_ in added_pts:
+                            if (vx - ax_) ** 2 + (vy - ay_) ** 2 < prox_sq:
+                                bad = True
+                                break
+                        if bad:
+                            continue
+                        new_x.append(vx)
+                        new_y.append(vy)
+                        parent_idx.append(int(k))
+                        added_pts.append((vx, vy))
+
                     if len(new_x) >= WAKE_MAX:
                         break
 
                 if len(new_x) > 0:
                     n_ins = len(new_x)
                     p = np.asarray(parent_idx, dtype=int)
-                    inserted = fluid.empty_clone()
-                    data = {
-                        "x": new_x,
-                        "y": new_y,
-                        "m": [m_target] * n_ins,
-                        "h": list(fluid.h[p]),
-                        "rho": list(fluid.rho[p]),
-                        "rho_b_grown": list(fluid.rho_b_grown[p]),
-                        "cs": list(fluid.cs[p]),
-                        "c_o": list(fluid.c_o[p]),
-                        "c_n": list(fluid.c_n[p]),
-                        "u": [0.0] * n_ins,
-                        "v": [0.0] * n_ins,
-                        "noise": list(fluid.noise[p]),
-                        "is_filler": [1.0] * n_ins,
-                        "is_wake": [1.0] * n_ins,
-                        "x_dep": new_x,
-                        "y_dep": new_y,
-                    }
-                    inserted.add_particles(**data)
-                    fluid.append_parray(inserted)
-                    solver.nnps.update()
+                    if WAKE_RECYCLE:
+                        # Rota C: em vez de CRIAR particula (que adiciona massa e
+                        # esbarra no teto), REALOCA agar ocioso do campo distante.
+                        # Massa exatamente conservada; o buraco deixado fica fora do
+                        # disco da colonia, onde C1/C2 nao sao medidos e sigma_a~1.
+                        r_all = np.hypot(fluid.x, fluid.y)
+                        r_col = float(
+                            np.percentile(r_all[fluid.rho_b_grown > 0.1], 99)
+                        )
+                        donor_pool = np.where(
+                            (r_all > r_col + WAKE_DONOR_MARGIN)
+                            & (fluid.rho_b_grown < 0.05)
+                            & (fluid.is_filler < 0.5)
+                        )[0]
+                        if len(donor_pool) < n_ins:
+                            n_ins = len(donor_pool)
+                        if n_ins > 0:
+                            # amostra ESPALHADA pelo campo distante: tirar sempre os
+                            # mais distantes concentraria a depleção nos 4 cantos e
+                            # criaria rarefacao (pressao tensil) na fronteira.
+                            donors = np.random.choice(
+                                donor_pool, size=n_ins, replace=False
+                            )
+                            p = p[:n_ins]
+                            fluid.x[donors] = np.asarray(new_x[:n_ins])
+                            fluid.y[donors] = np.asarray(new_y[:n_ins])
+                            fluid.u[donors] = 0.0
+                            fluid.v[donors] = 0.0
+                            fluid.rho_b_grown[donors] = fluid.rho_b_grown[p]
+                            fluid.cs[donors] = fluid.cs[p]
+                            fluid.c_o[donors] = fluid.c_o[p]
+                            fluid.c_n[donors] = fluid.c_n[p]
+                            fluid.noise[donors] = fluid.noise[p]
+                            fluid.is_filler[donors] = 1.0
+                            fluid.is_wake[donors] = 1.0
+                            fluid.x_dep[donors] = fluid.x[donors]
+                            fluid.y_dep[donors] = fluid.y[donors]
+                            solver.nnps.update()
+                            self._pass_n_spawned_since_log += n_ins
+                            print(
+                                f"wake reciclagem t={solver.t:.1f}s: {n_ins} "
+                                f"agar realocado (pool={len(donor_pool)})"
+                            )
+                    else:
+                        data = {
+                            "x": new_x,
+                            "y": new_y,
+                            "m": [m_target] * n_ins,
+                            "h": list(fluid.h[p]),
+                            "rho": list(fluid.rho[p]),
+                            "rho_b_grown": list(fluid.rho_b_grown[p]),
+                            "cs": list(fluid.cs[p]),
+                            "c_o": list(fluid.c_o[p]),
+                            "c_n": list(fluid.c_n[p]),
+                            "u": [0.0] * n_ins,
+                            "v": [0.0] * n_ins,
+                            "noise": list(fluid.noise[p]),
+                            "is_filler": [1.0] * n_ins,
+                            "is_wake": [1.0] * n_ins,
+                            "x_dep": new_x,
+                            "y_dep": new_y,
+                        }
+                        inserted.add_particles(**data)
+                        fluid.append_parray(inserted)
+                        solver.nnps.update()
 
-                    self._pass_n_spawned_since_log += n_ins
-                    print(
-                        f"wake inserção t={solver.t:.1f}s: {n_ins} partículas inseridas"
-                    )
+                        self._pass_n_spawned_since_log += n_ins
+                        print(
+                            f"wake inserção t={solver.t:.1f}s: {n_ins} inseridas"
+                        )
 
 
 if __name__ == "__main__":

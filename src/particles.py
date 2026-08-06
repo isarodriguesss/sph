@@ -11,7 +11,10 @@ def create_initial_state(
     x_max=3.0,
     y_min=-3.0,
     y_max=3.0,
+    seed=None,
 ):
+    if seed is not None:  # reprodutibilidade: mesma condicao inicial entre rotas
+        np.random.seed(seed)
     x = np.linspace(x_min, x_max, x_dim)
     y = np.linspace(y_min, y_max, y_dim)
     X_grid, Y_grid = np.meshgrid(x, y)

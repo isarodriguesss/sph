@@ -107,7 +107,9 @@ class MyBiomassScheme(Scheme):
         shift_rho_b_min=0.6,
         use_kgc=False,
         kgc_det_min=0.25,
+        filler_nutrient_transparent=0,
     ):
+        self.filler_nutrient_transparent = filler_nutrient_transparent
         self.use_shift = use_shift
         self.shift_coeff = shift_coeff
         self.shift_cap = shift_cap
@@ -197,6 +199,7 @@ class MyBiomassScheme(Scheme):
                 OxigenConsumption(
                     dest="fluid",
                     sources=["fluid"],
+                    filler_transparent=self.filler_nutrient_transparent,
                     D_n=self.D_n,
                     D_n_int=self.D_n_int,
                     k_n=self.k_n,

@@ -8,6 +8,7 @@ from pysph.solver.solver import Solver
 from src.particles import create_initial_state
 from src.scheme import MyBiomassScheme
 
+
 def cubic_spline_w(r, h):
     # W do CubicSpline 2D (PySPH) — usado so na logica de insercao em numpy
     q = np.asarray(r) / h
@@ -91,6 +92,9 @@ LOG_HEADER = [
     "biomass_total",
     "biomass_arms",
     "n_pinned",
+    "frac_clump",
+    "nn_median",
+    "n_shift_gate",
 ]
 
 # Dominio expandido 2026-08-06: em [-5,5] a colonia rompia a parede em t~51s
@@ -120,7 +124,7 @@ k_o = 0.5
 lambda_o = 0.05
 Q0 = 5.0
 
-D_n = 0.02
+D_n = 0.05
 D_n_int = 1e-4
 k_n = 0.5
 
@@ -128,7 +132,11 @@ dt_global = 0.001
 total_sim_time = 50.0
 print_freq = 200
 
-SEED = 20260806 #lembrar de remover
+# None = cada rodada tem condicao inicial propria (producao).
+# Fixar um inteiro torna a rodada bit-reproduzivel — OBRIGATORIO ao comparar rotas
+# (§2.5): sem semente, diferencas de ate ~9 pontos percentuais em metricas de
+# amostra pequena (n_bio ~70-90) nao sao atribuiveis ao mecanismo.
+SEED = None
 
 trajectory_store_interval = 20
 
@@ -139,7 +147,7 @@ use_splitting = False
 
 use_shift = True
 SHIFT_COEFF = 0.5
-SHIFT_CAP = 0.001
+SHIFT_CAP = 0.0006
 SHIFT_RHO_B_MIN = 0.1
 
 use_kgc = True
@@ -152,7 +160,9 @@ FILLER_NUTRIENT_TRANSPARENT = 0
 use_insert = True
 INSERT_FREQ = 200
 INSERT_SIGMA_TRIG = 0.85
-INSERT_RHO_B_MIN = 0.5  # C3.4 validado: filler frozen so no nucleo estrutural (licao #31/#35)
+INSERT_RHO_B_MIN = (
+    0.5  # C3.4 validado: filler frozen so no nucleo estrutural (licao #31/#35)
+)
 INSERT_PROX = 0.7
 INSERT_MAX = 100
 
@@ -196,7 +206,8 @@ class SwarmApp(Application):
         self._wake_mass_added = 0.0  # so o que o WAKE adicionou (nao BiomassGrowth)
 
     def create_particles(self):
-        np.random.seed(SEED)
+        if SEED is not None:
+            np.random.seed(SEED)
         fluid_solid = create_initial_state(
             x_dim,
             y_dim,
@@ -402,6 +413,34 @@ class SwarmApp(Application):
             # (invariante #1 do §9 — max e cego ao tipico).
             # Biomassa REAL (exclui filler) e contagem de pinados: n_pinned e o
             # teste direto da maturacao dos braços em nucleo (licao #18/#41).
+            # Clumping (Liu §6.4): resolvido o vacuo, o defeito remanescente e
+            # sobreposicao, nao falta de particula. Mede-se pelo vizinho mais proximo.
+            _rr = np.hypot(fluid.x, fluid.y)
+            if np.any(fluid.rho_b_grown > 0.1):
+                _Rc = float(np.percentile(_rr[fluid.rho_b_grown > 0.1], 99))
+            else:
+                _Rc = 1.0
+            _colony = (fluid.rho_b_grown > 0.05) & (_rr > 0.3 * _Rc)
+            if int(np.sum(_colony)) > 10:
+                _d, _ = cKDTree(np.column_stack([fluid.x, fluid.y])).query(
+                    np.column_stack([fluid.x[_colony], fluid.y[_colony]]), k=2
+                )
+                _nn = _d[:, 1] / dx
+                frac_clump = float(np.mean(_nn < 0.5))
+                nn_median = float(np.median(_nn))
+            else:
+                frac_clump = 0.0
+                nn_median = 1.0
+
+            # quantas particulas o ParticleShift efetivamente processa (gate de c_n)
+            n_shift_gate = int(
+                np.sum(
+                    (fluid.rho_b_grown >= SHIFT_RHO_B_MIN)
+                    & (fluid.rho_b_grown < 0.8)
+                    & (fluid.c_n >= 0.6)
+                )
+            )
+
             _real = fluid.is_filler < 0.5
             _vol = fluid.m[_real] / np.maximum(fluid.rho[_real], 1e-9)
             biomass_total = float(np.sum(fluid.rho_b_grown[_real] * _vol))
@@ -456,6 +495,10 @@ class SwarmApp(Application):
                 f"biomassa real: total={biomass_total:.4f} bracos={biomass_arms:.4f}"
                 f" | n_pinned(rho_b>=0.8)={n_pinned}"
             )
+            print(
+                f"empacotamento: clump(<0.5dx)={frac_clump:.1%} "
+                f"nn_mediana={nn_median:.3f}dx | shift processa {n_shift_gate} part."
+            )
             print("Acelerações:")
             print(f"  > Marangoni (líq): {a_mar:.2f}")
             print(f"  > Drag:            {a_drag:.2f} (Freio)")
@@ -502,6 +545,9 @@ class SwarmApp(Application):
                         f"{biomass_total:.5f}",
                         f"{biomass_arms:.5f}",
                         n_pinned,
+                        f"{frac_clump:.4f}",
+                        f"{nn_median:.4f}",
+                        n_shift_gate,
                     ]
                 )
                 self._pass_n_spawned_since_log = 0  # reseta após registrar
@@ -847,9 +893,7 @@ class SwarmApp(Application):
                             rho_local = float(np.mean(fluid.rho[nn]))
                             deficit = rho_local - (rho_void + m_target * w_self)
                             if deficit > 0.0:
-                                n_extra = int(
-                                    round(deficit / (m_target * w_ring))
-                                )
+                                n_extra = int(round(deficit / (m_target * w_ring)))
                             n_extra = max(0, min(n_extra, WAKE_CLUSTER_MAX - 1))
 
                     new_x.append(sx)
@@ -888,9 +932,7 @@ class SwarmApp(Application):
                         # Massa exatamente conservada; o buraco deixado fica fora do
                         # disco da colonia, onde C1/C2 nao sao medidos e sigma_a~1.
                         r_all = np.hypot(fluid.x, fluid.y)
-                        r_col = float(
-                            np.percentile(r_all[fluid.rho_b_grown > 0.1], 99)
-                        )
+                        r_col = float(np.percentile(r_all[fluid.rho_b_grown > 0.1], 99))
                         donor_pool = np.where(
                             (r_all > r_col + WAKE_DONOR_MARGIN)
                             & (fluid.rho_b_grown < 0.05)
@@ -951,9 +993,7 @@ class SwarmApp(Application):
 
                         self._wake_mass_added += n_ins * m_target
                         self._pass_n_spawned_since_log += n_ins
-                        print(
-                            f"wake inserção t={solver.t:.1f}s: {n_ins} inseridas"
-                        )
+                        print(f"wake inserção t={solver.t:.1f}s: {n_ins} inseridas")
 
 
 if __name__ == "__main__":

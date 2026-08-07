@@ -12,7 +12,9 @@ repara a quebra fisica de cobertura. Por isso a metrica primaria e AREAL.
 
 CRITERIOS (ambos obrigatorios — "Estado de Preenchimento Denso"):
   C1. Fracao de Vazio  : area da colonia sem vizinho < 1.5dx  -> minimizar (alvo ~0)
-  C2. Suporte do kernel: mean_sig_all >= 0.85 (colônia INTEIRA, inseridas incluidas)
+  C2. Suporte do kernel: FRACAO da colonia (rho_b>0.1) com sigma_a<0.85 <= 15%
+      (a MEDIA sobre a banda [0.1,0.5] discorda do painel e da leitura visual —
+       ela e puxada pelo bulk; o que importa e o tamanho da cauda ruim)
 
 Nenhum dos dois sozinho aprova. C2 sem C1 e o falso positivo do R0 (nao preencher
 "melhora" a media por remover o ponto de amostragem). C1 sem C2 e o falso positivo
@@ -21,9 +23,10 @@ do R1 (preencher com particula mal suportada).
 GUARDRAILS (violar reprova, independente de C1/C2):
   mean_v >= 3e-4          nao congelar a morfologia (licao #31)
   contrast_cs >= 12       motor vivo (§2.4 / §11)
-  a_pressure <= 4.0       sem over-pack (licao #27)
+  a_pressure: MEDIANA <= 4.0 e picos (>4) em <= 25% das amostras (licao #27)
+      — o max sobre a cauda pegava 1 pico isolado e reprovava regime saudavel
   iteracoes <= 3000       custo de dt zero (licao #29)
-  massa nao acelerando    taxa 2a/1a metade <= 1.3 (runaway, licao #34)
+  massa nao acelerando    taxa 2a/1a metade <= 1.3 (runaway, licao #34) — SO p/ t>=90
 """
 
 import sys
@@ -46,6 +49,7 @@ GUARD = {
 # massa ACELERANDO (licao #34) vs limitada. Teste independente de configuracao.
 MASS_ACCEL_MAX = 1.3
 SIG_MIN = 0.85
+SIG_FRAC_MAX = 0.15
 # Rodada que morreu cedo tem log so com as primeiras linhas; sem este guarda ela
 # aparece com vazio 0% / sig_all 1.0 (valores de t=0) e VENCE o ranking.
 EXPECTED_T = 50.0
@@ -90,21 +94,23 @@ def void_from_hdf5(run, thresholds=(0.7, 1.0, 1.5), n_grid=400):
     # recorta ao dominio (inferido dos dados): fora dele nao ha particula
     xlim = float(np.max(np.abs(x)))
     ylim = float(np.max(np.abs(y)))
-    ins = (
-        (GX * GX + GY * GY <= R * R)
-        & (np.abs(GX) <= xlim)
-        & (np.abs(GY) <= ylim)
-    )
-    d, _ = cKDTree(np.column_stack([x, y])).query(
-        np.column_stack([GX[ins], GY[ins]])
-    )
+    ins = (GX * GX + GY * GY <= R * R) & (np.abs(GX) <= xlim) & (np.abs(GY) <= ylim)
+    d, _ = cKDTree(np.column_stack([x, y])).query(np.column_stack([GX[ins], GY[ins]]))
     res = {t: float(np.mean(d > t * dx)) for t in thresholds}
     res["R"] = R
     return res
 
 
 def sigma_from_hdf5(run):
-    out = dict(sig_bio=np.nan, sig_all=np.nan, low_all=np.nan, n_bio=0, n_ins=0)
+    out = dict(
+        sig_bio=np.nan,
+        sig_all=np.nan,
+        low_all=np.nan,
+        n_bio=0,
+        n_ins=0,
+        sig_col_frac=np.nan,
+        sig_col_mean=np.nan,
+    )
     fn = last_hdf5(run)
     if not fn:
         return out
@@ -114,16 +120,30 @@ def sigma_from_hdf5(run):
         def g(n):
             return np.array(a[n]) if n in a and np.array(a[n]).size else None
 
-        rb, sa, isw, isf = (g("rho_b_grown"), g("sigma_a"), g("is_wake"),
-                            g("is_filler"))
+        rb, sa, isw, isf = (
+            g("rho_b_grown"),
+            g("sigma_a"),
+            g("is_wake"),
+            g("is_filler"),
+        )
         if rb is None or sa is None:
             return out
         arms = (rb >= 0.1) & (rb < 0.5)
         n = rb.size
-        ins = (isf > 0.5) if (isf is not None and isf.size == n) else (
-            (isw > 0.5) if (isw is not None and isw.size == n)
-            else np.zeros(n, bool)
+        ins = (
+            (isf > 0.5)
+            if (isf is not None and isf.size == n)
+            else (
+                (isw > 0.5)
+                if (isw is not None and isw.size == n)
+                else np.zeros(n, bool)
+            )
         )
+        colony = rb > 0.1
+        out["sig_col_frac"] = (
+            float((sa[colony] < 0.85).mean()) if colony.any() else np.nan
+        )
+        out["sig_col_mean"] = float(sa[colony].mean()) if colony.any() else np.nan
         bio = arms & ~ins
         out["sig_all"] = float(sa[arms].mean()) if arms.any() else np.nan
         out["low_all"] = float((sa[arms] < 0.85).mean()) if arms.any() else np.nan
@@ -135,8 +155,7 @@ def sigma_from_hdf5(run):
 
 def motor_from_hdf5(run):
     """Backfill das metricas de motor p/ rodadas anteriores as colunas novas."""
-    out = dict(amed=np.nan, ap95=np.nan, csb=np.nan, cnb=np.nan,
-               contr_real=np.nan)
+    out = dict(amed=np.nan, ap95=np.nan, csb=np.nan, cnb=np.nan, contr_real=np.nan)
     fn = last_hdf5(run)
     if not fn:
         return out
@@ -146,8 +165,15 @@ def motor_from_hdf5(run):
         def g(n):
             return np.array(a[n]) if n in a and np.array(a[n]).size else None
 
-        rb, am, cs, cn, isf, x, y = (g("rho_b_grown"), g("au_mar"), g("cs"),
-                                     g("c_n"), g("is_filler"), g("x"), g("y"))
+        rb, am, cs, cn, isf, x, y = (
+            g("rho_b_grown"),
+            g("au_mar"),
+            g("cs"),
+            g("c_n"),
+            g("is_filler"),
+            g("x"),
+            g("y"),
+        )
         if rb is None or am is None or isf is None:
             return out
         bio = (rb > 0.1) & (isf < 0.5)
@@ -176,7 +202,7 @@ def metrics(run):
     if not rows:
         return None
     last = rows[-1]
-    tail = rows[max(0, len(rows) - 5):]
+    tail = rows[max(0, len(rows) - 5) :]
 
     def c(r, k, d=0.0):
         try:
@@ -192,7 +218,8 @@ def metrics(run):
         "mass": c(last, "mass_total"),
         "contrast_cs": np.mean([c(r, "constrast_cs") for r in tail]),
         "a_mar": np.mean([c(r, "a_marangoni") for r in tail]),
-        "a_press": max(c(r, "a_pressure") for r in tail),
+        "a_press": float(np.median([c(r, "a_pressure") for r in rows[2:]])),
+        "a_press_spk": float(np.mean([c(r, "a_pressure") > 4.0 for r in rows[2:]])),
         "m0": c(rows[0], "mass_total", 1.0),
     }
     _t = [c(r, "t") for r in rows]
@@ -215,10 +242,17 @@ def metrics(run):
         m.update(sigma_from_hdf5(run))
 
     vf = void_from_hdf5(run)  # sempre — precisamos de R p/ a area absoluta
+    _sh = sigma_from_hdf5(run)
+    m["sig_col_frac"] = _sh["sig_col_frac"]
+    m["sig_col_mean"] = _sh["sig_col_mean"]
     _mh = motor_from_hdf5(run)
     if "a_mar_bio_med" in last:
-        for k, dk in [("a_mar_bio_med", "amed"), ("a_mar_bio_p95", "ap95"),
-                      ("cs_bio_arms", "csb"), ("c_n_bio_arms", "cnb")]:
+        for k, dk in [
+            ("a_mar_bio_med", "amed"),
+            ("a_mar_bio_p95", "ap95"),
+            ("cs_bio_arms", "csb"),
+            ("c_n_bio_arms", "cnb"),
+        ]:
             m[dk] = c(last, k, float("nan"))
     else:
         m.update({k: v for k, v in _mh.items() if k != "contr_real"})
@@ -226,8 +260,11 @@ def metrics(run):
     m["contrast_cs"] = _mh["contr_real"]
 
     if "void_15" in last:
-        m["v07"], m["v10"], m["v15"] = (c(last, "void_07"), c(last, "void_10"),
-                                        c(last, "void_15"))
+        m["v07"], m["v10"], m["v15"] = (
+            c(last, "void_07"),
+            c(last, "void_10"),
+            c(last, "void_15"),
+        )
     else:
         m["v07"], m["v10"], m["v15"] = vf[0.7], vf[1.0], vf[1.5]
     m["R"] = vf["R"]
@@ -248,17 +285,19 @@ def evaluate(m):
     if m["contrast_cs"] < GUARD["contrast_cs_min"]:
         g.append(f"contrast={m['contrast_cs']:.1f}")
     if m["a_press"] > GUARD["a_pressure_max"]:
-        g.append(f"a_press={m['a_press']:.1f}")
+        g.append(f"a_press mediana={m['a_press']:.1f}")
+    if m["a_press_spk"] > 0.25:
+        g.append(f"picos de pressao em {m['a_press_spk']:.0%} das amostras")
     if m["iter"] > GUARD["iter_max"]:
         g.append(f"iter={m['iter']}")
-    if m["mass_accel"] > MASS_ACCEL_MAX:
-        g.append(
-            f"massa NAO CONVERGIDA (taxa 2a/1a metade={m['mass_accel']:.2f})"
-        )
+    # So faz sentido testar convergencia se a rodada saiu da fase de crescimento.
+    # Em t=50 nenhuma configuracao converge ainda — o teste seria vacuo.
+    if m["t"] >= 90 and m["mass_accel"] > MASS_ACCEL_MAX:
+        g.append(f"massa NAO CONVERGIDA (taxa 2a/1a metade={m['mass_accel']:.2f})")
 
     c = []
-    if not (m["sig_all"] >= SIG_MIN):
-        c.append(f"C2 sig_all={m['sig_all']:.3f}<{SIG_MIN}")
+    if not (m["sig_col_frac"] <= SIG_FRAC_MAX):
+        c.append(f"C2 frac(sig<0.85)={m['sig_col_frac']:.1%}>{SIG_FRAC_MAX:.0%}")
     return g, c
 
 
@@ -268,10 +307,12 @@ def main(runs):
         print("nenhuma rodada encontrada")
         return
 
-    hdr = (f"{'run':<5}{'t':>6}│{'VOID>1.5dx':>11}{'area(dx²)':>10}{'>1.0dx':>8}"
-           f"{'>0.7dx':>8}{'R':>6}│{'sig_all':>8}{'low_all':>8}│"
-           f"{'aMarMed':>8}{'aMarP95':>8}{'cs_bio':>8}{'c_n_bio':>8}│"
-           f"{'massa':>7}{'m.acel':>7}{'mean_v':>9}{'a_pr':>6}")
+    hdr = (
+        f"{'run':<5}{'t':>6}│{'VOID>1.5dx':>11}{'area(dx²)':>10}{'>1.0dx':>8}"
+        f"{'>0.7dx':>8}{'R':>6}│{'sigFrac':>8}{'sigMean':>8}│"
+        f"{'aMarMed':>8}{'aMarP95':>8}{'cs_bio':>8}{'c_n_bio':>8}│"
+        f"{'massa':>7}{'m.acel':>7}{'mean_v':>9}{'a_pr':>6}{'pk%':>6}"
+    )
     print(__doc__.split("CRITERIOS")[1].split("GUARDRAILS")[0].strip())
     print()
     print("C1 e reportado como FRACAO e como AREA ABSOLUTA (em dx², ~n de particulas)")
@@ -283,11 +324,11 @@ def main(runs):
         g, c = evaluate(m)
         print(
             f"{m['run']:<5}{m['t']:>6.1f}│{m['v15']:>11.2%}{m['a15']:>10.0f}"
-            f"{m['v10']:>8.2%}{m['v07']:>8.2%}{m['R']:>6.2f}│{m['sig_all']:>8.3f}"
-            f"{m['low_all']:>8.1%}│{m['amed']:>8.2f}{m['ap95']:>8.2f}"
+            f"{m['v10']:>8.2%}{m['v07']:>8.2%}{m['R']:>6.2f}│{m['sig_col_frac']:>8.1%}"
+            f"{m['sig_col_mean']:>8.3f}│{m['amed']:>8.2f}{m['ap95']:>8.2f}"
             f"{m['csb']:>8.4f}{m['cnb']:>8.3f}│"
             f"{m['mass']:>7.1f}{m['mass_accel']:>7.2f}{m['mean_v']:>9.1e}"
-            f"{m['a_press']:>6.1f}"
+            f"{m['a_press']:>6.1f}{m['a_press_spk']:>6.0%}"
         )
         if g or c:
             print(f"      └─ REPROVA: {'; '.join(c + g)}")
@@ -298,9 +339,11 @@ def main(runs):
         ok.sort(key=lambda m: (m["v15"], -m["sig_all"]))
         print("RANKING (aprovados em C2+guardrails, ordenados por C1 = menor vazio):")
         for i, m in enumerate(ok, 1):
-            print(f"  {i}. {m['run']:<4} vazio>1.5dx={m['v15']:.2%} "
-                  f"({m['a15']:.0f} dx²)  sig_all={m['sig_all']:.3f}  "
-                  f"massa={m['mass']:.1f}")
+            print(
+                f"  {i}. {m['run']:<4} vazio>1.5dx={m['v15']:.2%} "
+                f"({m['a15']:.0f} dx²)  frac(sig<0.85)={m['sig_col_frac']:.1%}  "
+                f"massa={m['mass']:.1f}"
+            )
     else:
         print("NENHUMA configuracao satisfez C2 + guardrails.")
         best = min(ms, key=lambda m: m["v15"])

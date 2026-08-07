@@ -36,9 +36,7 @@ class BiomassGrowth(Equation):
                 c_n_factor = t * t * (3.0 - 2.0 * t)
 
             rate = (
-                self.r_growth
-                * (1.0 - d_rho_b_grown[d_idx] / self.rho_max)
-                * c_n_factor
+                self.r_growth * (1.0 - d_rho_b_grown[d_idx] / self.rho_max) * c_n_factor
             )
             d_a_rho_b_grown[d_idx] = rate * d_rho_b_grown[d_idx]
             d_am[d_idx] = rate * d_m[d_idx]
@@ -167,11 +165,9 @@ class ParticleShift(Equation):
         rho_b = d_rho_b_grown[d_idx]
         sx = 0.0
         sy = 0.0
-        if (
-            rho_b >= self.rho_b_min
-            and rho_b < self.rho_b_pin
-            and d_c_n[d_idx] >= self.c_n_pin
-        ):
+        # C2: cláusula c_n removida. Com D_n=0.05 o gate ja abria sozinho em ~25% da
+        # banda; o clumping (Liu §6.4) esta no restante, que continuava sem shifting.
+        if rho_b >= self.rho_b_min and rho_b < self.rho_b_pin:
             h = d_h[d_idx]
             D = self.shift_coeff * h * h
             sx = -D * d_shift_dC_x[d_idx]

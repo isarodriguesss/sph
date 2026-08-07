@@ -16,10 +16,7 @@ class BiomassGrowth(Equation):
         d_a_rho_b_grown,
         d_m,
         d_am,
-        d_rho,
         d_c_n,
-        d_u,
-        d_v,
         d_is_filler,
     ):
         d_a_rho_b_grown[d_idx] = 0.0
@@ -30,33 +27,16 @@ class BiomassGrowth(Equation):
             and d_is_filler[d_idx] < 0.5
         ):
             c_n = d_c_n[d_idx]
-            if c_n < 0.6:
+            if c_n < 0.4:
                 c_n_factor = 0.0
-            elif c_n > 0.9:
+            elif c_n > 0.8:
                 c_n_factor = 1.0
             else:
-                t = (c_n - 0.6) / 0.3
+                t = (c_n - 0.4) / 0.4
                 c_n_factor = t * t * (3.0 - 2.0 * t)
 
-            # Gate por motilidade: so swarmers ativos (|v| ~ v_term=f0/gamma=0.05)
-            # crescem rho_b. Rim parado da casca (|v|~0.001 por Marangoni anulado
-            # radialmente) nao cresce. Discrimina tip avancando em agar virgem
-            # vs rim mature em torno do nucleo — ambos tem c_n~0.9, mas so o tip
-            # se move. Smoothstep [0.01, 0.05] = [v_pinned, v_term].
-            v_mag = (d_u[d_idx] * d_u[d_idx] + d_v[d_idx] * d_v[d_idx]) ** 0.5
-            if v_mag < 0.01:
-                motility_gate = 0.0
-            elif v_mag > 0.05:
-                motility_gate = 1.0
-            else:
-                tv = (v_mag - 0.01) / 0.04
-                motility_gate = tv * tv * (3.0 - 2.0 * tv)
-
             rate = (
-                self.r_growth
-                * (1.0 - d_rho_b_grown[d_idx] / self.rho_max)
-                * c_n_factor
-                # * motility_gate
+                self.r_growth * (1.0 - d_rho_b_grown[d_idx] / self.rho_max) * c_n_factor
             )
             d_a_rho_b_grown[d_idx] = rate * d_rho_b_grown[d_idx]
             d_am[d_idx] = rate * d_m[d_idx]
@@ -185,11 +165,9 @@ class ParticleShift(Equation):
         rho_b = d_rho_b_grown[d_idx]
         sx = 0.0
         sy = 0.0
-        if (
-            rho_b >= self.rho_b_min
-            and rho_b < self.rho_b_pin
-            and d_c_n[d_idx] >= self.c_n_pin
-        ):
+        # C2: cláusula c_n removida. Com D_n=0.05 o gate ja abria sozinho em ~25% da
+        # banda; o clumping (Liu §6.4) esta no restante, que continuava sem shifting.
+        if rho_b >= self.rho_b_min and rho_b < self.rho_b_pin:
             h = d_h[d_idx]
             D = self.shift_coeff * h * h
             sx = -D * d_shift_dC_x[d_idx]
@@ -245,22 +223,25 @@ class SurfactantEquation(Equation):
         d_h,
         d_rho_b_grown,
         s_rho_b_grown,
+        d_is_filler,
+        s_is_filler,
     ):
-        rho_b_avg = 0.5 * (d_rho_b_grown[d_idx] + s_rho_b_grown[s_idx])
-        if rho_b_avg < 0.1:
-            D_eff = self.D_ext
-        elif rho_b_avg < 0.5:
-            t = (rho_b_avg - 0.1) / 0.4
-            gate = t * t * (3.0 - 2.0 * t)
-            D_eff = self.D_ext + (self.D - self.D_ext) * gate
-        else:
-            D_eff = self.D
+        if d_is_filler[d_idx] < 0.5 and s_is_filler[s_idx] < 0.5:
+            rho_b_avg = 0.5 * (d_rho_b_grown[d_idx] + s_rho_b_grown[s_idx])
+            if rho_b_avg < 0.1:
+                D_eff = self.D_ext
+            elif rho_b_avg < 0.5:
+                t = (rho_b_avg - 0.1) / 0.4
+                gate = t * t * (3.0 - 2.0 * t)
+                D_eff = self.D_ext + (self.D - self.D_ext) * gate
+            else:
+                D_eff = self.D
 
-        cs_ij = d_cs[d_idx] - s_cs[s_idx]
-        rij_sq = RIJ**2 + 0.01 * d_h[d_idx] ** 2
-        dot_product = XIJ[0] * DWIJ[0] + XIJ[1] * DWIJ[1]
-        term = (s_m[s_idx] / s_rho[s_idx]) * (cs_ij / rij_sq) * dot_product
-        d_a_c_s[d_idx] += 2.0 * D_eff * term
+            cs_ij = d_cs[d_idx] - s_cs[s_idx]
+            rij_sq = RIJ**2 + 0.01 * d_h[d_idx] ** 2
+            dot_product = XIJ[0] * DWIJ[0] + XIJ[1] * DWIJ[1]
+            term = (s_m[s_idx] / s_rho[s_idx]) * (cs_ij / rij_sq) * dot_product
+            d_a_c_s[d_idx] += 2.0 * D_eff * term
 
     def post_loop(
         self,
@@ -272,25 +253,28 @@ class SurfactantEquation(Equation):
         d_c_n,
         d_is_filler,
     ):
-        rho_b = d_rho_b_grown[d_idx]
-        qs = rho_b * rho_b / (rho_b * rho_b + 0.01)
         if d_is_filler[d_idx] > 0.5:
-            qs = 0.0
-
-        saturation = 1.0 - d_cs[d_idx] / self.cs_max
-        if saturation < 0.0:
-            saturation = 0.0
-
-        c_n_factor = d_c_n[d_idx] / (d_c_n[d_idx] + 0.1)
-
-        production = self.sigma * qs * saturation * d_noise[d_idx] * c_n_factor
-
-        if rho_b < 0.1:
-            lambda_eff = self.lambda_ * 2.0  # Decaimento LENTO no ágar (gera o halo)
+            d_a_c_s[d_idx] = 0.0
         else:
-            lambda_eff = self.lambda_ * 1.0
+            rho_b = d_rho_b_grown[d_idx]
+            qs = rho_b * rho_b / (rho_b * rho_b + 0.01)
 
-        d_a_c_s[d_idx] += production - lambda_eff * d_cs[d_idx]
+            saturation = 1.0 - d_cs[d_idx] / self.cs_max
+            if saturation < 0.0:
+                saturation = 0.0
+
+            c_n_factor = d_c_n[d_idx] / (d_c_n[d_idx] + 0.1)
+
+            production = self.sigma * qs * saturation * d_noise[d_idx] * c_n_factor
+
+            # CLAUDE.md §7 / Pass T1: decay LENTO no agar (gera o halo), rapido no
+            # biofilme. O codigo tinha o oposto.
+            if rho_b < 0.1:
+                lambda_eff = self.lambda_ * 0.5
+            else:
+                lambda_eff = self.lambda_ * 2.0
+
+            d_a_c_s[d_idx] += production - lambda_eff * d_cs[d_idx]
 
 
 class MarangoniForce(Equation):
@@ -318,6 +302,8 @@ class MarangoniForce(Equation):
         d_ax_mar,
         d_ay_mar,
         d_grad_rho_b_mag,
+        d_is_filler,
+        s_is_filler,
         d_Lxx,
         d_Lxy,
         d_Lyx,
@@ -325,7 +311,11 @@ class MarangoniForce(Equation):
         DWIJ,
     ):
         grad_mag = d_grad_rho_b_mag[d_idx]
-        if grad_mag >= self.grad_low:
+        if (
+            grad_mag >= self.grad_low
+            and d_is_filler[d_idx] < 0.5
+            and s_is_filler[s_idx] < 0.5
+        ):
             gate_raw = (grad_mag - self.grad_low) / (self.grad_high - self.grad_low)
             if gate_raw > 1.0:
                 gate = 1.0
@@ -605,12 +595,14 @@ class FlagellarForce(Equation):
         d_cs,
         d_grad_cs_x,
         d_grad_cs_y,
+        s_is_filler,
         DWIJ,
     ):
-        vol_j = s_m[s_idx] / s_rho[s_idx]
-        cs_ij = s_cs[s_idx] - d_cs[d_idx]
-        d_grad_cs_x[d_idx] += vol_j * cs_ij * DWIJ[0]
-        d_grad_cs_y[d_idx] += vol_j * cs_ij * DWIJ[1]
+        if s_is_filler[s_idx] < 0.5:
+            vol_j = s_m[s_idx] / s_rho[s_idx]
+            cs_ij = s_cs[s_idx] - d_cs[d_idx]
+            d_grad_cs_x[d_idx] += vol_j * cs_ij * DWIJ[0]
+            d_grad_cs_y[d_idx] += vol_j * cs_ij * DWIJ[1]
 
     def post_loop(
         self,
@@ -621,10 +613,11 @@ class FlagellarForce(Equation):
         d_au,
         d_av,
         d_au_flag,
+        d_is_filler,
     ):
         rho_b = d_rho_b_grown[d_idx]
         # Gate: swarmers na borda apenas, pico em rho_b=0.35
-        if rho_b >= 0.2 and rho_b <= 0.6:
+        if rho_b >= 0.2 and rho_b <= 0.6 and d_is_filler[d_idx] < 0.5:
             if rho_b < 0.4:
                 t = (rho_b - 0.2) / 0.2
             else:
@@ -643,10 +636,13 @@ class FlagellarForce(Equation):
 
 
 class OxigenConsumption(Equation):
-    def __init__(self, dest, sources, D_n=0.02, D_n_int=1e-4, k_n=0.5):
+    def __init__(
+        self, dest, sources, D_n=0.02, D_n_int=1e-4, k_n=0.5, filler_transparent=0
+    ):
         self.D_n = D_n
         self.D_n_int = D_n_int
         self.k_n = k_n
+        self.filler_transparent = filler_transparent
         super(OxigenConsumption, self).__init__(dest, sources)
 
     def initialize(self, d_idx, d_a_c_n):
@@ -685,6 +681,9 @@ class OxigenConsumption(Equation):
 
         d_a_c_n[d_idx] += 2.0 * D_eff * Vj * (cn_ij / rij_sq) * dot_product
 
-    def post_loop(self, d_idx, d_a_c_n, d_c_n, d_rho_b_grown):
-        consumption = self.k_n * d_rho_b_grown[d_idx] * d_c_n[d_idx]
+    def post_loop(self, d_idx, d_a_c_n, d_c_n, d_rho_b_grown, d_is_filler):
+        if self.filler_transparent == 1 and d_is_filler[d_idx] > 0.5:
+            consumption = 0.0
+        else:
+            consumption = self.k_n * d_rho_b_grown[d_idx] * d_c_n[d_idx]
         d_a_c_n[d_idx] -= consumption

@@ -44,6 +44,7 @@ class CustomEulerStep(EulerStep):
         d_shift_x,
         d_shift_y,
         d_is_filler,
+        d_is_wake,
         dt,
     ):
         d_rho_b_grown[d_idx] += dt * d_a_rho_b_grown[d_idx]
@@ -60,7 +61,7 @@ class CustomEulerStep(EulerStep):
             d_rho_b_grown[d_idx] >= 0.8
             or d_c_n[d_idx] < 0.6
             or d_is_filler[d_idx] > 0.5
-        ):
+        ) and d_is_wake[d_idx] < 0.5:
             d_u[d_idx] = 0.0
             d_v[d_idx] = 0.0
         else:
@@ -106,7 +107,9 @@ class MyBiomassScheme(Scheme):
         shift_rho_b_min=0.6,
         use_kgc=False,
         kgc_det_min=0.25,
+        filler_nutrient_transparent=0,
     ):
+        self.filler_nutrient_transparent = filler_nutrient_transparent
         self.use_shift = use_shift
         self.shift_coeff = shift_coeff
         self.shift_cap = shift_cap
@@ -196,6 +199,7 @@ class MyBiomassScheme(Scheme):
                 OxigenConsumption(
                     dest="fluid",
                     sources=["fluid"],
+                    filler_transparent=self.filler_nutrient_transparent,
                     D_n=self.D_n,
                     D_n_int=self.D_n_int,
                     k_n=self.k_n,

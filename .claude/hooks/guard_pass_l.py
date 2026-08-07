@@ -15,16 +15,17 @@ contra reference.jpg).
 
 Fail-closed (exit 2). Sem dependencias externas.
 """
+
 import json
 import re
 import sys
 from pathlib import Path
 
-ESCAPE_MARKER = '# pass-l-aprovado'
+ESCAPE_MARKER = "# pass-l-aprovado"
 
 KEYWORD_RE = re.compile(
-    r'rugos|roughness|rough_wall|wavy_wall|topograf|'
-    r'wall_amplitude|boundary_amplitude',
+    r"rugos|roughness|rough_wall|wavy_wall|topograf|"
+    r"wall_amplitude|boundary_amplitude",
     re.IGNORECASE,
 )
 
@@ -35,16 +36,16 @@ def main():
     except Exception:
         return
 
-    tool_name = data.get('tool_name', '')
-    if tool_name not in ('Write', 'Edit'):
+    tool_name = data.get("tool_name", "")
+    if tool_name not in ("Write", "Edit"):
         return
 
-    tool_input = data.get('tool_input', {}) or {}
-    fpath = tool_input.get('file_path') or tool_input.get('path')
-    if not fpath or not fpath.endswith('.py'):
+    tool_input = data.get("tool_input", {}) or {}
+    fpath = tool_input.get("file_path") or tool_input.get("path")
+    if not fpath or not fpath.endswith(".py"):
         return
 
-    text = (tool_input.get('new_string') or tool_input.get('content') or '')
+    text = tool_input.get("new_string") or tool_input.get("content") or ""
     if not text or ESCAPE_MARKER in text:
         return
 
@@ -53,19 +54,19 @@ def main():
 
     rel = Path(fpath).as_posix()
     msg = (
-        f'BLOQUEADO: {rel} parece introduzir geometria de contorno rugosa (Pass L).\n\n'
-        'CLAUDE.md Sec.1/Sec.2.2/Sec.10: Pass L (superficies rugosas) e '
-        'PRE-REQUISITO BLOQUEADO ate a simulacao reproduzir a morfologia dendritica de '
-        'reference.jpg / reference_result.png painel (b) via mecanismos hidrodinamicos '
-        'puros (Marangoni + Flagelar + EOS). Rugosidade e refinamento fisico, nao muleta '
-        'para motor insuficiente ou selecao competitiva ausente.\n\n'
-        'Se os frames ja validam a morfologia (Protocolo Sec.11 cumprido) e o usuario '
-        'decidiu explicitamente desbloquear, adicione o comentario '
+        f"BLOQUEADO: {rel} parece introduzir geometria de contorno rugosa (Pass L).\n\n"
+        "CLAUDE.md Sec.1/Sec.2.2/Sec.10: Pass L (superficies rugosas) e "
+        "PRE-REQUISITO BLOQUEADO ate a simulacao reproduzir a morfologia dendritica de "
+        "reference.jpg / reference_result.png painel (b) via mecanismos hidrodinamicos "
+        "puros (Marangoni + Flagelar + EOS). Rugosidade e refinamento fisico, nao muleta "
+        "para motor insuficiente ou selecao competitiva ausente.\n\n"
+        "Se os frames ja validam a morfologia (Protocolo Sec.11 cumprido) e o usuario "
+        "decidiu explicitamente desbloquear, adicione o comentario "
         f'"{ESCAPE_MARKER}: <motivo>" no trecho editado.'
     )
     print(msg, file=sys.stderr)
     sys.exit(2)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

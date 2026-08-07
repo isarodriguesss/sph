@@ -12,11 +12,12 @@ do contexto por compactacao.
 
 Sem dependencias externas.
 """
+
 import json
 import re
 import sys
 
-RUN_RE = re.compile(r'\bmake\s+run(_view)?\b|\bpython[3]?\s+.*main\.py\b')
+RUN_RE = re.compile(r"\bmake\s+run(_view)?\b|\bpython[3]?\s+.*main\.py\b")
 
 
 def main():
@@ -25,27 +26,31 @@ def main():
     except Exception:
         return
 
-    if data.get('tool_name') != 'Bash':
+    if data.get("tool_name") != "Bash":
         return
 
-    command = (data.get('tool_input', {}) or {}).get('command', '') or ''
+    command = (data.get("tool_input", {}) or {}).get("command", "") or ""
     if not RUN_RE.search(command):
         return
 
     ctx = (
-        'Lembrete: este comando parece disparar uma simulacao SPH completa '
-        '(main.py). Simulacoes podem levar minutos a horas dependendo de '
-        'total_sim_time/resolucao/Pass N. Confirme com a usuaria antes de '
-        'rodar, e nunca inicie em background silenciosamente -- se for '
-        'genuinamente longa, use run_in_background so apos combinar isso.'
+        "Lembrete: este comando parece disparar uma simulacao SPH completa "
+        "(main.py). Simulacoes podem levar minutos a horas dependendo de "
+        "total_sim_time/resolucao/Pass N. Confirme com a usuaria antes de "
+        "rodar, e nunca inicie em background silenciosamente -- se for "
+        "genuinamente longa, use run_in_background so apos combinar isso."
     )
-    print(json.dumps({
-        'hookSpecificOutput': {
-            'hookEventName': 'PreToolUse',
-            'additionalContext': ctx,
-        }
-    }))
+    print(
+        json.dumps(
+            {
+                "hookSpecificOutput": {
+                    "hookEventName": "PreToolUse",
+                    "additionalContext": ctx,
+                }
+            }
+        )
+    )
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

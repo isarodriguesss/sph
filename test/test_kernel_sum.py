@@ -38,13 +38,13 @@ import glob
 import numpy as np
 from pysph.base.kernels import CubicSpline
 
-DX = 10.0 / 186.0        # main.py: (x_max-x_min)/(x_dim-1) = 10/186
-H = 1.8 * DX             # particles.py: h = 1.8·dx
-RHO0 = 1.0               # densidade de referencia (rede uniforme)
-M = DX * DX              # particles.py: m = dx·dx
-VOL = M / RHO0           # volume por particula = m/ρ
+DX = 10.0 / 186.0  # main.py: (x_max-x_min)/(x_dim-1) = 10/186
+H = 1.8 * DX  # particles.py: h = 1.8·dx
+RHO0 = 1.0  # densidade de referencia (rede uniforme)
+M = DX * DX  # particles.py: m = dx·dx
+VOL = M / RHO0  # volume por particula = m/ρ
 KERNEL = CubicSpline(dim=2)
-SUPPORT = KERNEL.radius_scale * H   # raio de suporte do kernel = 2h
+SUPPORT = KERNEL.radius_scale * H  # raio de suporte do kernel = 2h
 
 
 def sigma_a(px, py, xs, ys):
@@ -102,7 +102,9 @@ def real_data_section():
     sig_solver = f.sigma_a  # σ_a que o proprio KernelSum gravou
     hq = float(np.median(f.h))
     tree = cKDTree(np.column_stack([x, y]))
-    print(f"\n[PARTE 2] dados reais: {files[-1].split('/')[-1]}  N={len(x)}  h={hq:.4f}")
+    print(
+        f"\n[PARTE 2] dados reais: {files[-1].split('/')[-1]}  N={len(x)}  h={hq:.4f}"
+    )
 
     def sig_at(px, py):
         idx = tree.query_ball_point([px, py], SUPPORT)  # vizinhos em 2h
@@ -117,7 +119,9 @@ def real_data_section():
     ib = int(np.argmax(counts))  # a particula com MAIS vizinhos = bulk denso
     sig_mine, _ = sig_at(x[ib], y[ib])
     sig_solv = float(sig_solver[ib])
-    print(f"  (A) cross-check bulk: minha σ_a={sig_mine:.3f}  solver σ_a={sig_solv:.3f}")
+    print(
+        f"  (A) cross-check bulk: minha σ_a={sig_mine:.3f}  solver σ_a={sig_solv:.3f}"
+    )
 
     # ── (B) MIOLO DO BRACO: maior vazio dentro da colonia → σ_a ≈ 0.03 ──────
     g = np.linspace(-4.5, 4.5, 300)
@@ -131,8 +135,10 @@ def real_data_section():
         pv = pts[k]
         n_in_h = len(tree.query_ball_point(pv, hq))  # particulas dentro de h
         sig_void, n_in_2h = sig_at(pv[0], pv[1])
-        print(f"  (B) miolo do braco ({pv[0]:.2f},{pv[1]:.2f}): "
-              f"{n_in_h} part em h, {n_in_2h} em 2h → σ_a={sig_void:.3f}")
+        print(
+            f"  (B) miolo do braco ({pv[0]:.2f},{pv[1]:.2f}): "
+            f"{n_in_h} part em h, {n_in_2h} em 2h → σ_a={sig_void:.3f}"
+        )
     else:
         sig_void, n_in_h = 1.0, -1
         print("  (B) nenhum vazio largo encontrado (run com inserção na frontier?)")
@@ -140,12 +146,14 @@ def real_data_section():
     # ── (C) AGAR/NUCLEO preenchido: σ_a alto (tem dado) ─────────────────────
     icore = int(np.argmax(rho_b))  # centro do nucleo, denso
     sig_fill, _ = sig_at(x[icore], y[icore])
-    print(f"  (C) nucleo preenchido ({x[icore]:.2f},{y[icore]:.2f}): σ_a={sig_fill:.3f}")
+    print(
+        f"  (C) nucleo preenchido ({x[icore]:.2f},{y[icore]:.2f}): σ_a={sig_fill:.3f}"
+    )
 
     # ── Asseroes ─────────────────────────────────────────────────────────
-    a_xcheck = abs(sig_mine - sig_solv) < 0.05      # reimplementacao == solver
-    a_void = (n_in_h == 0) and (sig_void < 0.15)    # braco = vazio real
-    a_fill = sig_fill > 0.5                          # nucleo = tem suporte
+    a_xcheck = abs(sig_mine - sig_solv) < 0.05  # reimplementacao == solver
+    a_void = (n_in_h == 0) and (sig_void < 0.15)  # braco = vazio real
+    a_fill = sig_fill > 0.5  # nucleo = tem suporte
     print(f"  → cross-check reimplementacao==solver:  {'OK' if a_xcheck else 'FALHA'}")
     print(f"  → miolo do braco e vazio (σ_a<0.15):    {'OK' if a_void else 'FALHA'}")
     print(f"  → nucleo preenchido (σ_a>0.5):          {'OK' if a_fill else 'FALHA'}")
@@ -172,17 +180,23 @@ def main():
     keep = hy <= 1e-12
     sig_edge = sigma_a(0.0, 0.0, hx[keep], hy[keep])
 
-    print(f"dx={DX:.5f}  h={H:.5f}  suporte(2h)={SUPPORT:.5f}  W(0)={KERNEL.kernel([0,0,0],0,H):.3f}\n")
+    print(
+        f"dx={DX:.5f}  h={H:.5f}  suporte(2h)={SUPPORT:.5f}  W(0)={KERNEL.kernel([0, 0, 0], 0, H):.3f}\n"
+    )
     print(f"σ_a SUPORTE COMPLETO (rede uniforme)  = {sig_full:.4f}   (alvo ≈ 1)")
     print(f"σ_a VACUO (nenhum vizinho em 2h)      = {sig_void:.4f}   (alvo = 0)")
-    print(f"σ_a isolada (auto-termo W(0) apenas)  = {sig_isolated:.4f}   (piso, NAO chega a 0)")
-    print(f"σ_a superficie livre (borda plana)    = {sig_edge:.4f}   (~0.7, kernel truncado)")
+    print(
+        f"σ_a isolada (auto-termo W(0) apenas)  = {sig_isolated:.4f}   (piso, NAO chega a 0)"
+    )
+    print(
+        f"σ_a superficie livre (borda plana)    = {sig_edge:.4f}   (~0.7, kernel truncado)"
+    )
 
     # ── Asseroes ─────────────────────────────────────────────────────────
-    a_one = abs(sig_full - 1.0) < 0.02       # particao da unidade satisfeita
-    a_zero = sig_void == 0.0                  # vacuo exato
-    a_floor = 0.10 < sig_isolated < 0.20      # piso de auto-suporte, longe de 1
-    a_edge = 0.60 < sig_edge < 0.80           # auto-termo + metade inferior
+    a_one = abs(sig_full - 1.0) < 0.02  # particao da unidade satisfeita
+    a_zero = sig_void == 0.0  # vacuo exato
+    a_floor = 0.10 < sig_isolated < 0.20  # piso de auto-suporte, longe de 1
+    a_edge = 0.60 < sig_edge < 0.80  # auto-termo + metade inferior
 
     print("\n" + "=" * 60)
     print(f"σ_a ≈ 1 no suporte completo (|σ-1|<0.02):  {'OK' if a_one else 'FALHA'}")
@@ -191,8 +205,11 @@ def main():
     print(f"superficie livre ~0.7 (contexto):          {'OK' if a_edge else 'FALHA'}")
     ok_synth = a_one and a_zero and a_floor and a_edge
     print("-" * 60)
-    print("✅ [PARTE 1] KernelSum: 1 no bulk, 0 no vacuo — particao da unidade correta"
-          if ok_synth else "❌ [PARTE 1] revisar")
+    print(
+        "✅ [PARTE 1] KernelSum: 1 no bulk, 0 no vacuo — particao da unidade correta"
+        if ok_synth
+        else "❌ [PARTE 1] revisar"
+    )
 
     # ── PARTE 2: dados reais (skip se nao houver HDF5) ────────────────────
     real = real_data_section()
@@ -202,8 +219,11 @@ def main():
         print("✅ PARTE 1 OK (PARTE 2 pulada — sem HDF5)" if ok_synth else "❌ revisar")
         return 0 if ok_synth else 1
     ok = ok_synth and real
-    print("✅ σ_a distingue VAZIO REAL do braco (~0.03) de suporte pleno (~1)"
-          if ok else "❌ revisar")
+    print(
+        "✅ σ_a distingue VAZIO REAL do braco (~0.03) de suporte pleno (~1)"
+        if ok
+        else "❌ revisar"
+    )
     print("=" * 60)
     return 0 if ok else 1
 

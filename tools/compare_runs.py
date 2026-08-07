@@ -23,7 +23,7 @@ GUARDRAILS (violar reprova, independente de C1/C2):
   contrast_cs >= 12       motor vivo (§2.4 / §11)
   a_pressure <= 4.0       sem over-pack (licao #27)
   iteracoes <= 3000       custo de dt zero (licao #29)
-  massa <= teto+1%        inserir adiciona celulas; deve ser LIMITADO, nao nulo
+  massa nao acelerando    taxa 2a/1a metade <= 1.3 (runaway, licao #34)
 """
 
 import sys
@@ -33,17 +33,23 @@ import csv as _csv
 import numpy as np
 import h5py
 
-M_INITIAL = 101.08
-WAKE_MASS_BUDGET = 0.05
 GUARD = {
     "mean_v_min": 3e-4,
     "contrast_cs_min": 12.0,
     "a_pressure_max": 4.0,
-    "iter_max": 3000,
-    # teto implementado (+5%) + folga p/ BiomassGrowth apos o teto travar
-    "mass_max": M_INITIAL * (1.0 + WAKE_MASS_BUDGET) + 0.01 * M_INITIAL,
+    # Alvo: colapso de dt (licao #29 = 85x/35x), NAO variacao normal. Baseline S4
+    # = 2933 iter; 6000 e ~2x isso — pega colapso real sem reprovar +9%.
+    "iter_max": 6000,
 }
+# O teto absoluto de massa era amarrado a um WAKE_MASS_BUDGET especifico e ficava
+# obsoleto sempre que a rodada mudava o orcamento. O que importa e RUNAWAY: taxa de
+# massa ACELERANDO (licao #34) vs limitada. Teste independente de configuracao.
+MASS_ACCEL_MAX = 1.3
 SIG_MIN = 0.85
+# Rodada que morreu cedo tem log so com as primeiras linhas; sem este guarda ela
+# aparece com vazio 0% / sig_all 1.0 (valores de t=0) e VENCE o ranking.
+EXPECTED_T = 50.0
+MIN_T_FRAC = 0.9
 
 
 def read_log(run):
@@ -81,7 +87,14 @@ def void_from_hdf5(run, thresholds=(0.7, 1.0, 1.5), n_grid=400):
     R = float(np.percentile(np.hypot(x, y)[colony], 99))
     g = np.linspace(-R, R, n_grid)
     GX, GY = np.meshgrid(g, g)
-    ins = (GX * GX + GY * GY) <= R * R
+    # recorta ao dominio (inferido dos dados): fora dele nao ha particula
+    xlim = float(np.max(np.abs(x)))
+    ylim = float(np.max(np.abs(y)))
+    ins = (
+        (GX * GX + GY * GY <= R * R)
+        & (np.abs(GX) <= xlim)
+        & (np.abs(GY) <= ylim)
+    )
     d, _ = cKDTree(np.column_stack([x, y])).query(
         np.column_stack([GX[ins], GY[ins]])
     )
@@ -180,7 +193,17 @@ def metrics(run):
         "contrast_cs": np.mean([c(r, "constrast_cs") for r in tail]),
         "a_mar": np.mean([c(r, "a_marangoni") for r in tail]),
         "a_press": max(c(r, "a_pressure") for r in tail),
+        "m0": c(rows[0], "mass_total", 1.0),
     }
+    _t = [c(r, "t") for r in rows]
+    _m = [c(r, "mass_total") for r in rows]
+    _h = len(_t) // 2
+    if len(_t) > 3 and _t[_h] > _t[0] and _t[-1] > _t[_h]:
+        _d1 = (_m[_h] - _m[0]) / (_t[_h] - _t[0])
+        _d2 = (_m[-1] - _m[_h]) / (_t[-1] - _t[_h])
+        m["mass_accel"] = _d2 / max(_d1, 1e-9)
+    else:
+        m["mass_accel"] = 0.0
 
     if "mean_sig_all" in last:
         m["sig_bio"] = c(last, "mean_sig_bio")
@@ -218,6 +241,8 @@ def metrics(run):
 def evaluate(m):
     """Retorna (falhas_guardrail, falhas_criterio)."""
     g = []
+    if m["t"] < MIN_T_FRAC * EXPECTED_T:
+        g.append(f"INCOMPLETA t={m['t']:.1f}<{MIN_T_FRAC * EXPECTED_T:.0f}")
     if m["mean_v"] < GUARD["mean_v_min"]:
         g.append(f"mean_v={m['mean_v']:.1e}")
     if m["contrast_cs"] < GUARD["contrast_cs_min"]:
@@ -226,8 +251,10 @@ def evaluate(m):
         g.append(f"a_press={m['a_press']:.1f}")
     if m["iter"] > GUARD["iter_max"]:
         g.append(f"iter={m['iter']}")
-    if m["mass"] > GUARD["mass_max"]:
-        g.append(f"massa={m['mass']:.1f}>{GUARD['mass_max']:.1f}")
+    if m["mass_accel"] > MASS_ACCEL_MAX:
+        g.append(
+            f"massa NAO CONVERGIDA (taxa 2a/1a metade={m['mass_accel']:.2f})"
+        )
 
     c = []
     if not (m["sig_all"] >= SIG_MIN):
@@ -244,7 +271,7 @@ def main(runs):
     hdr = (f"{'run':<5}{'t':>6}│{'VOID>1.5dx':>11}{'area(dx²)':>10}{'>1.0dx':>8}"
            f"{'>0.7dx':>8}{'R':>6}│{'sig_all':>8}{'low_all':>8}│"
            f"{'aMarMed':>8}{'aMarP95':>8}{'cs_bio':>8}{'c_n_bio':>8}│"
-           f"{'massa':>7}{'mean_v':>9}{'a_pr':>6}")
+           f"{'massa':>7}{'m.acel':>7}{'mean_v':>9}{'a_pr':>6}")
     print(__doc__.split("CRITERIOS")[1].split("GUARDRAILS")[0].strip())
     print()
     print("C1 e reportado como FRACAO e como AREA ABSOLUTA (em dx², ~n de particulas)")
@@ -259,7 +286,8 @@ def main(runs):
             f"{m['v10']:>8.2%}{m['v07']:>8.2%}{m['R']:>6.2f}│{m['sig_all']:>8.3f}"
             f"{m['low_all']:>8.1%}│{m['amed']:>8.2f}{m['ap95']:>8.2f}"
             f"{m['csb']:>8.4f}{m['cnb']:>8.3f}│"
-            f"{m['mass']:>7.1f}{m['mean_v']:>9.1e}{m['a_press']:>6.1f}"
+            f"{m['mass']:>7.1f}{m['mass_accel']:>7.2f}{m['mean_v']:>9.1e}"
+            f"{m['a_press']:>6.1f}"
         )
         if g or c:
             print(f"      └─ REPROVA: {'; '.join(c + g)}")

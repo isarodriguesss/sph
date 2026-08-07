@@ -9,7 +9,7 @@ import os
 
 TARGET_FRAMES = 40  # nao gera frame para TODO snapshot — subamostra ~40 + o ultimo
 rho0 = 1.0  # densidade de referência SPH
-DOMAIN = (-5.0, 5.0)  # janela = dominio cheio (braços chegam a r~4.5; [-3,3] cortava)
+DOMAIN = (-7.0, 7.0)  # janela = dominio cheio (expandido 2026-08-06)
 MARKER = 15  # tamanho do ponto: 1-particula-de-largura le como braço conectado
 
 # --- Footprint temporal (Parte 2): acumula a biomassa ocupada ao longo do run ---

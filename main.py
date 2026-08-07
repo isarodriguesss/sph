@@ -37,7 +37,15 @@ def void_fraction(x, y, rho_b, dx, thresholds=(0.7, 1.0, 1.5), n_grid=200):
         return {t: 0.0 for t in thresholds}
     g = np.linspace(-R, R, n_grid)
     GX, GY = np.meshgrid(g, g)
-    inside = (GX * GX + GY * GY) <= R * R
+    # Recorta ao DOMINIO: quando a colonia passa da parede, o disco de raio R cobre
+    # regiao sem particula por construcao e isso seria contado como vacuo fisico.
+    inside = (
+        (GX * GX + GY * GY <= R * R)
+        & (np.abs(GX) <= x_max_domain)
+        & (np.abs(GY) <= y_max_domain)
+    )
+    if not np.any(inside):
+        return {t: 0.0 for t in thresholds}
     d, _ = cKDTree(np.column_stack([x, y])).query(
         np.column_stack([GX[inside], GY[inside]])
     )
@@ -80,12 +88,18 @@ LOG_HEADER = [
     "a_mar_bio_p95",
     "cs_bio_arms",
     "c_n_bio_arms",
+    "biomass_total",
+    "biomass_arms",
+    "n_pinned",
 ]
 
-x_dim, y_dim = 187, 187
+# Dominio expandido 2026-08-06: em [-5,5] a colonia rompia a parede em t~51s
+# (R_p99=6.40, 228 particulas alem de 4.8) — Bloqueio H / licao M-B.10.
+# 261 preserva dx: 14/260 = 0.05385 vs 10/186 = 0.05376.
+x_dim, y_dim = 261, 261
 
-x_min_domain, x_max_domain = -5.0, 5.0
-y_min_domain, y_max_domain = -5.0, 5.0
+x_min_domain, x_max_domain = -7.0, 7.0
+y_min_domain, y_max_domain = -7.0, 7.0
 
 dx = (x_max_domain - x_min_domain) / (x_dim - 1)
 
@@ -114,7 +128,7 @@ dt_global = 0.001
 total_sim_time = 50.0
 print_freq = 200
 
-SEED = 20260806
+SEED = 20260806 #lembrar de remover
 
 trajectory_store_interval = 20
 
@@ -151,7 +165,7 @@ WAKE_MAX = 150
 WAKE_MODE = 2
 WAKE_CLUSTER_MAX = 7
 WAKE_RING_RATIO = 0.75
-WAKE_MASS_BUDGET = 0.05
+WAKE_MASS_BUDGET = 0.12
 # Rota C (ABORTADA 2026-08-06) — realocar agar ocioso conservaria massa, MAS o agar
 # tem pressao ZERO (BiomassEOS: fade_rep=fade_att=0 para rho_b<0.1), entao o buraco
 # deixado pelo doador NAO cicatriza: cada doacao e uma puncao permanente no campo.
@@ -179,6 +193,7 @@ class SwarmApp(Application):
             None  # snapshot da massa total em t=0 (preenchido em post_step)
         )
         self._pass_n_spawned_since_log = 0  # acumula spawns entre linhas de log
+        self._wake_mass_added = 0.0  # so o que o WAKE adicionou (nao BiomassGrowth)
 
     def create_particles(self):
         np.random.seed(SEED)
@@ -385,6 +400,13 @@ class SwarmApp(Application):
 
             # Motor medido SO na biomassa real: 'a_marangoni' acima e um MAXIMO
             # (invariante #1 do §9 — max e cego ao tipico).
+            # Biomassa REAL (exclui filler) e contagem de pinados: n_pinned e o
+            # teste direto da maturacao dos braços em nucleo (licao #18/#41).
+            _real = fluid.is_filler < 0.5
+            _vol = fluid.m[_real] / np.maximum(fluid.rho[_real], 1e-9)
+            biomass_total = float(np.sum(fluid.rho_b_grown[_real] * _vol))
+            n_pinned = int(np.sum(fluid.rho_b_grown >= 0.8))
+
             _bio = (fluid.rho_b_grown > 0.1) & (fluid.is_filler < 0.5)
             if int(np.sum(_bio)) > 0:
                 _r = np.hypot(fluid.x, fluid.y)
@@ -395,10 +417,18 @@ class SwarmApp(Application):
                 if int(np.sum(_arm)) > 0:
                     cs_bio_arms = float(np.mean(fluid.cs[_arm]))
                     c_n_bio_arms = float(np.mean(fluid.c_n[_arm]))
+                    biomass_arms = float(
+                        np.sum(
+                            fluid.rho_b_grown[_arm]
+                            * fluid.m[_arm]
+                            / np.maximum(fluid.rho[_arm], 1e-9)
+                        )
+                    )
                 else:
-                    cs_bio_arms = c_n_bio_arms = 0.0
+                    cs_bio_arms = c_n_bio_arms = biomass_arms = 0.0
             else:
                 a_mar_bio_med = a_mar_bio_p95 = cs_bio_arms = c_n_bio_arms = 0.0
+                biomass_arms = 0.0
 
             print("-" * 50)
             print(f"Tempo: {solver.t:.2f}s | Iteração: {solver.count}")
@@ -421,6 +451,10 @@ class SwarmApp(Application):
                 f"motor na biomassa: a_mar med={a_mar_bio_med:.3f} "
                 f"p95={a_mar_bio_p95:.2f} | bracos: cs={cs_bio_arms:.4f} "
                 f"c_n={c_n_bio_arms:.3f}   (S0: med=3.38 p95=9.46 cs=0.353 c_n=0.552)"
+            )
+            print(
+                f"biomassa real: total={biomass_total:.4f} bracos={biomass_arms:.4f}"
+                f" | n_pinned(rho_b>=0.8)={n_pinned}"
             )
             print("Acelerações:")
             print(f"  > Marangoni (líq): {a_mar:.2f}")
@@ -465,6 +499,9 @@ class SwarmApp(Application):
                         f"{a_mar_bio_p95:.4f}",
                         f"{cs_bio_arms:.5f}",
                         f"{c_n_bio_arms:.4f}",
+                        f"{biomass_total:.5f}",
+                        f"{biomass_arms:.5f}",
+                        n_pinned,
                     ]
                 )
                 self._pass_n_spawned_since_log = 0  # reseta após registrar
@@ -757,9 +794,12 @@ class SwarmApp(Application):
                 (fluid.rho_b_grown > WAKE_RHO_B_MIN) & (disp >= WAKE_DISP * dx)
             )[0]
 
+            # Conta so a massa que o WAKE adicionou. Antes comparava a massa TOTAL,
+            # entao com a biologia ativa o BiomassGrowth sozinho estouraria o teto e
+            # o wake morreria por um motivo alheio a ele.
             budget_ok = (
                 self._m_initial is None
-                or float(np.sum(fluid.m)) < (1.0 + WAKE_MASS_BUDGET) * self._m_initial
+                or self._wake_mass_added < WAKE_MASS_BUDGET * self._m_initial
             )
             if not budget_ok:
                 wake_idx = np.array([], dtype=int)
@@ -886,6 +926,7 @@ class SwarmApp(Application):
                                 f"agar realocado (pool={len(donor_pool)})"
                             )
                     else:
+                        inserted = fluid.empty_clone()
                         data = {
                             "x": new_x,
                             "y": new_y,
@@ -908,6 +949,7 @@ class SwarmApp(Application):
                         fluid.append_parray(inserted)
                         solver.nnps.update()
 
+                        self._wake_mass_added += n_ins * m_target
                         self._pass_n_spawned_since_log += n_ins
                         print(
                             f"wake inserção t={solver.t:.1f}s: {n_ins} inseridas"

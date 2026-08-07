@@ -21,7 +21,7 @@ import matplotlib.pyplot as plt
 import matplotlib.image as mpimg
 import h5py
 
-DOMAIN = (-5.0, 5.0)
+DOMAIN = None  # inferido por rodada (rodadas antigas [-5,5], novas [-7,7])
 MARKER = 15
 
 # Escalas FIXAS — identicas em todas as rodadas (requisito da comparacao)
@@ -232,9 +232,10 @@ def main(argv):
         ax.set_facecolor("black")
         ax.set_title(f"{name} — cs (só partículas químicas)")
 
+        lim = max(float(np.max(np.abs(x))), float(np.max(np.abs(y))))
         for j in range(4):
-            axes[r, j].set_xlim(*DOMAIN)
-            axes[r, j].set_ylim(*DOMAIN)
+            axes[r, j].set_xlim(-lim, lim)
+            axes[r, j].set_ylim(-lim, lim)
             axes[r, j].set_aspect("equal")
 
     plt.tight_layout()

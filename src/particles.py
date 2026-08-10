@@ -31,7 +31,11 @@ def create_initial_state(
     dist = np.sqrt((X_grid - center_x) ** 2 + (Y_grid - center_y) ** 2)
     theta = np.arctan2(Y_grid - center_y, X_grid - center_x)
 
-    # revisar
+    # A 4a potencia faz um quase top-hat: rho_b cai de 1.0 a 0.15 entre r=0.3 e 0.45
+    # e a ZERO em r=0.6. Isso deixa a borda do nucleo sem biomassa desde t=0 e nada
+    # a repoe depois. Suavizar (I1: p=2, R=0.45) CURA a borda mas mata o motor:
+    # +2.5x biomassa -> cs mais uniforme -> a_mar 2.30->0.75 e morfologia vira
+    # Circular (licao #48). O perfil agudo e o preco da seletividade dendritica.
     R_theta = 0.30 + 0.06 * np.cos(8 * theta)
     rho_b = np.exp(-((dist / R_theta) ** 4))
 

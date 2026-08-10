@@ -95,6 +95,9 @@ LOG_HEADER = [
     "frac_clump",
     "nn_median",
     "n_shift_gate",
+    "c_n_junc",
+    "rho_b_junc",
+    "rho_b_dip",
 ]
 
 # Dominio expandido 2026-08-06: em [-5,5] a colonia rompia a parede em t~51s
@@ -136,7 +139,7 @@ print_freq = 200
 # Fixar um inteiro torna a rodada bit-reproduzivel — OBRIGATORIO ao comparar rotas
 # (§2.5): sem semente, diferencas de ate ~9 pontos percentuais em metricas de
 # amostra pequena (n_bio ~70-90) nao sao atribuiveis ao mecanismo.
-SEED = None
+SEED = 20260806  # serie K: comparacao com C4 exige mesma semente (§2.5)
 
 trajectory_store_interval = 20
 
@@ -156,6 +159,18 @@ KGC_DET_MIN = 0.25
 # S4 = transparencia quimica de cs (sempre ativa em equations.py)
 # S5 = + filler nao consome nutriente (alavanca isolada)
 FILLER_NUTRIENT_TRANSPARENT = 0
+
+# Rota D1 — difusao de biomassa DENTRO da fase densa, p/ curar o degrau da junção.
+# Gate rho_b_i*rho_b_j anula o fluxo na interface colonia-agar (nao borra os braços).
+# 0.0 = desligado. Estimativa: L_D = sqrt(D_b*t); 0.008 da ~0.5 em 30s no corpo denso.
+D_b = 0.0  # D1 REPROVADO: destruiu o nucleo (rho_b 1.0->0.48, n_pinned 43->0)
+
+# K1 — colonizacao: relaxacao UNILATERAL de rho_b em direcao a vizinhanca. Cura os
+# ~9700 buracos nao-colonizados DENTRO dos braços (59.5% das particulas com rho_b=0
+# no interior) sem drenar o nucleo (so soma) nem preencher as baias (auto-gateada
+# pela vizinhanca vazia). Gate de c_n limita a colonizacao a onde ha nutriente.
+# k_col=0.03 (1.5x r_growth): buraco vai de 0 a ~0.29 em 50 s.
+k_col = 0.3
 
 use_insert = True
 INSERT_FREQ = 200
@@ -243,6 +258,7 @@ class SwarmApp(Application):
                 pa.add_property("grad_co_y")
                 pa.add_property("sigma_a")
                 pa.sigma_a[:] = 1.0
+                pa.add_property("rho_b_smooth")
                 pa.add_property("shift_dC_x")
                 pa.add_property("shift_dC_y")
                 pa.add_property("shift_x")
@@ -332,6 +348,8 @@ class SwarmApp(Application):
             use_kgc=use_kgc,
             kgc_det_min=KGC_DET_MIN,
             filler_nutrient_transparent=FILLER_NUTRIENT_TRANSPARENT,
+            D_b=D_b,
+            k_col=k_col,
         )
 
     def create_solver(self):
@@ -432,6 +450,34 @@ class SwarmApp(Application):
                 frac_clump = 0.0
                 nn_median = 1.0
 
+            # Junção nucleo-braço (r 0.4-1.2): onde o degrau de rho_b aparece.
+            # rho_b_dip = minimo do perfil AO LONGO dos braços (nao media azimutal,
+            # que mistura braço com baia e da a falsa impressao de desconexao).
+            _ju = (_rr >= 0.4) & (_rr < 1.2)
+            c_n_junc = float(np.mean(fluid.c_n[_ju])) if np.any(_ju) else 0.0
+            rho_b_junc = (
+                float(np.percentile(fluid.rho_b_grown[_ju], 90))
+                if np.any(_ju) else 0.0
+            )
+            _th = np.arctan2(fluid.y, fluid.x)
+            _arm = (_rr > 2.0) & (_rr < 3.0) & (fluid.rho_b_grown > 0.3)
+            rho_b_dip = 1.0
+            if int(np.sum(_arm)) > 20:
+                _h, _e = np.histogram(_th[_arm], bins=72, range=(-np.pi, np.pi))
+                for _b in np.argsort(_h)[-4:]:
+                    _c = 0.5 * (_e[_b] + _e[_b + 1])
+                    _in = (
+                        np.abs(((_th - _c + np.pi) % (2 * np.pi)) - np.pi)
+                        < np.deg2rad(9)
+                    )
+                    _prof = []
+                    for _r0 in np.arange(0.4, 2.0, 0.2):
+                        _m = _in & (np.abs(_rr - _r0) < 0.2)
+                        if np.any(_m):
+                            _prof.append(float(np.max(fluid.rho_b_grown[_m])))
+                    if _prof:
+                        rho_b_dip = min(rho_b_dip, min(_prof))
+
             # quantas particulas o ParticleShift efetivamente processa (gate de c_n)
             n_shift_gate = int(
                 np.sum(
@@ -499,6 +545,10 @@ class SwarmApp(Application):
                 f"empacotamento: clump(<0.5dx)={frac_clump:.1%} "
                 f"nn_mediana={nn_median:.3f}dx | shift processa {n_shift_gate} part."
             )
+            print(
+                f"junção: c_n={c_n_junc:.3f} rho_b_p90={rho_b_junc:.3f} | "
+                f"vale ao longo do braço={rho_b_dip:.3f}   (alvo: > 0.5)"
+            )
             print("Acelerações:")
             print(f"  > Marangoni (líq): {a_mar:.2f}")
             print(f"  > Drag:            {a_drag:.2f} (Freio)")
@@ -548,6 +598,9 @@ class SwarmApp(Application):
                         f"{frac_clump:.4f}",
                         f"{nn_median:.4f}",
                         n_shift_gate,
+                        f"{c_n_junc:.4f}",
+                        f"{rho_b_junc:.4f}",
+                        f"{rho_b_dip:.4f}",
                     ]
                 )
                 self._pass_n_spawned_since_log = 0  # reseta após registrar

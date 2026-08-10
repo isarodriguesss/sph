@@ -6,6 +6,8 @@ from pysph.sph.equation import Group
 from pysph.sph.basic_equations import SummationDensity
 from pysph.sph.wc.basic import MomentumEquation
 from .equations import (
+    BiomassColonization,
+    BiomassDiffusion,
     BiomassEOS,
     BiomassGrowth,
     FlagellarForce,
@@ -108,8 +110,12 @@ class MyBiomassScheme(Scheme):
         use_kgc=False,
         kgc_det_min=0.25,
         filler_nutrient_transparent=0,
+        D_b=0.0,
+        k_col=0.0,
     ):
         self.filler_nutrient_transparent = filler_nutrient_transparent
+        self.D_b = D_b
+        self.k_col = k_col
         self.use_shift = use_shift
         self.shift_coeff = shift_coeff
         self.shift_cap = shift_cap
@@ -173,6 +179,15 @@ class MyBiomassScheme(Scheme):
                     sources=None,
                     r_growth=self.r_growth,
                     rho_max=self.rho_max,
+                ),
+                BiomassColonization(
+                    dest="fluid",
+                    sources=["fluid"],
+                    k_col=self.k_col,
+                    rho_max=self.rho_max,
+                ),
+                BiomassDiffusion(
+                    dest="fluid", sources=["fluid"], D_b=self.D_b
                 ),
                 # BiomassGradient DEVE vir antes de MarangoniForce
                 # (Marangoni usa grad_rho_b_mag como gate de interface)

@@ -42,6 +42,123 @@ class BiomassGrowth(Equation):
             d_am[d_idx] = rate * d_m[d_idx]
 
 
+class BiomassColonization(Equation):
+    """Invasao de espaco vazio por biomassa vizinha.
+
+    O crescimento de BiomassGrowth e MULTIPLICATIVO pela propria biomassa
+    (`d_a_rho_b = rate * rho_b`), entao uma particula com rho_b = 0 tem crescimento
+    exatamente zero PARA SEMPRE, por mais biomassa que exista em volta. Medido em
+    C4: 59.5% das particulas com rho_b=0 dentro da colonia (~9700) estao cercadas
+    de biomassa densa — sao buracos nao-colonizados DENTRO dos braços.
+
+    Biologicamente a lacuna e a divisao celular: a filha ocupa o espaco vizinho.
+
+    Forma: relaxacao UNILATERAL em direcao ao valor da vizinhanca,
+
+        d_rho_b/dt += k_col * c_n_factor * max(0, rho_b_local - rho_b)
+
+    com `rho_b_local` interpolado por Shepard (sigma_a e o denominador, ja
+    calculado por KernelSum no Group anterior).
+
+    Duas propriedades que a tornam segura:
+
+    1. UNILATERAL (so soma, nunca subtrai) — o nucleo nunca drena. E a diferenca
+       essencial em relacao a difusao (D1), que esvaziou o nucleo de rho_b=1.0
+       para 0.48 e zerou o hard pin.
+    2. AUTO-GATEADA pela vizinhanca — numa baia, `rho_b_local ~ 0`, entao nao ha
+       colonizacao e a morfologia dendritica e preservada por construcao.
+    """
+
+    def __init__(self, dest, sources, k_col, rho_max):
+        self.k_col = k_col
+        self.rho_max = rho_max
+        super(BiomassColonization, self).__init__(dest, sources)
+
+    def initialize(self, d_idx, d_rho_b_smooth):
+        d_rho_b_smooth[d_idx] = 0.0
+
+    def loop(self, d_idx, s_idx, s_m, s_rho, s_rho_b_grown, WIJ, d_rho_b_smooth):
+        d_rho_b_smooth[d_idx] += (s_m[s_idx] / s_rho[s_idx]) * s_rho_b_grown[s_idx] * WIJ
+
+    def post_loop(
+        self,
+        d_idx,
+        d_rho_b_smooth,
+        d_sigma_a,
+        d_rho_b_grown,
+        d_a_rho_b_grown,
+        d_am,
+        d_m,
+        d_c_n,
+        d_is_filler,
+    ):
+        if d_rho_b_grown[d_idx] < 0.8 and d_is_filler[d_idx] < 0.5:
+            sig = d_sigma_a[d_idx]
+            if sig < 0.1:  # suporte de kernel degradado: nao confiar na media
+                sig = 0.1
+            local = d_rho_b_smooth[d_idx] / sig
+            deficit = local - d_rho_b_grown[d_idx]
+            if deficit > 0.0:
+                c_n = d_c_n[d_idx]
+                if c_n < 0.4:
+                    c_n_factor = 0.0
+                elif c_n > 0.8:
+                    c_n_factor = 1.0
+                else:
+                    t = (c_n - 0.4) / 0.4
+                    c_n_factor = t * t * (3.0 - 2.0 * t)
+
+                rate = self.k_col * c_n_factor * deficit
+                d_a_rho_b_grown[d_idx] += rate
+                d_am[d_idx] += rate * d_m[d_idx]
+
+
+class BiomassDiffusion(Equation):
+    """Redistribuicao de biomassa DENTRO da fase densa (Rota D1).
+
+    O degrau de rho_b na juncao nucleo-braco e um artefato de historia: o nucleo
+    esta pinado e nao cresce, os bracos levaram a biomassa para fora, e rho_b nao
+    tem nenhum termo de transporte alem da adveccao. Nada reequilibra o campo.
+
+    Fundamentacao: [T2] Srinivasan 2019 trata a colonia como duas fases (ativa +
+    passiva) com balanco de massa/momento, o que inclui FLUXO da fase ativa. Um
+    Laplaciano de Brookshaw e a forma discreta desse fluxo.
+
+    O gate `rho_b_i * rho_b_j` (produto, nao media) faz o coeficiente cair a zero
+    na interface colonia-agar: so ha fluxo onde AMBAS as particulas sao densas.
+    Sem isso a difusao borraria os bracos para dentro das baias e destruiria a
+    morfologia dendritica (o mesmo modo de falha da licao #31).
+    """
+
+    def __init__(self, dest, sources, D_b):
+        self.D_b = D_b
+        super(BiomassDiffusion, self).__init__(dest, sources)
+
+    def loop(
+        self,
+        d_idx,
+        s_idx,
+        s_m,
+        s_rho,
+        d_rho_b_grown,
+        s_rho_b_grown,
+        d_a_rho_b_grown,
+        d_h,
+        RIJ,
+        XIJ,
+        DWIJ,
+    ):
+        gate = d_rho_b_grown[d_idx] * s_rho_b_grown[s_idx]
+        if gate > 0.01:
+            rb_ij = d_rho_b_grown[d_idx] - s_rho_b_grown[s_idx]
+            rij_sq = RIJ**2 + 0.01 * d_h[d_idx] ** 2
+            dot = XIJ[0] * DWIJ[0] + XIJ[1] * DWIJ[1]
+            vol_j = s_m[s_idx] / s_rho[s_idx]
+            d_a_rho_b_grown[d_idx] += (
+                2.0 * self.D_b * gate * vol_j * (rb_ij / rij_sq) * dot
+            )
+
+
 class BiomassGradient(Equation):
     def initialize(self, d_idx, d_grad_rho_b_x, d_grad_rho_b_y):
         d_grad_rho_b_x[d_idx] = 0.0

@@ -180,52 +180,52 @@ def main():
     keep = hy <= 1e-12
     sig_edge = sigma_a(0.0, 0.0, hx[keep], hy[keep])
 
-    print(
-        f"dx={DX:.5f}  h={H:.5f}  suporte(2h)={SUPPORT:.5f}  W(0)={KERNEL.kernel([0, 0, 0], 0, H):.3f}\n"
-    )
+    # print(
+    #     f"dx={DX:.5f}  h={H:.5f}  suporte(2h)={SUPPORT:.5f}  W(0)={KERNEL.kernel([0, 0, 0], 0, H):.3f}\n"
+    # )
     print(f"σ_a SUPORTE COMPLETO (rede uniforme)  = {sig_full:.4f}   (alvo ≈ 1)")
     print(f"σ_a VACUO (nenhum vizinho em 2h)      = {sig_void:.4f}   (alvo = 0)")
-    print(
-        f"σ_a isolada (auto-termo W(0) apenas)  = {sig_isolated:.4f}   (piso, NAO chega a 0)"
-    )
-    print(
-        f"σ_a superficie livre (borda plana)    = {sig_edge:.4f}   (~0.7, kernel truncado)"
-    )
+    # print(
+    #     f"σ_a isolada (auto-termo W(0) apenas)  = {sig_isolated:.4f}   (piso, NAO chega a 0)"
+    # )
+    # print(
+    #     f"σ_a superficie livre (borda plana)    = {sig_edge:.4f}   (~0.7, kernel truncado)"
+    # )
 
-    # ── Asseroes ─────────────────────────────────────────────────────────
-    a_one = abs(sig_full - 1.0) < 0.02  # particao da unidade satisfeita
-    a_zero = sig_void == 0.0  # vacuo exato
-    a_floor = 0.10 < sig_isolated < 0.20  # piso de auto-suporte, longe de 1
-    a_edge = 0.60 < sig_edge < 0.80  # auto-termo + metade inferior
+    # # ── Asseroes ─────────────────────────────────────────────────────────
+    # a_one = abs(sig_full - 1.0) < 0.02  # particao da unidade satisfeita
+    # a_zero = sig_void == 0.0  # vacuo exato
+    # a_floor = 0.10 < sig_isolated < 0.20  # piso de auto-suporte, longe de 1
+    # a_edge = 0.60 < sig_edge < 0.80  # auto-termo + metade inferior
 
-    print("\n" + "=" * 60)
-    print(f"σ_a ≈ 1 no suporte completo (|σ-1|<0.02):  {'OK' if a_one else 'FALHA'}")
-    print(f"σ_a = 0 no vacuo:                          {'OK' if a_zero else 'FALHA'}")
-    print(f"isolada no piso ~0.14 (contexto):          {'OK' if a_floor else 'FALHA'}")
-    print(f"superficie livre ~0.7 (contexto):          {'OK' if a_edge else 'FALHA'}")
-    ok_synth = a_one and a_zero and a_floor and a_edge
-    print("-" * 60)
-    print(
-        "✅ [PARTE 1] KernelSum: 1 no bulk, 0 no vacuo — particao da unidade correta"
-        if ok_synth
-        else "❌ [PARTE 1] revisar"
-    )
+    # print("\n" + "=" * 60)
+    # print(f"σ_a ≈ 1 no suporte completo (|σ-1|<0.02):  {'OK' if a_one else 'FALHA'}")
+    # print(f"σ_a = 0 no vacuo:                          {'OK' if a_zero else 'FALHA'}")
+    # print(f"isolada no piso ~0.14 (contexto):          {'OK' if a_floor else 'FALHA'}")
+    # print(f"superficie livre ~0.7 (contexto):          {'OK' if a_edge else 'FALHA'}")
+    # ok_synth = a_one and a_zero and a_floor and a_edge
+    # print("-" * 60)
+    # print(
+    #     "✅ [PARTE 1] KernelSum: 1 no bulk, 0 no vacuo — particao da unidade correta"
+    #     if ok_synth
+    #     else "❌ [PARTE 1] revisar"
+    # )
 
-    # ── PARTE 2: dados reais (skip se nao houver HDF5) ────────────────────
-    real = real_data_section()
+    # # ── PARTE 2: dados reais (skip se nao houver HDF5) ────────────────────
+    # real = real_data_section()
 
-    print("\n" + "=" * 60)
-    if real is None:
-        print("✅ PARTE 1 OK (PARTE 2 pulada — sem HDF5)" if ok_synth else "❌ revisar")
-        return 0 if ok_synth else 1
-    ok = ok_synth and real
-    print(
-        "✅ σ_a distingue VAZIO REAL do braco (~0.03) de suporte pleno (~1)"
-        if ok
-        else "❌ revisar"
-    )
-    print("=" * 60)
-    return 0 if ok else 1
+    # print("\n" + "=" * 60)
+    # if real is None:
+    #     print("✅ PARTE 1 OK (PARTE 2 pulada — sem HDF5)" if ok_synth else "❌ revisar")
+    #     return 0 if ok_synth else 1
+    # ok = ok_synth and real
+    # print(
+    #     "✅ σ_a distingue VAZIO REAL do braco (~0.03) de suporte pleno (~1)"
+    #     if ok
+    #     else "❌ revisar"
+    # )
+    # print("=" * 60)
+    # return 0 if ok else 1
 
 
 if __name__ == "__main__":

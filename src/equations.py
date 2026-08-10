@@ -201,10 +201,6 @@ class KernelSum(Equation):
             rho_safe = 1e-6
         d_sigma_a[d_idx] += (s_m[s_idx] / rho_safe) * WIJ
 
-        # fazer teste sem particulas vizinhas e com quantidade padrao de particulas
-        # pensar em um valor default para regiões nao parecem ter partículas
-        # pensar uma inserção de partículas que nao interfira nas restantes
-
 
 class KernelGradientCorrection(Equation):
     def __init__(self, dest, sources, det_min=0.25):
@@ -264,8 +260,9 @@ class ParticleShift(Equation):
         d_shift_dC_y[d_idx] = 0.0
 
     def loop(self, d_idx, s_idx, s_m, s_rho, DWIJ, d_shift_dC_x, d_shift_dC_y):
+        # gradiente da "concentração de partículas"
         vol_j = s_m[s_idx] / s_rho[s_idx]
-        d_shift_dC_x[d_idx] += vol_j * DWIJ[0]
+        d_shift_dC_x[d_idx] += vol_j * DWIJ[0] 
         d_shift_dC_y[d_idx] += vol_j * DWIJ[1]
 
     def post_loop(
@@ -287,7 +284,7 @@ class ParticleShift(Equation):
         if rho_b >= self.rho_b_min and rho_b < self.rho_b_pin:
             h = d_h[d_idx]
             D = self.shift_coeff * h * h
-            sx = -D * d_shift_dC_x[d_idx]
+            sx = -D * d_shift_dC_x[d_idx] # O sinal negativo manda a partícula para longe do aglomerado, em direção ao buraco
             sy = -D * d_shift_dC_y[d_idx]
 
             mag = (sx * sx + sy * sy) ** 0.5

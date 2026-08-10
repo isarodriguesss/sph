@@ -170,7 +170,7 @@ D_b = 0.0  # D1 REPROVADO: destruiu o nucleo (rho_b 1.0->0.48, n_pinned 43->0)
 # no interior) sem drenar o nucleo (so soma) nem preencher as baias (auto-gateada
 # pela vizinhanca vazia). Gate de c_n limita a colonizacao a onde ha nutriente.
 # k_col=0.03 (1.5x r_growth): buraco vai de 0 a ~0.29 em 50 s.
-k_col = 0.3
+k_col = 0.0  # K2 REPROVADO: halo preenchido mas a_mar 2.05->0.13 (biomassa 4.6x)
 
 use_insert = True
 INSERT_FREQ = 200

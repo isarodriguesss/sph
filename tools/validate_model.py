@@ -71,8 +71,13 @@ def count_fingers(fr):
     """Picos locais no perfil angular da frente (circular)."""
     f = fr - fr.mean()
     n = len(f)
-    return int(sum(1 for i in range(n)
-                   if f[i] > 0 and f[i] >= f[i - 1] and f[i] >= f[(i + 1) % n]))
+    return int(
+        sum(
+            1
+            for i in range(n)
+            if f[i] > 0 and f[i] >= f[i - 1] and f[i] >= f[(i + 1) % n]
+        )
+    )
 
 
 def expansion_law(series):
@@ -112,24 +117,38 @@ def report(run, win):
 
     W = 78
     print("=" * W)
-    print(f"VALIDACAO DO MODELO — {os.path.basename(run)}   (frame de referencia t={tf:.1f}s)")
+    print(
+        f"VALIDACAO DO MODELO — {os.path.basename(run)}   (frame de referencia t={tf:.1f}s)"
+    )
     print("=" * W)
 
     # ---------- 1. LEI DE EXPANSAO ----------
     print("\n1. LEI DE EXPANSAO  R(t) ~ t^alpha")
-    print("   [T2] Srinivasan 2019: swarming nutrient-rich -> velocidade CONSTANTE, alpha=1")
+    print(
+        "   [T2] Srinivasan 2019: swarming nutrient-rich -> velocidade CONSTANTE, alpha=1"
+    )
     print("   [T3] Giverso 2016:    dedos difusao-limitados -> alpha ~ 0.45")
     a1, r1, n1 = fit_alpha(T, R, win[0], win[1])
     a2, r2_, n2 = fit_alpha(T, R, 0.6 * win[1], win[1])
     a3, r3, n3 = fit_alpha(T, R, win[1], T.max())
-    print(f"     janela util   t={win[0]:.0f}-{win[1]:.0f}   alpha={a1:.3f}  R2={r1:.4f}  n={n1}")
-    print(f"     estabelecido  t={0.6*win[1]:.0f}-{win[1]:.0f}   alpha={a2:.3f}  R2={r2_:.4f}  n={n2}")
+    print(
+        f"     janela util   t={win[0]:.0f}-{win[1]:.0f}   alpha={a1:.3f}  R2={r1:.4f}  n={n1}"
+    )
+    print(
+        f"     estabelecido  t={0.6 * win[1]:.0f}-{win[1]:.0f}   alpha={a2:.3f}  R2={r2_:.4f}  n={n2}"
+    )
     if n3 >= 4:
-        print(f"     pos-esgotamento t={win[1]:.0f}-{T.max():.0f} alpha={a3:.3f}  R2={r3:.4f}  n={n3}")
-    print(f"   -> regime nutrient-rich reproduz [T2] (alpha~1): {'SIM' if abs(a2-1)<0.15 else 'nao'}")
+        print(
+            f"     pos-esgotamento t={win[1]:.0f}-{T.max():.0f} alpha={a3:.3f}  R2={r3:.4f}  n={n3}"
+        )
+    print(
+        f"   -> regime nutrient-rich reproduz [T2] (alpha~1): {'SIM' if abs(a2 - 1) < 0.15 else 'nao'}"
+    )
     if n3 >= 4:
-        print(f"   -> apos esgotar nutriente migra p/ [T3] (alpha~0.45): "
-              f"{'SIM' if abs(a3-0.45)<0.15 else 'nao'}")
+        print(
+            f"   -> apos esgotar nutriente migra p/ [T3] (alpha~0.45): "
+            f"{'SIM' if abs(a3 - 0.45) < 0.15 else 'nao'}"
+        )
 
     # ---------- 2. MORFOLOGIA ----------
     print("\n2. MORFOLOGIA DENDRITICA")
@@ -161,14 +180,20 @@ def report(run, win):
     print("   [T1] painel (b): campo de surfactante EXTENDE alem da biomassa")
     cs = d["cs"]
     isf = d.get("is_filler")
-    real = (isf < 0.5) if isf is not None and isf.size == cs.size else np.ones_like(cs, bool)
+    real = (
+        (isf < 0.5)
+        if isf is not None and isf.size == cs.size
+        else np.ones_like(cs, bool)
+    )
     r_bio = float(np.percentile(r[(rb > 0.05) & real], 99))
     sel_cs = (cs > 0.02) & real
     r_cs = float(np.percentile(r[sel_cs], 99)) if sel_cs.any() else 0.0
     print(f"     raio biomassa (rho_b>0.05, p99) = {r_bio:.2f}")
     print(f"     raio surfactante (cs>0.02, p99) = {r_cs:.2f}")
-    print(f"     halo = {r_cs - r_bio:+.2f}  ({r_cs / max(r_bio, 1e-9):.2f}x)"
-          f"   -> {'PRESENTE' if r_cs > r_bio else 'AUSENTE'}")
+    print(
+        f"     halo = {r_cs - r_bio:+.2f}  ({r_cs / max(r_bio, 1e-9):.2f}x)"
+        f"   -> {'PRESENTE' if r_cs > r_bio else 'AUSENTE'}"
+    )
 
     # ---------- 4. CONSISTENCIA SPH ----------
     print("\n4. CONSISTENCIA SPH")
@@ -177,25 +202,35 @@ def report(run, win):
     rng = np.random.default_rng(0)
     lim = 0.93 * float(np.max(np.abs(np.concatenate([x, y]))))
     interior = (np.abs(x) < lim) & (np.abs(y) < lim)
-    print(f"     esperado numa rede uniforme: pi*(2h)^2/dx^2 = "
-          f"{np.pi * (2 * h0) ** 2 / DX ** 2:.0f}")
-    for nm, msk in [("nucleo (rho_b>0.8)", rb > 0.8),
-                    ("bracos (rho_b 0.1-0.5)", (rb >= 0.1) & (rb < 0.5)),
-                    ("agar interior", (rb < 0.05) & interior)]:
+    print(
+        f"     esperado numa rede uniforme: pi*(2h)^2/dx^2 = "
+        f"{np.pi * (2 * h0) ** 2 / DX**2:.0f}"
+    )
+    for nm, msk in [
+        ("nucleo (rho_b>0.8)", rb > 0.8),
+        ("bracos (rho_b 0.1-0.5)", (rb >= 0.1) & (rb < 0.5)),
+        ("agar interior", (rb < 0.05) & interior),
+    ]:
         idx = np.where(msk)[0]
         if idx.size == 0:
             continue
         if idx.size > 300:
             idx = rng.choice(idx, 300, replace=False)
-        nb = np.array([len(tree.query_ball_point([x[i], y[i]], 2 * h0)) - 1 for i in idx])
-        print(f"     {nm:24s} media={nb.mean():5.1f}  >=20:{(nb >= 20).mean():4.0%}"
-              f"  >=35:{(nb >= 35).mean():4.0%}")
+        nb = np.array(
+            [len(tree.query_ball_point([x[i], y[i]], 2 * h0)) - 1 for i in idx]
+        )
+        print(
+            f"     {nm:24s} media={nb.mean():5.1f}  >=20:{(nb >= 20).mean():4.0%}"
+            f"  >=35:{(nb >= 35).mean():4.0%}"
+        )
 
     print("\n   [T7] Violeau §3.4/3.6: particao da unidade; sigma_a<0.85 ~ 15% de erro")
     sa = d["sigma_a"]
     col = rb > 0.1
-    print(f"     colonia: media={sa[col].mean():.4f}  frac<0.85={(sa[col] < 0.85).mean():.1%}"
-          f"  p05={np.percentile(sa[col], 5):.3f}")
+    print(
+        f"     colonia: media={sa[col].mean():.4f}  frac<0.85={(sa[col] < 0.85).mean():.1%}"
+        f"  p05={np.percentile(sa[col], 5):.3f}"
+    )
 
     # ---------- 5. COBERTURA ESPACIAL ----------
     print("\n5. COBERTURA ESPACIAL (§2.5 C1)")
@@ -203,22 +238,28 @@ def report(run, win):
     gg = np.linspace(-Rc, Rc, n)
     GX, GY = np.meshgrid(gg, gg)
     xlim = float(np.max(np.abs(x)))
-    ins = (GX ** 2 + GY ** 2 <= Rc ** 2) & (np.abs(GX) <= xlim) & (np.abs(GY) <= xlim)
+    ins = (GX**2 + GY**2 <= Rc**2) & (np.abs(GX) <= xlim) & (np.abs(GY) <= xlim)
     dd, _ = tree.query(np.column_stack([GX[ins], GY[ins]]))
     for thr in (0.7, 1.0, 1.5):
         fr_ = (dd > thr * DX).mean()
-        print(f"     area sem vizinho a <{thr:.1f}dx: {fr_:7.3%}"
-              f"   ({fr_ * np.pi * Rc ** 2 / DX ** 2:6.0f} dx2)")
+        print(
+            f"     area sem vizinho a <{thr:.1f}dx: {fr_:7.3%}"
+            f"   ({fr_ * np.pi * Rc**2 / DX**2:6.0f} dx2)"
+        )
 
     # ---------- 6. CONSERVACAO ----------
     print("\n6. CONSERVACAO E ESTABILIDADE")
     m0 = float(rows[0]["mass_total"])
     mf = float(rows[-1]["mass_total"])
     ap = np.array([float(q["a_pressure"]) for q in rows[2:]])
-    print(f"     massa {m0:.1f} -> {mf:.1f}  ({(mf/m0-1)*100:+.1f}%)"
-          f"   [insercao adiciona celulas; deve ser LIMITADO]")
-    print(f"     a_pressure mediana={np.median(ap):.2f}  picos>4 em {(ap > 4).mean():.0%}"
-          f" das amostras   (orcamento §8: <3-4)")
+    print(
+        f"     massa {m0:.1f} -> {mf:.1f}  ({(mf / m0 - 1) * 100:+.1f}%)"
+        f"   [insercao adiciona celulas; deve ser LIMITADO]"
+    )
+    print(
+        f"     a_pressure mediana={np.median(ap):.2f}  picos>4 em {(ap > 4).mean():.0%}"
+        f" das amostras   (orcamento §8: <3-4)"
+    )
     print("=" * W)
     return T, R, series
 

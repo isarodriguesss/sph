@@ -118,19 +118,34 @@ def main(argv):
     f2 = fit(T, R, win[1], T.max())
     if f1:
         p, r2, m = f1
-        ax.loglog(T[m], np.exp(np.polyval(p, np.log(T[m]))), "-", lw=2.5,
-                  color="#1b7837",
-                  label=f"nutrient-rich: α={p[0]:.2f} (R²={r2:.3f})", zorder=4)
+        ax.loglog(
+            T[m],
+            np.exp(np.polyval(p, np.log(T[m]))),
+            "-",
+            lw=2.5,
+            color="#1b7837",
+            label=f"nutrient-rich: α={p[0]:.2f} (R²={r2:.3f})",
+            zorder=4,
+        )
     if f2:
         p, r2, m = f2
-        ax.loglog(T[m], np.exp(np.polyval(p, np.log(T[m]))), "-", lw=2.5,
-                  color="#b2182b",
-                  label=f"pós-esgotamento: α={p[0]:.2f} (R²={r2:.3f})", zorder=4)
+        ax.loglog(
+            T[m],
+            np.exp(np.polyval(p, np.log(T[m]))),
+            "-",
+            lw=2.5,
+            color="#b2182b",
+            label=f"pós-esgotamento: α={p[0]:.2f} (R²={r2:.3f})",
+            zorder=4,
+        )
     t0 = np.array([T.min(), T.max()])
-    for al, c, lab in [(1.0, "#1b7837", "[T2] Srinivasan α=1 (swarming steady-state)"),
-                       (0.45, "#b2182b", "[T3] Giverso α=0.45 (difusão-limitado)")]:
-        ax.loglog(t0, R[0] * (t0 / T[0]) ** al, "--", lw=1.4, color=c, alpha=0.65,
-                  label=lab)
+    for al, c, lab in [
+        (1.0, "#1b7837", "[T2] Srinivasan α=1 (swarming steady-state)"),
+        (0.45, "#b2182b", "[T3] Giverso α=0.45 (difusão-limitado)"),
+    ]:
+        ax.loglog(
+            t0, R[0] * (t0 / T[0]) ** al, "--", lw=1.4, color=c, alpha=0.65, label=lab
+        )
     ax.set_xlabel("t (s)")
     ax.set_ylabel("R da colônia (p99)")
     ax.set_title("(a) Lei de expansão vs literatura", fontweight="bold")
@@ -142,8 +157,14 @@ def main(argv):
     ax.plot(T, R, "o-", ms=4, color="#222", label="R(t)")
     ax.axvspan(win[0], win[1], color="#1b7837", alpha=0.08)
     ax.axvline(win[1], color="#b2182b", ls="--", lw=1.5)
-    ax.text(win[1], R.max() * 0.35, " nutriente esgota\n (c_n < 0.4)",
-            color="#b2182b", fontsize=9, va="center")
+    ax.text(
+        win[1],
+        R.max() * 0.35,
+        " nutriente esgota\n (c_n < 0.4)",
+        color="#b2182b",
+        fontsize=9,
+        va="center",
+    )
     ax.set_xlabel("t (s)")
     ax.set_ylabel("R da colônia")
     ax2 = ax.twinx()
@@ -156,13 +177,17 @@ def main(argv):
 
     # ---- (c) kymograph ----
     ax = fig.add_subplot(gs[0, 2])
-    im = ax.pcolormesh(np.degrees(np.linspace(-180, 180, NBINS) * np.pi / 180),
-                       T, P, shading="auto", cmap="magma")
+    im = ax.pcolormesh(
+        np.degrees(np.linspace(-180, 180, NBINS) * np.pi / 180),
+        T,
+        P,
+        shading="auto",
+        cmap="magma",
+    )
     ax.axhline(win[1], color="w", ls="--", lw=1.2, alpha=0.8)
     ax.set_xlabel("ângulo (graus)")
     ax.set_ylabel("t (s)")
-    ax.set_title("(c) Kymograph — cada faixa clara é um dendrito",
-                 fontweight="bold")
+    ax.set_title("(c) Kymograph — cada faixa clara é um dendrito", fontweight="bold")
     plt.colorbar(im, ax=ax, label="raio da frente")
 
     # ---- (d) contornos da frente, cor = tempo ----
@@ -173,32 +198,45 @@ def main(argv):
     cmap = plt.get_cmap("viridis")
     for k in np.linspace(0, len(T) - 1, 12).astype(int):
         pr = np.append(P[k], P[k][0])
-        ax.plot(pr * np.cos(tt), pr * np.sin(tt), lw=1.6,
-                color=cmap(norm(T[k])), alpha=0.9)
+        ax.plot(
+            pr * np.cos(tt), pr * np.sin(tt), lw=1.6, color=cmap(norm(T[k])), alpha=0.9
+        )
     ax.set_aspect("equal")
     ax.grid(alpha=0.2)
     ax.set_xlabel("x")
     ax.set_ylabel("y")
     ax.set_title("(d) Contorno da frente — cor = tempo", fontweight="bold")
-    plt.colorbar(matplotlib.cm.ScalarMappable(norm=norm, cmap=cmap), ax=ax,
-                 label="t (s)")
+    plt.colorbar(
+        matplotlib.cm.ScalarMappable(norm=norm, cmap=cmap), ax=ax, label="t (s)"
+    )
 
     # ---- (e) numero de dendritos ----
     nf = []
     for pr in P:
         f_ = pr - pr.mean()
         n_ = len(f_)
-        nf.append(sum(1 for i in range(n_)
-                      if f_[i] > 0 and f_[i] >= f_[i - 1] and f_[i] >= f_[(i + 1) % n_]))
+        nf.append(
+            sum(
+                1
+                for i in range(n_)
+                if f_[i] > 0 and f_[i] >= f_[i - 1] and f_[i] >= f_[(i + 1) % n_]
+            )
+        )
     nf = np.array(nf)
     ax = fig.add_subplot(gs[1, 1])
     ax.plot(T, nf, "o-", ms=4, lw=1.6, color="#222")
     ax.axhspan(15, 20, color="#1b7837", alpha=0.18)
-    ax.text(T.max() * 0.45, 17.5, "PA14: 15–20 dendritos (reference.jpg)",
-            fontsize=9, color="#1b7837")
+    ax.text(
+        T.max() * 0.45,
+        17.5,
+        "PA14: 15–20 dendritos (reference.jpg)",
+        fontsize=9,
+        color="#1b7837",
+    )
     ax.axhspan(7, 9, color="#762a83", alpha=0.15)
-    ax.text(T.max() * 0.45, 8, "[T1] Trinschek painel (b): 7–9", fontsize=9,
-            color="#762a83")
+    ax.text(
+        T.max() * 0.45, 8, "[T1] Trinschek painel (b): 7–9", fontsize=9, color="#762a83"
+    )
     ax.axvline(win[1], color="#b2182b", ls="--", lw=1.2)
     ax.set_xlabel("t (s)")
     ax.set_ylabel("nº de dendritos")
@@ -210,9 +248,13 @@ def main(argv):
     v = np.gradient(R, T)
     ax.plot(T, v, "o-", ms=4, lw=1.6, color="#222", label="dR/dt (modelo)")
     if f1:
-        ax.axhline(np.median(v[(T >= 0.6 * win[1]) & (T <= win[1])]), color="#1b7837",
-                   ls="--", lw=1.6,
-                   label="[T2] steady-state: V constante")
+        ax.axhline(
+            np.median(v[(T >= 0.6 * win[1]) & (T <= win[1])]),
+            color="#1b7837",
+            ls="--",
+            lw=1.6,
+            label="[T2] steady-state: V constante",
+        )
     ax.axvline(win[1], color="#b2182b", ls="--", lw=1.2)
     ax.text(win[1], v.max() * 0.85, " nutriente esgota", color="#b2182b", fontsize=9)
     ax.set_xlabel("t (s)")
@@ -224,7 +266,9 @@ def main(argv):
     fig.suptitle(
         f"Expansão da colônia — {os.path.basename(run)}   "
         f"(janela útil t={win[0]:.0f}–{win[1]:.0f}s)",
-        fontsize=14, fontweight="bold")
+        fontsize=14,
+        fontweight="bold",
+    )
     os.makedirs(os.path.dirname(out) or ".", exist_ok=True)
     plt.savefig(out, dpi=110, bbox_inches="tight")
     print(f"figura salva em {out}")

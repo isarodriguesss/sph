@@ -37,22 +37,48 @@ import matplotlib
 
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+from matplotlib.colors import LogNorm
 import h5py
+
 from scipy.spatial import cKDTree
+
+RHO_B_FLOOR = 1e-4  # piso do painel log de rho_b
+CS_FLOOR = 1e-3  # piso do painel log de cs
 
 KNN = 40
 
 # (chave, rotulo, cmap, vmin, vmax, contornos, cor do contorno, nota)
 FIELDS = [
-    ("rho_b_grown", "biomassa  ρ_b", "YlGn", 0.0, 0.9,
-     [0.1, 0.8], "#1b5e20",
-     "contorno 0.8 = núcleo pinado (imóvel)"),
-    ("cs", "surfactante  c_s", "YlOrRd", 0.0, 0.35,
-     [], "#4a148c",
-     "motor = −β·∇c_s  (o gradiente, não o valor)"),
-    ("c_n", "nutriente  c_n", "Blues", 0.0, 1.0,
-     [0.4], "#b71c1c",
-     "contorno 0.4 = piso do gate; dentro dele o crescimento para"),
+    (
+        "rho_b_grown",
+        "biomassa  ρ_b",
+        "YlGn",
+        0.0,
+        0.9,
+        [0.1, 0.8],
+        "#1b5e20",
+        "escala LOG; contorno 0.8 = núcleo pinado (imóvel)",
+    ),
+    (
+        "cs",
+        "surfactante  c_s",
+        "YlOrRd",
+        CS_FLOOR,
+        0.5,
+        [],
+        "#4a148c",
+        "escala LOG; motor = −β·∇c_s  (o gradiente, não o valor)",
+    ),
+    (
+        "c_n",
+        "nutriente  c_n",
+        "Blues",
+        0.0,
+        1.0,
+        [0.4],
+        "#b71c1c",
+        "contorno 0.4 = piso do gate; dentro dele o crescimento para",
+    ),
 ]
 
 
@@ -136,7 +162,11 @@ def main(argv):
             gx, gy = np.meshgrid(g, g)
             grid_pts = np.column_stack([gx.ravel(), gy.ravel()])
         isf = d.get("is_filler")
-        real = (isf < 0.5) if isf is not None and isf.size == x.size else np.ones_like(x, bool)
+        real = (
+            (isf < 0.5)
+            if isf is not None and isf.size == x.size
+            else np.ones_like(x, bool)
+        )
 
         rb_field = shepard(x, y, d["rho_b_grown"], vol, float(h[0]), grid_pts, gx.shape)
 
@@ -146,21 +176,68 @@ def main(argv):
                 ax.axis("off")
                 continue
             if key == "cs":  # filler tem cs congelado — nao e campo
-                fld = shepard(x[real], y[real], d[key][real], vol[real],
-                              float(h[0]), grid_pts, gx.shape)
+                fld = shepard(
+                    x[real],
+                    y[real],
+                    d[key][real],
+                    vol[real],
+                    float(h[0]),
+                    grid_pts,
+                    gx.shape,
+                )
             elif key == "rho_b_grown":
                 fld = rb_field
             else:
                 fld = shepard(x, y, d[key], vol, float(h[0]), grid_pts, gx.shape)
 
-            im = ax.imshow(fld, origin="lower", extent=[-lim, lim, -lim, lim],
-                           cmap=cmap, vmin=vmin, vmax=vmax, interpolation="bilinear")
+            if key == "rho_b_grown":
+                # LOG: numa escala linear 0-1, rho_b=0.005 e rho_b=0 tem a mesma cor,
+                # e a colonia parece um halo vazio mesmo onde ha biomassa. So o log
+                # mostra se o campo e CONTINUO (licao #49).
+                im = ax.imshow(
+                    np.maximum(fld, RHO_B_FLOOR),
+                    origin="lower",
+                    extent=[-lim, lim, -lim, lim],
+                    cmap=cmap,
+                    norm=LogNorm(vmin=RHO_B_FLOOR, vmax=1.0),
+                    interpolation="bilinear",
+                )
+            elif key == "cs":
+                # LOG pela mesma razao (licao #56): cs varia ~400x do nucleo ao
+                # agar; em escala linear a normalizacao pelo maximo do nucleo pinta
+                # a zona de expansao inteira de zero, mesmo quando ha campo la.
+                im = ax.imshow(
+                    np.maximum(fld, CS_FLOOR),
+                    origin="lower",
+                    extent=[-lim, lim, -lim, lim],
+                    cmap=cmap,
+                    norm=LogNorm(vmin=vmin, vmax=max(vmax, float(fld.max()))),
+                    interpolation="bilinear",
+                )
+            else:
+                im = ax.imshow(
+                    fld,
+                    origin="lower",
+                    extent=[-lim, lim, -lim, lim],
+                    cmap=cmap,
+                    vmin=vmin,
+                    vmax=vmax,
+                    interpolation="bilinear",
+                )
             if levels:
-                ax.contour(gx, gy, fld, levels=levels, colors=lc,
-                           linewidths=1.1, alpha=0.85)
+                ax.contour(
+                    gx, gy, fld, levels=levels, colors=lc, linewidths=1.1, alpha=0.85
+                )
             if key == "cs":  # borda da biomassa, p/ enxergar o halo alem dela
-                ax.contour(gx, gy, rb_field, levels=[0.1], colors="#1b5e20",
-                           linewidths=1.2, alpha=0.9)
+                ax.contour(
+                    gx,
+                    gy,
+                    rb_field,
+                    levels=[0.1],
+                    colors="#1b5e20",
+                    linewidths=1.2,
+                    alpha=0.9,
+                )
             cb = plt.colorbar(im, ax=ax, fraction=0.046, pad=0.02)
             cb.set_label(label, fontsize=9)
             ax.set_aspect("equal")
@@ -175,7 +252,9 @@ def main(argv):
         f"Expansão pelos campos escalares (interpolação SPH Shepard) — "
         f"{os.path.basename(run)}\n"
         "ρ_b estrutura a colônia · c_s a move (via ∇c_s) · c_n a limita",
-        fontsize=15, fontweight="bold")
+        fontsize=15,
+        fontweight="bold",
+    )
     plt.tight_layout(rect=[0, 0, 1, 0.96])
     os.makedirs(os.path.dirname(out) or ".", exist_ok=True)
     plt.savefig(out, dpi=100, bbox_inches="tight")

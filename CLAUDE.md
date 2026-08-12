@@ -516,6 +516,7 @@ Calibracao pos-Passes A-I.7. **MARCO I.7:** Transicao blob→dendritico confirma
 | Vel. som (EOS) | `c0` | 0.8 | B ~ 0.09; tensao `tension_ratio=0.08` (M-B.9b) |
 | Tensao superficial EOS | `tension_ratio` | **0.30** | Pass T2b: 0.20 → 0.30 — otimo local da alavanca (T2c=0.40 regrediu spikes +53/75% sem ganho morfologico); plateau de retornos atingido |
 | Nutriente (consumo) | `k_n` | 0.5 | M-B.2: taxa consumo bacteriano de c_n |
+| Colonizacao | `k_col` | **0.0** | Serie J REVERTIDA (2026-08-11). `0.03` quebrava o zero absorvente (77.6% → 0%) a 1.2% de custo no motor, mas REPROVOU em C2 de §2.5 (`frac(sigma_a<0.85)` 7.4% → 33.7%) e no contraste. Equacao preservada desligada — ver licoes #48/#49/#50 |
 | Nutriente (D agar) | `D_n` | **0.05** | M-B.2 0.02; **C1 (2026-08-07) 0.02→0.05** — `c_n` nos braços 0.47→0.61, o que ABRE o gate de `c_n` do `ParticleShift` sozinho. Ver licao #45 |
 | Shifting (cap) | `SHIFT_CAP` | **0.0006** | C4: otimo entre C3 (0.0003, pouco preenchimento) e C2 (0.001, sobre-excitado com picos de pressao em 42% das amostras) |
 | Shifting (gate) | `ParticleShift` | `rho_b ∈ [0.1, 0.8)` | C2 removeu a clausula `c_n ≥ 0.6`, que bloqueava **95%** da banda porque os braços estao depletados |
@@ -1114,9 +1115,190 @@ Calibracao pos-Passes A-I.7. **MARCO I.7:** Transicao blob→dendritico confirma
 
 46. **Tres estatisticas erradas seguidas: o que se mede importa tanto quanto o que se calibra** (serie C, 2026-08-07): (a) **`σ_a` por MEDIA sobre a banda `[0.1,0.5]`** dizia C3 > C1 > C2; a **FRACAO abaixo de 0.85 sobre a colonia inteira** diz C2 (5.9%) > C1 (10.0%) > C3 (13.1%) — e so a segunda bate com o painel e com a leitura visual da usuaria. A media e puxada pelo bulk; o que importa e o tamanho da cauda ruim (Violeau §3.6: `σ_a<0.85` ≈ 15% de erro no operador). (b) **`a_pressure` por MAX sobre a cauda** reprovava C4 por UM pico de 6.33 com mediana 3.00; trocado por **mediana + frequencia de picos**, C4 (13% das amostras >4) passa e C2 (42%) reprova — e 42% e regime patologico, nao evento. (c) **teste de convergencia de massa** aplicado a rodadas de t=50 reprovava todas, porque em t=50 nenhuma saiu da fase de crescimento; restrito a `t ≥ 90`. **Regra:** ao definir uma metrica, decidir explicitamente a POPULACAO (qual subconjunto) e a ESTATISTICA (media, cauda, mediana, frequencia) antes de ranquear por ela — e conferir contra a leitura visual, que e o arbitro do §11.
 
-47. **O limite da simulacao deixou de ser a fronteira e passou a ser o NUTRIENTE — reservatorio finito, sem reposicao** (validacao C4 em t=100, 2026-08-07): com o dominio em `[-7,7]`, `R_p99=6.53` em t=100 com apenas **12 particulas** alem de 6.8 — a parede deixou de ser o gargalo. O novo limite e `c_n`: nos braços cai 0.844 (t=17) → 0.547 (t=48) → **0.086 (t=89)**, cruzando o piso de 0.4 do gate de crescimento em t≈55. A partir dai a colonia **congela**: `mean_v` cai **22×** (4.9e-4 → 2.2e-5), `n_fast` → 1, `a_mar` → 1.88, e o clumping sobe a 60% (sintoma do congelamento, nao causa). **`c_n` inicia em 1.0 em todo o dominio e nao tem fonte** — a colonia simplesmente o consome todo. **Janela util do baseline C4: t ≲ 55 s.** Alem disso a simulacao mostra fome de nutriente, o que pode ate ser fisico para uma placa finita, mas nao serve para avaliar morfologia porque nada se move.
+47. **[ATRIBUICAO PARCIALMENTE REFUTADA POR N1 — ver licao #51]** **O limite da simulacao deixou de ser a fronteira e passou a ser o NUTRIENTE — reservatorio finito, sem reposicao** (validacao C4 em t=100, 2026-08-07): com o dominio em `[-7,7]`, `R_p99=6.53` em t=100 com apenas **12 particulas** alem de 6.8 — a parede deixou de ser o gargalo. O novo limite e `c_n`: nos braços cai 0.844 (t=17) → 0.547 (t=48) → **0.086 (t=89)**, cruzando o piso de 0.4 do gate de crescimento em t≈55. A partir dai a colonia **congela**: `mean_v` cai **22×** (4.9e-4 → 2.2e-5), `n_fast` → 1, `a_mar` → 1.88, e o clumping sobe a 60% (sintoma do congelamento, nao causa). **`c_n` inicia em 1.0 em todo o dominio e nao tem fonte** — a colonia simplesmente o consome todo. **Janela util do baseline C4: t ≲ 55 s.** Alem disso a simulacao mostra fome de nutriente, o que pode ate ser fisico para uma placa finita, mas nao serve para avaliar morfologia porque nada se move.
 
    **Falso alarme resolvido no mesmo run:** `contrast_cs` caindo em B3/C1/C2/C4 (15.6 → 12.9) parecia afogamento (§2.4-B / licao §9 #8). Em t=100 ve-se que era a **primeira metade de um U**: o minimo e em t≈48 — exatamente onde a serie C parava de medir — e depois o contraste **sobe de volta a 21.0**, com `mean_cs` fazendo o inverso (sobe a 0.038, volta a 0.023). E o halo do B3 diluindo o contraste transitoriamente, nao producao inflando. **Regra:** contraste em queda so e afogamento se `mean_cs` sobe monotonicamente junto; sem isso, estender o run antes de diagnosticar.
+
+48. **O halo de `rho_b=0` e o motor de Marangoni sao o MESMO fenomeno — a esparsidade que parece defeito e o que gera o gradiente** (serie J, 2026-08-11): a colonia do baseline C4 tem **77.6% das particulas do disco com `rho_b` EXATAMENTE 0.0** e so 167 com `rho_b>0.1`, sobre um raio de 4.4. Origem: `exp(-(r/R_θ)⁴)` com `R_θ≈0.30` faz underflow para zero exato alem de `r≈1.5`, e `BiomassGrowth` e multiplicativo (`rate·rho_b`) — **zero e estado absorvente**, imune a nutriente, tempo e vizinhanca. Confirmacao temporal exata: a contagem de zeros salta de 0 para 308 no instante em que `R99` cruza 1.58 (t≈17 s). A colonia cresce em area 51× enquanto a populacao com biomassa vai de 150 para 162 particulas (+8%).
+
+    **VALIDACAO CAUSAL (2026-08-11) — dois testes independentes, ambos conclusivos.**
+
+    *(1) Rastreamento de identidade no C4* (indice = identidade; premissa validada: particulas do campo distante tem deslocamento maximo 4.8e-23 contra `dx`=0.054). Das **65 400** particulas com `rho_b == 0` em t=50: **100,000% nasceram em zero**; **0** tinham biomassa e a perderam; **0 de 65 400** adquiriram biomassa em 50 s; e **0 de 2 861** inseridas por wake/insert estao em zero (herdam da mae). O conjunto de zeros e EXATAMENTE o da condicao inicial — nem uma particula entrou ou saiu dele. Isso e mais forte que a coincidencia de raios: prova que a fronteira **e** o conjunto inicial, nao algo que o escoamento produz naquele raio.
+
+    *(2) Teste F1 — piso `1e-300` no inoculo* ([particles.py](src/particles.py), `np.clip(rho_b, 1e-300, rho_max)`; revertido apos medir). Inerte por construcao: fica abaixo do gate `rho_b>1e-12` do `BiomassGrowth`, `qs(1e-300)` subborda a 0, e somar `1e-300` a somas de ordem 1 esta abaixo do epsilon de float64. Medido: `log.csv` **bit-identico ao C4** em todas as colunas e ate na sequencia de `dt` adaptativo (t = 4.4215, 8.6899 iguais), com `rho_b==0` indo de 65 400 (96,0%) para **0**, e a borda (`rho_b>1e-3`) em **0.54 / 0.78 / 1.06 — identica**.
+
+    **Conclusao:** o halo NAO e o zero numerico (eliminar o underflow nao muda nada, nem no log nem na imagem) — e a **ausencia fisica de biomassa** na regiao que a colonia invade. Descarta como caminho: corrigir o underflow, trocar a forma da cauda (power-law poe `1e-40` no lugar de `0`, igualmente inerte) ou alargar a semeadura sem criar biomassa. Nota: o C4 ja opera com denormais — seu menor `rho_b` positivo e `3.5e-323`.
+
+    **J5 (2026-08-11) — `k_col=0.3` + producao `σ·rho_b` (linear) no lugar de `σ·qs(rho_b)` (Hill) + `σ` 10→3.4.** Objetivo: preencher o halo sem afogar o `cs`. Preencheu (`F(rho_b>0.01)` 11.8% → **90.4%**, zeros → **0%**) e **nao afogou** (`cs/cs_max` na juncao 0.737, contra 0.973 da K2 e predicao ex-ante de 0.70–0.78 — acertou). **E o motor morreu assim mesmo:** `a_mar_bio_med` 3.145 → 0.347; na populacao da FRENTE (`r>0.75·R99`, imune a contaminacao de composicao) 7.232 → **0.853**; `R99` 4.39 → **2.40**; frames sem nenhum dendrito. Predicao de `a_mar` errou **9×**.
+
+    **Causa (decomposicao medida de `a_mar = β·gate(|∇ρ_b|)·|∇cs|`):** o gate cai so 0.82×, mas **`|∇cs|` cai 2.7×** (0.684 → 0.251). Calibrei `σ` para controlar o **NIVEL** de `cs`; o motor usa o **GRADIENTE**, e o gradiente nao depende da amplitude da producao — depende da **estrutura espacial da fonte**. Em C4/J0 o campo de `cs` e a superposicao de 167 fontes pontuais isoladas, com picos locais afiados (comprimento efetivo ~0.5). Em J5 a fonte e continua e o campo fica suavizado sobre `L_D_ext = √(D_ext/λ_agar) = 1.03` — `|∇cs| ≈ cs_corpo/L_D_ext ≈ 0.32`, contra 0.251 medido.
+
+    **Regra:** com fonte continua, `|∇cs|` no rim e governado por `L_D_ext`, nao por `σ`. Nenhum valor de `σ` restaura o motor depois de homogeneizar a fonte. Mesma classe da licao #31 (shifting homogeneizou e matou o fingering): **homogeneizar a fonte homogeneiza o campo.**
+
+    **Corolario de modelagem:** a `BiomassColonization` relaxa para a **media Shepard** da vizinhanca, que num campo esparso vale ~0.05 — ela **nivela para baixo** em vez de preencher. Pos-J5, 72.6% do disco fica em `rho_b ∈ [0.01, 0.10)` contra 9.2% em [0.30, 0.80). Biologicamente a filha nasce com a densidade da MAE, nao com a media entre mae e vazio.
+
+    **Corolario metodologico:** `a_mar_bio_med` NAO e comparavel entre rodadas que mudam a populacao de biomassa (167 → 712 particulas). Ao comparar motor entre configuracoes de preenchimento diferentes, medir sobre a FRENTE (`r > 0.75·R99` ou `cs < 0.9·cs_max`). Neste caso a correcao nao mudou o veredito, mas mudou o fator de 9× para 8.5×.
+
+    **J6 (`cs_max` 0.5→1.5, `σ` 3.4→34) — REPROVADA, e fecha o argumento da amplitude.** `max_cs` atingiu 1.46 (o teto novo) e `a_mar_frente` NAO se moveu (0.853 → 0.791). O perfil radial de `cs` ficou **plano em ~0.45 de r=0.5 a 3.5**: triplicar o teto subiu o nivel em todo lugar sem criar gradiente. `mean_cs` 0.0001 → 0.704 (inundou o dominio) e a colonia atravessou a parede (`R99`=7.70, 295 particulas alem de 6.8 a partir de t≈35 — Bloqueio H, dados tardios contaminados). Somando K2 (σ=10, Hill), J5 (σ=3.4, linear) e J6 (σ=34, `cs_max`=1.5): **13× de variacao em amplitude, motor na frente entre 0.79 e 1.41 nas tres.** A amplitude nao e a variavel; a escala de comprimento da fonte e.
+
+    **Rejeitada ANTES de rodar pelo protocolo §3.3.6 — producao gateada por `|∇ρ_b|`.** A medicao confirmou que o gate discrimina mesmo na colonia cheia (corpo `f`=0.055, margem `f`=0.822 — 15×). Mas a tabela `cs_∞` por zona da: nucleo 0.519, corpo 0.125, **margem 0.839**. `cs` com MINIMO no corpo e PICO na margem ⇒ entre os dois, `cs` cresce para fora ⇒ `−β∇cs` aponta para DENTRO ⇒ linha patologica da §3.3.4 (colonia comprime). O protocolo evitou uma rodada de 20-50 min.
+
+49. **`k_col` pequeno quebra o zero absorvente quase de graca — o otimo e 0.03, e o halo tinha DUAS causas independentes** (serie J7/J8, 2026-08-11): com a lei de producao do baseline intacta (Hill, `σ`=10, `cs_max`=0.5), variar so `k_col`:
+
+    | `k_col` | 0 (J0) | **0.03 (J7)** | 0.1 (J8) | 0.3 (K2) |
+    |---|---:|---:|---:|---:|
+    | `rho_b == 0` exato | 77.6% | **0.0%** | 0.0% | 0.0% |
+    | `F` (`rho_b`>0.01) | 11.8% | 25.8% | 48.4% | 67.0% |
+    | `a_mar_frente` | 7.232 | **7.142** | 3.637 | 1.405 |
+    | `R99` | 4.39 | 4.21 | 4.04 | 3.95 |
+
+    **`k_col`=0.03 elimina 100% dos zeros custando 1.2% do motor.** Entre 0.03 e 0.1 o motor cai 49% e o perfil de `cs` no corpo achata visivelmente (J0 cai 0.47→0.11 entre r=0.5 e 2; J8 fica em 0.48→0.44); as pontas encurtam monotonicamente (4.4 → 4.2 → 3.5 → 4.0). **Ponto de operacao: `k_col = 0.03`.**
+
+    **O halo roxo tinha duas causas independentes, e so uma era fisica:**
+    1. **Zero absorvente** (fisica) — resolvido por `k_col`, que e o unico termo ADITIVO: `BiomassGrowth` e multiplicativo e nao tira particula de zero, por mais nutriente ou tempo que haja.
+    2. **Escala de cor linear** (renderizacao) — pos-J7, 74% do corpo vive entre `1e-6` e `1e-2`. Numa escala linear 0-1, `0.005` e `0` sao a mesma cor: a colonia continua parece um halo vazio. Em escala LOG a mesma rodada aparece como corpo dendritico continuo. Painel `rho_b` log adicionado ao [plots/plot.py](plots/plot.py) (`RHO_B_FLOOR=1e-6`).
+
+    **Regra:** antes de atribuir um "buraco" no campo a fisica, renderize em log. E ao gatear crescimento por um campo (nutriente, osmolito), lembre que o gate multiplica a taxa — se a taxa ja e proporcional a `rho_b`, nenhum gate ressuscita `rho_b = 0`. So termo aditivo faz isso.
+
+    **PENDENCIA — J7/J8 REPROVAM em C2 (§2.5), o ponto de operacao NAO esta fechado.** `tools/compare_runs.py`: `frac(sigma_a<0.85)` vai de 7.4% (C4) para **33.7%** (J7) e 26.1% (J8), contra o teto de 15%; `contrast_cs` cai a 6.7 (guardrail ≥12). O vazio GROSSO melhora (>1.5dx: 0.16% → 0.08%, 37 → 16 dx²) mas o FINO piora 2.5× (>1.0dx: 1.24% → 3.15%). Pela §2.5 isso mantem **Pass L e T3 bloqueados**. Erro de processo a nao repetir: declarei J7 como ponto de operacao sem rodar `compare_runs.py`, que o §10 torna obrigatorio para qualquer rota de preenchimento.
+
+50. **`BiomassGrowth` cresce massa SPH em proporcao a `m`, nao a `rho_b` — inofensivo enquanto ha zeros, runaway assim que eles somem** (J9, 2026-08-11): [equations.py:38-42](src/equations.py#L38-L42) faz `d_a_rho_b = rate·rho_b` (multiplicativo) mas `d_am = rate·m` (NAO multiplicativo), com gate de entrada `rho_b > 1e-12`. No baseline C4 os 77.6% de particulas em zero exato ficavam FORA do gate e nao ganhavam massa. Quando a colonizacao (#49) as levanta para ~1e-9, elas passam no gate e ganham massa **a taxa cheia** com biomassa desprezivel — agar ganhando massa espontaneamente.
+
+    **Confirmacao quantitativa:** ~20 000 particulas × `r_growth`(0.02) × `c_n_factor`(~0.5) × `m`(dx²=0.0029) × 50 s ≈ **+29**; medido 197.5 → 227.5 = **+30**.
+
+    **DECISAO (2026-08-11): serie J REVERTIDA, C4 permanece o baseline.** `k_col` e a correcao de massa voltaram a zero/forma original; `main.py` e `src/` estao identicos ao estado que reproduz C4 bit-a-bit. Motivo: J7 elimina os zeros mas reprova C2 (§2.5), e J10 (com a massa corrigida) melhora para 16.2% mas ainda reprova por 1.2 ponto, com `contrast_cs` em 7.8 contra o guardrail de 12. A morfologia de J0b e IDENTICA a do C4 (18 braços em ambos, t=35 e t=48) — a correcao de massa era consistencia, nao ganho: removia ~25% da biomassa e 9% do raio sem alterar a forma. **Sobrevive como conhecimento** (licoes #48-#50), como instrumento ([tools/diag_juncao.py](tools/diag_juncao.py), painel `rho_b` log no [plots/plot.py](plots/plot.py)) e como codigo desligado (`BiomassColonization`, `BiomassDiffusion`, analogas a `OsmoticForce` — §10 proibe remover).
+
+    **Rota do inoculo analisada e FECHADA (predicao ex-ante, 2026-08-11).** Semear a borda do inoculo com `rho_b = eps > 0` nao tem janela: `cs` tolera `eps <= 2.4e-3` (custo 10% da producao base no disco r<4.4), mas crescer ate `rho_b=0.1` em 50 s exige `eps >= 4.1e-2` — **gap de 17×**. Causa: o fator de crescimento maximo na janela e `exp(r_growth·c_n_f·T) = exp(0.02·0.9·50) =` **2.46×**, entao a semente E o resultado; nao ha amplificacao que transforme semente segura em biomassa visivel. Agravante geometrico: a colonia vai de R=0.3 a R=4.4, logo **97% da area que ela ocupa em t=48 era agar em t=0** — semear "a borda do inoculo" nao alcanca essa regiao, e alcanca-la e semear o dominio (custo em `cs` de 172% a 3484%). **O que abriria a rota** e remover a trava da JANELA, nao mexer na semente: com fonte de nutriente (`dc_n/dt += k_src(1-c_n)`, [T2] Srinivasan — swarming e regime *nutrient-rich*) e `T=200`, o fator vira 36× e `eps=1e-3` (custo 1.7% em `cs`) cresce ate 0.036. Custo: dominio maior (a colonia ja esta em R=4.4 em t=48) e ~4× de wall time.
+
+    **J9 (remover `d_am` da `BiomassColonization`) NAO resolveu** — massa 227.5 vs 228.0 do J7, `frac(sigma_a<0.85)` 34.1% vs 33.7%. A massa nunca vinha da colonizacao; vinha do `BiomassGrowth` agindo sobre as particulas que a colonizacao tornou elegiveis. **Regra de diagnostico:** quando um termo novo (A) parece causar um efeito, verifique se ele nao esta apenas habilitando um termo antigo (B) que ja estava errado — o teste e desligar A e medir, como aqui. Mesma classe da licao #39 (seta causal invertida).
+
+51. **A desaceleracao em t≈55 NAO e esgotamento de nutriente — e numero FIXO de portadores de biomassa** (N1, 2026-08-11): implementada `NutrientSource` (`d_a_c_n += k_src·(1−c_n)`, [T2] Srinivasan — swarming e regime *nutrient-rich*) com `k_src=0.3`, alavanca unica sobre o C4, t=100. Calibracao: o equilibrio local e `c_n = k_src/(k_src + k_n·rho_b)`; `k_src=0.1` daria `c_n=0.40` nos braços, que e exatamente o ZERO do smoothstep `[0.4,0.8]` do gate de crescimento — `0.3` da 0.67 (gate 0.74).
+
+    **O nutriente foi resolvido:** `min_c_n` nunca cai abaixo de **0.376** (C4 vai a zero), `c_n` nos braços fica 0.92→0.58 sustentado (C4: 0.55→0.086), `biomass_total` cresce **2.15×** em vez de estagnar. **E o vacuo MELHOROU sobre o baseline:** vazio >1.5dx **0.02%** contra 0.16% do C4 (9 vs 37 dx²), `frac(sigma_a<0.85)` **2.6%** contra 7.4%. `a_mar_frente` em t=48 **8.91 vs 7.23 (+23%)**, `V` (vale na crista) **0.39 → 0.16**, perfil de `cs` identico ao C4 (nao inundou), morfologia preservada, e a **armadilha K.17 NAO ocorreu** (`n_pinned` 43 → 46).
+
+    **Mas a velocidade de expansao nao ficou constante, e e ai que esta o achado:**
+
+    | janela | alpha | dR/dt |
+    |---|---:|---:|
+    | C4, t ∈ [33,55] | 1.09 | 0.0988 |
+    | N1, t ∈ [33,55] | 1.10 | 0.0996 |
+    | **N1, t ∈ [55,95]** | **0.40** | **0.0313** |
+
+    N1 reproduz a transicao do C4 **no mesmo instante e com o mesmo expoente**, com o nutriente sustentado entre 0.58 e 0.99 o tempo todo. **Logo a desaceleracao em t≈55 nao e causada por `c_n`** — a licao #47 identificou a correlacao (o nutriente de fato esgota no C4) mas errou a causa.
+
+    **Causa provavel:** o numero de particulas PORTADORAS de biomassa e quase fixo (**167 → 178**) enquanto o perimetro cresce (2πR de 29 para 40). O crescimento e multiplicativo: adensa quem ja tem biomassa (total 2.15×) mas **nao recruta** quem esta em zero. Com fonte fixa espalhada num perimetro crescente, a tracao por unidade de perimetro cai como 1/R → `dR/dt ∝ 1/R` → `R ~ √t` → **alpha = 0.5**; medido 0.40. **Corolario: o halo (licao #48) e a desaceleracao sao o MESMO problema** — contagem fixa de portadores. `rho_b==0` fica em 77.1% (C4: 77.6%), inalterado.
+
+    **Metrica invalidada nesta configuracao:** `a_mar_bio_med` cai 3.15 → 0.16 enquanto a frente SOBE. Com `c_n` uniforme, a producao de `cs` perde a estrutura espacial que o gradiente de `c_n` fornecia e o motor no interior zera, concentrando-se na frente. Sob `k_src > 0`, medir motor pela FRENTE (`r > 0.75·R99`), nunca pela mediana.
+
+    **Dois guardrails de `compare_runs.py` reprovaram N1 por ma calibracao, nao por falha** (mesma classe da licao #46c): (a) `iter <= 6000` foi calibrado para t=50 — N1 rodou t=100 e fez 6600, ou seja **67.6 iter/s contra 52 do C4**, sem colapso de dt; o guardrail deveria ser `iter/t_final`, invariante de configuracao. (b) "massa nao convergida" (taxa 2a/1a metade = 2.27) pressupoe que a massa para de crescer — em regime nutrient-rich crescer e o objetivo. **Nao recalibrados ainda**; ate la, ler os dois com julgamento em qualquer rodada com `k_src > 0` ou `t > 50`.
+
+52. **A hipotese dos portadores CONFIRMADA — colonizacao sobre nutriente sustentado zera o halo, e quebra nos dois pontos ja documentados** (N2, 2026-08-11): `k_col=0.03` sobre o N1 (`k_src=0.3`), alavanca unica, t=100. A colonizacao passa a recrutar porque o gate de `c_n` fica aberto:
+
+    | t | 7 | 43 | 50 | 57 | 70 | 97 |
+    |---|---:|---:|---:|---:|---:|---:|
+    | `n_bio` nos braços | 70 | 81 | 119 | 200 | 586 | **3521** |
+    | `a_mar_p95` (frente) | 2.1 | 6.0 | 4.5 | **0.77** | 0.31 | 0.32 |
+    | `cs_bio_arms` | 0.41 | 0.42 | 0.44 | 0.46 | 0.48 | **0.483** |
+    | `contrast_cs` | 56 | 8.1 | 6.0 | 4.6 | 3.6 | **2.6** |
+    | `mass_total` | 199 | 226 | 240 | 257 | 295 | **407** |
+
+    **Em t=48 o halo esta ELIMINADO com o motor vivo:** `rho_b==0` **0.0%** (C4: 77.6%), `F(rho_b>0.01)` **43.4%** (C4: 11.8%), `a_mar_frente` **5.66** (limiar 4.0), vazio >1.5dx **0.01% = 3 dx²** — o menor de toda a serie —, morfologia dendritica preservada. **Confirma a licao #51:** o gargalo era contagem de portadores, e recruta-los resolve o halo E o define como o mesmo problema da desaceleracao.
+
+    **Quebra em t≈55, quando `n_bio` cruza ~200**, por dois mecanismos ja documentados: (a) **licao #48** — o Hill `qs` produz por PRESENCA, entao 3521 portadores em `rho_b` baixo inundam o `cs` do mesmo jeito (satura em 0.483 ≈ `cs_max`, contraste 56 → 2.6); (b) **licao #50** — `d_am = rate·m` nao e proporcional a `rho_b`, e com `c_n` alto o gate `rho_b>1e-12` abre para TODAS as recrutadas, cada uma ganhando massa a taxa cheia (198 → 407, dobra).
+
+    **Vacuo (§2.5) — resultado misto, registrar como tal:** no grosso N2 e o melhor da serie (>1.5dx **0.01%** contra 0.16% do C4), no fino piora (>0.7dx **14.85%** contra 6.55%; `frac(sigma_a<0.85)` 11.1% contra 7.4%, ainda sob o teto de 15%).
+
+    **Reposicionamento das correcoes da serie J:** os dois bloqueios de N2 sao exatamente as duas correcoes implementadas e revertidas em J (massa ∝ `rho_b`, #50; producao ∝ conteudo, #48/J5). Na serie J elas pareciam custo puro porque, SEM nutriente sustentado, nao havia recrutamento — consertavam um problema que nao estava ocorrendo. Sob `k_src>0` o recrutamento acontece e as duas passam de opcionais a **pre-requisito**. Decisao de adota-las ou nao permanece em aberto (o baseline segue sendo o C4).
+
+    **Janela util de N2: t ≲ 50.**
+
+53. **Preencher com biomassa SUB-QUORUM nao e preencher — e inerte onde importa e ativo onde atrapalha** (fechamento da serie N: N2_t50 e N3, 2026-08-12): o painel de `rho_b` em escala LOG mostrou o N2 como corpo continuo, mas o perfil radial DENTRO dos cones dos braços (eixos detectados por histograma azimutal, ±8°) mostra que a descontinuidade nucleo↔dendrito **nao foi resolvida**:
+
+    | r | C4 mediana | C4 %>0.1 | N2_t50 mediana | N2_t50 %>0.1 |
+    |---:|---:|---:|---:|---:|
+    | 0.6 | 0.186 | 75% | 0.241 | 84% |
+    | 0.8 | 0.0003 | 32% | 0.170 | 66% |
+    | **1.2** | 0.0000 | **30.0%** | 0.034 | **29.9%** |
+    | 2.0 | 0.0000 | 13% | 0.025 | 36% |
+
+    **Em r=1.2 a fracao acima do quorum e IDENTICA nas duas rodadas** — e e essa banda que o olho le como a separacao entre o halo do nucleo e os dendritos. A colonizacao elevou a mediana de 0 para 0.03, mas `0.03` esta **abaixo de todos os limiares do modelo**: gate flagelar `[0.1,0.6]` → forca zero; `BiomassEOS` `rho_b<0.1` → `fade=0`, pressao zero; `ParticleShift` gate `rho_b>=0.1` → nao regularizada; pin `>=0.8` → nao. **A UNICA equacao que a enxerga e a producao de surfactante** (`qs(0.03)=0.083`, 8% da taxa maxima) — que multiplicada por milhares de particulas e exatamente a inundacao medida (`contrast_cs` 12.9 → 5.9).
+
+    **Regra:** biomassa em `(0, 0.1)` e mecanica e cinematicamente invisivel e quimicamente ativa. Qualquer rota de preenchimento precisa entregar `rho_b > 0.1` na juncao, nao apenas `rho_b > 0`. E crescer de 0.03 ate 0.1 leva `ln(3.3)/r_growth ≈ 60 s` — mais que a janela inteira, o que fecha a rota por crescimento.
+
+    **N3 (`SHIFT_CAP` 0.0006 → 0.0002) — predicao REFUTADA, e o erro e informativo:** previ que o `sigma_a` degradado vinha de clumping. O clumping foi eliminado (`frac_clump` 0.470 → **0.078**, melhor que o proprio C4; `nn_median` 0.53 → 0.79; colapso de dt 130 → 72 iter/s ≈ C4) **e o `sigma_a` PIOROU** (19.3% → 25.3%). Causa: menos shifting = menos redistribuicao para dentro das lacunas. E a tensao C1↔C2 da licao #45 — o cap 0.0002 esta ABAIXO do otimo, nao acima.
+
+    **Armadilha de composicao no proprio C2** (3a vez na sessao — cf. #46, #48): `frac(sigma_a<0.85)` sobre `rho_b>0.1` da C4 8.7% / N2 21.7% / N3 26.7%; sobre populacoes de MESMO tamanho (top-N por `rho_b`) da 8.7% / **11.1%** / 26.4%. A degradacao do N2 era majoritariamente composicao — recrutar biomassa inclui o rim esparso, onde `sigma_a` e baixo por truncamento de kernel (Liu §6.5). **O criterio C2 como escrito penaliza estruturalmente qualquer rota que crie biomassa.** Decisao sobre redefinir a populacao permanece com a usuaria; nao alterada.
+
+    **Validacao com literatura (`tools/validate_model.py`, t≈48):** C4 vence em AR (**5.3** vs 3.0, criterio §2.2 ≥5), `alpha` (0.938 vs 0.864 na janela util, [T2] pede 1), `sigma_a` e massa (+4.3% vs +21.3%). N2_t50 vence em vazio (>1.5dx **0.000%** vs 0.148%), vizinhos nos braços (52.9 vs 46.9, [T6]) e picos de pressao (3% vs 13%). **Ressalva sobre o halo de `cs`:** o tool reporta 1.12× → 1.44× e marca como melhora por [T1], mas os campos mostram que o halo do N2 e maior porque o `cs` saturou e transbordou, nao porque a producao nas pontas ficou localizada — [T1] pede halo em torno de um campo ESTRUTURADO. Metrica escalar contradiz a leitura visual; §11 manda seguir a visual.
+
+    **VEREDITO: C4 permanece o baseline.** A serie N estabeleceu o regime nutrient-rich ([T2] reproduzido, `c_n` nunca esgota) e refutou a licao #47, mas nao resolveu a descontinuidade que a motivou. `k_src` e `k_col` voltam a 0.0; `NutrientSource` fica preservada desligada.
+
+    **Nota sobre `rho_b` e literatura:** `rho_b` e campo NORMALIZADO (0 a `rho_max`=1, capacidade de suporte do logistico), nao concentracao medivel — [T2] usa fracao volumetrica φ, [T1] usa altura de filme e Γ. **Nao existe valor de literatura para comparar diretamente.** O que e ancoravel e a estrutura de tres zonas (nucleo `>=0.8` denso e pinado; swarmers `[0.1,0.6)`; baias `<0.1` sub-quorum e silenciosas), que ambas as rodadas reproduzem — C4 com 10.8% da area acima do quorum, N2 com 20.4%. Nenhuma referencia arbitra qual fracao deveria ser.
+
+54. **Fluxo quimiotatico de biomassa TRANSPORTA mas DILUI — todos os gates do modelo sao em valor ABSOLUTO** (X1, 2026-08-12): implementada `ChemotacticFlux` ([T3] Giverso 2016, `m = χ·ρ·∇n`), a metade que faltava da quimiotaxia — o modelo tinha a força (`FlagellarForce`) mas nao o fluxo do campo, entao `rho_b` era escalar passivo e nunca alcançava territorio novo. Forma `dρ_b/dt = −∇·(ρ_b·u)`, `u = χ(−∇cs)`, upwind, gate simetrico `rho_b<0.8`, `χ=0.15`.
+
+    **REPROVADO — a colonia congelou:**
+
+    | em t≈45 | C4 | X1 |
+    |---|---:|---:|
+    | `n(0.2 ≤ ρ_b ≤ 0.6)` — **gate flagelar** | 2041 | **34** |
+    | `n(0 < ρ_b ≤ 0.01)` — traço | 2 484 | **64 196** |
+    | particulas com `a_flag > 0` | 71 | **7** |
+    | `a_mar` maximo | 9.90 | **1.21** |
+    | `Σ ρ_b` | 956.6 | **170.4** |
+    | **`R99`** | **4.39** | **0.49** |
+
+    O fluxo espalhou a biomassa por 64 196 particulas em nivel de traço; a banda que aciona o motor esvaziou (2041 → 34) e a colonia ficou no raio do inoculo.
+
+    **Regra:** espalhar `rho_b` por 25× mais particulas divide o valor por 25, e **todos os gates do modelo sao em valor absoluto** (`0.1` quorum, `0.2–0.6` flagelar, `0.8` pin). Transporte sem preservacao de concentracao converte biomassa util em biomassa invisivel. E a licao #53 por outro caminho — a colonizacao CRIAVA sub-quorum, o fluxo CONVERTE acima-do-quorum em sub-quorum, o que e pior. **Reduzir `χ` nao resolve**: a diluicao e o estado de equilibrio da adveccao-difusao, `χ` so muda a velocidade com que se chega nele.
+
+    **O discriminante do X0 era insuficiente.** Escolhi a faixa do perfil radial de `cs` (criterio ≥3×); X1 deu **3,7× e PASSOU**, porque `cs` continua estruturado — em torno de uma colonia que nao saiu do lugar. `R99` reprova em uma linha. Mais um caso do §11: metrica escalar aprovando o que a leitura direta reprova. **Ao definir discriminante, incluir sempre uma medida de que a colonia EXPANDIU.**
+
+    **Erro de previsao a registrar:** o X0 previu acumulacao em `r∈[1.2,2.4]` a partir da curvatura `∇²cs` medida no C4 — mas esse e o campo de uma colonia **ja formada**. Nos primeiros segundos, com a colonia compacta, o perfil tem a geometria divergente do `r=0.6`, e a biomassa se espalhou antes de qualquer braço existir. **Curvatura medida no estado final nao prediz a dinamica a partir do estado inicial.**
+
+    **Dois sinais ignorados no teste de conservacao:** 60% dos zeros preenchidos em **5 s** e `Σρ_b` subindo 11%. Li como "o mecanismo transporta"; eram "o mecanismo dilui rapido demais".
+
+    **X1b — limite de CAPACIDADE (`rho_target=0.4`) tambem REPROVADO, e o motivo fecha a classe inteira.** Adicionado `rb_up = min(rb_doador, max(0, rho_target − rb_receptor))`, mantendo `χ=0.15`. Resultado praticamente identico ao X1: banda flagelar **52** (X1: 34; C4: 2041), traço 65 287, `Σρ_b` 155.7, `R99` **0.418**. Causa: o limite restringe **o NIVEL do receptor**, nao **o NUMERO de receptores**. O receptor tipico esta em `rho_b≈0`, entao `cap = 0.4` — maior que o `rho_b` de quase todo doador (0.3–0.5) — e **a condicao quase nunca ativa**.
+
+    **REGRA GERAL (fecha a classe de TRANSPORTE):** com `Σρ_b·V` fixo, espalhar por `N` particulas da `rho_b ~ Σρ_b·V/(N·V)`, e **nenhuma regra par-a-par muda `N`**. Upwind, capacidade, valor de `χ` — todos operam sobre QUANTO flui, nenhum sobre PARA QUANTOS. Redistribuir e matematicamente incapaz de produzir concentracao util em territorio novo quando o orcamento e fixo. Somando com as rotas de CRIACAO (colonizacao, difusao, semeadura — reprovadas por afogar `cs` ou drenar o nucleo), so aumentar o ORCAMENTO de biomassa resolve.
+
+    **CORRECAO (analise preditiva do X5, mesmo dia):** escrevi acima que o influxo van't Hoff seria essa saida. **Nao e.** `V₀ = Q₀·(φ/(1−φ) − φ₀/(1−φ₀))` traz **solvente**, nao celulas — em [T2] a fase ativa cresce por divisao e o influxo so puxa agua do agar. No nosso modelo ele vira `dm/dt` e nao toca `rho_b`, entao a colonia ganha area com o MESMO orcamento e a concentracao CAI: espalhado em 1×/2×/4× a area atual, o `rho_b` medio da 0.0042 / 0.0021 / 0.0011 — todos abaixo do quorum de 0.1. **O influxo agrava a diluicao.** Dois problemas adicionais: `V₀` e maximo onde `φ` e maximo (o nucleo, que esta PINADO — massa injetada vira pressao sem movimento) e **diverge em `φ→1`**, exatamente onde o nucleo do C4 esta. X5 continua valendo como motor de expansao ([T5] Bru: osmotica e dominante, nao Marangoni), mas resolve OUTRO problema.
+
+    **O que de fato resta:** a unica coisa que aumenta o orcamento de biomassa e o `BiomassGrowth`. N1 provou que a fonte de nutriente o sustenta (biomassa 2,15× em 100 s, `c_n` nunca esgota); em ~300 s daria ~10×, suficiente para popular os braços. O bloqueio conhecido e a restricao #1 (mais biomassa afoga o `cs`), e a alavanca contra ela — `K` do Hill 0.1→0.4 com `σ` recalibrado — **nunca foi testada**. Caminho: `k_src=0.3` + dominio `[-12,12]` + `t≈120` + `K` do Hill. Alternativa estrutural: **gates relativos em vez de absolutos**, que tornaria a diluicao irrelevante mas toca todas as equacoes.
+
+    **Metrica de conservacao mal formulada (erro meu, 3 medicoes perdidas):** `Σ ρ_b·V` NAO e o invariante — `V = m/ρ` muda com a deformacao e a equacao nao tem termo `−ρ_b∇·v`. `Σ V₀·Δρ_b` deu +0.029, `Σ V₁·Δρ_b` deu −0.037, `Σ V_med·Δρ_b` deu −0.004: sinais opostos, assinatura de artefato de regua. **O invariante exato e instantaneo**, `Σ_i V_i·(dρ_b/dt)_i = 0` — verificado offline em numpy a **1.7e-18**, confirmando que a forma antissimetrica com upwind esta correta. A equacao esta certa; a fisica que ela produz e que nao serve.
+
+55. **A SATURACAO era o bloqueio, nao o preenchimento — corrige o escopo das licoes #48-#54** (serie Y, 2026-08-12): as licoes anteriores concluiram que encher a colonia e ter motor eram incompativeis. **A afirmacao correta e mais estreita: eram incompativeis SOB PRODUCAO SATURANTE.**
+
+    O `cs` do modelo tinha DUAS saturacoes em serie: `qs = ρ_b²/(ρ_b²+0.01)`, que satura em `ρ_b≈0.1` (produz por PRESENCA, nao por conteudo), e o teto `(1−cs/cs_max)` do Pass T1. Juntas faziam `cs` depender de QUANTAS particulas produzem, nao de QUANTA biomassa existe — densificar aumentava a contagem sem aumentar o contraste. **Y1 removeu as duas:** `production = σ·ρ_b·noise·c_n_factor`. O teto fica redundante por construcao: com producao linear `cs ≤ σ·ρ_max/λ`, pois `ρ_b ≤ 1`.
+
+    **Y2 (`σ=3` + `k_col=0.03`) — primeiro preenchimento que NAO mata o motor**, medido contra Y1b (mesma amplitude, sem preenchimento):
+
+    | | Y1b | **Y2** | |
+    |---|---:|---:|---|
+    | `rho_b == 0` no disco | 45.9% | **0.000%** | halo eliminado |
+    | `F` (`rho_b`>0.01) | 20.5% | **56.1%** | +173% |
+    | **`n(0.2 ≤ ρ_b ≤ 0.6)`** | 1016 | **1234** | **+21%** |
+    | `cs` na ponta | 0.079 | **0.138** | **+75%** |
+    | `a_mar` frente | 1.754 | 1.316 | −25% |
+    | `R99` | 2.380 | 2.265 | −4.8% |
+    | vazio >0.7dx (envelope) | 12.25% | **10.88%** | melhorou |
+
+    **A banda que aciona o motor CRESCEU** — nunca havia acontecido: K2 colapsou 96%, X1 de 2041 para 34, N2 engordou os braços. E `cs` na ponta SUBIU em vez de saturar. Custo: motor −25% e `R99` −5%, contra colapsos de 96–99% nas cinco rotas anteriores.
+
+    **Ressalva de escala:** Y1b/Y2 operam com motor ~5,5× mais fraco que o C4 em absoluto (1.32 vs 7.23) e `R99` quase metade. O avanco e RELATIVO; so vale como configuracao de trabalho se sobreviver em amplitude cheia (`σ=9`, Y3). Custos remanescentes: `frac(σ_a<0.85)` 19.8% pela definicao antiga (8.8% pela geometrica) e componentes conexas 22 → 32.
+
+    **DOIS ERROS DE CALIBRACAO MEUS, ambos pela mesma causa:** usar formula simplificada onde faltava o termo dominante no novo regime. (a) `χ = 0.5` no X0, calibrado com o gradiente do PERFIL RADIAL (0.19) quando a equacao usa o gradiente LOCAL SPH (0.684, 3,6× maior). (b) `σ = 0.35` no Y1, de `cs_∞ = P/λ`, formula que **IGNORA a perda difusiva** — dominante quando a producao e pequena; medido 9× abaixo, corrigido para 3.0 por escala exata (sem o teto o sistema e LINEAR em `σ`). **Regra:** ao mudar de regime, verificar quais termos do balanco passam a dominar antes de calibrar por formula assintotica.
+
+56. **Sem o teto, `cs` troca um bloqueio por outro: a faixa dinamica explode e calibrar por um extremo nao controla o outro** (Y3, fechamento da serie Y, 2026-08-12): `σ = 9` sobre o Y2, escolhido por escala linear exata para igualar o `cs` na PONTA do C4. Funcionou na ponta — e o nucleo foi a `cs = 14.3` (**29× o C4**, que tem teto em 0.5), com `a_mar` maximo de **116** (10× o C4, 19× o orcamento do §8). Sem teto o limite e `cs_∞ = σ·ρ_max·c_n_f/λ = 27`, e o nucleo alcançou metade disso. **Regra:** producao saturante comprime a faixa dinamica; ao remove-la, calibrar por UM ponto do perfil (a ponta) nao vincula o outro extremo (o nucleo) — verificar os dois antes de rodar.
+
+    **O que o Y3 entregou** (t≈48, contra C4): zero absoluto **eliminado** (77.6% → 0.000%), continuidade `frac(ρ_b>0.1)` **maior em todo raio** dentro dos cones dos braços (em `r/R99=0.4`: 13.4% → 24.8%), `R99` 4.39 → 4.99, banda flagelar `[0.2,0.6]` 2425 → 4676 (+93%), e — o mais relevante topologicamente — **87.7% da biomassa numa unica componente conexa contra 79.0% do C4**. Encher a colonia sob producao linear de fato aumenta a continuidade.
+
+    **O que reprovou:** `frac(σ_a<0.85)` = 18.3% (limite 15%), massa +20% (206 → 246), `a_mar` maximo 116. **C4 permanece o baseline; nada da serie Y foi adotado.**
+
+    **Contaminacao de composicao no proprio criterio C2 (4a ocorrencia do mesmo erro):** os 18.3% sao medidos sobre `ρ_b > 0.1`, populacao que o preenchimento **faz crescer** — as 4676 particulas recrutadas estao no rim, e particula de rim tem `σ_a` baixo por truncamento de superficie livre (Liu §6.5), nao por vazio. Na populacao GEOMETRICA (envelope, estavel sob recrutamento) o numero e 7.4% contra 2.6% do C4 — ainda pior, mas 2,5× menor que o reportado. **Toda metrica normalizada por `ρ_b>limiar` e nao-comparavel entre rotas que mudam quantas particulas tem biomassa.**
+
+    **Terceira armadilha de renderizacao da serie (apos #49 em `ρ_b`):** com `cs` maximo em 14.3, o viewer normaliza a cor por esse valor e a zona de expansao (`cs` 0.08–0.3) renderiza como **zero absoluto** — reportado como "cs esta zero na expansao". Medido, o `cs` do Y3 e **2–4× o do C4 em todo raio**. O painel de `cs` do [tools/plot_fields.py](tools/plot_fields.py) passou a LOG (piso 1e-3) pela mesma razao que o de `ρ_b`; em escala linear o halo radial do C4 — que e o quadro do painel (b) de Trinschek — era invisivel.
 
 **Invariantes morfologicos descobertos (K.5-K.14):**
 1. `smoothstep` em `[a,b]` satura em 1.0 no pico → **max(metric) e cego ao estreitamento do gate**. K.1, K.2 pareceram no-op por isso; diagnostico correto requer `n_active` e `mean_active`, nao `max`.

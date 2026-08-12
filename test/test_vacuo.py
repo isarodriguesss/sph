@@ -45,16 +45,10 @@ def void_fraction(x, y, rho_b, dx, thresholds=(0.7, 1.0, 1.5), n_grid=600):
     ylim = float(np.max(np.abs(y)))
     g = np.linspace(-R, R, n_grid)
     GX, GY = np.meshgrid(g, g)
-    ins = (
-        (GX * GX + GY * GY <= R * R)
-        & (np.abs(GX) <= xlim)
-        & (np.abs(GY) <= ylim)
-    )
+    ins = (GX * GX + GY * GY <= R * R) & (np.abs(GX) <= xlim) & (np.abs(GY) <= ylim)
     if not np.any(ins):
         return out
-    d, _ = cKDTree(np.column_stack([x, y])).query(
-        np.column_stack([GX[ins], GY[ins]])
-    )
+    d, _ = cKDTree(np.column_stack([x, y])).query(np.column_stack([GX[ins], GY[ins]]))
     res = {t: float(np.mean(d > t * dx)) for t in thresholds}
     res["R"] = R
     return res
@@ -85,7 +79,9 @@ def main(argv):
     )
     n_isolado = int((nbr < 5).sum())
     print("(1) Os 'buracos' do scatter sao queda de densidade, nao isolamento:")
-    print(f"    holes (rho<{HOLE_THRESH}): {len(holes)} ({len(holes)/len(colony):.0%} da colonia)")
+    print(
+        f"    holes (rho<{HOLE_THRESH}): {len(holes)} ({len(holes) / len(colony):.0%} da colonia)"
+    )
     print(f"    vizinhos em 2h: mediana={int(np.median(nbr))}  min={int(nbr.min())}")
     print(f"    quase-isoladas (<5 vizinhos): {n_isolado}")
 
@@ -96,7 +92,9 @@ def main(argv):
     frac_baixo = float((sigma_a[col] < SIG_MIN).mean())
     print("\n(2) C2 — suporte do kernel (Violeau §3.4/3.6):")
     print(f"    sigma_a na colonia: mediana={sig_med:.3f}  media={sig_mean:.3f}")
-    print(f"    fracao com sigma_a < {SIG_MIN}: {frac_baixo:.1%}  (alvo <= {SIG_FRAC_MAX:.0%})")
+    print(
+        f"    fracao com sigma_a < {SIG_MIN}: {frac_baixo:.1%}  (alvo <= {SIG_FRAC_MAX:.0%})"
+    )
 
     # ── (3) C1 — cobertura areal (o que sigma_a NAO ve) ──────────────────
     vf = void_fraction(x, y, rho_b, dx)
@@ -105,8 +103,10 @@ def main(argv):
     print("    fracao da AREA da colonia sem nenhuma particula dentro de:")
     for t in (0.7, 1.0, 1.5):
         print(f"      > {t:.1f} dx : {vf[t]:7.3%}")
-    print(f"    vazio > {VOID_THRESH}dx em area absoluta: {area_dx2:.0f} dx^2"
-          f"   (alvo <= {VOID_MAX:.0%})")
+    print(
+        f"    vazio > {VOID_THRESH}dx em area absoluta: {area_dx2:.0f} dx^2"
+        f"   (alvo <= {VOID_MAX:.0%})"
+    )
     print("    -> sigma_a nao enxerga isto: onde nao ha particula, nao ha amostra")
 
     # ── (4) fisica saudavel ──────────────────────────────────────────────
@@ -114,7 +114,11 @@ def main(argv):
     # herdado e nao representa o campo. Incluí-lo infla mean_cs e deprime
     # contrast_cs artificialmente — licao #39.
     isf = getattr(f, "is_filler", None)
-    chem = (isf < 0.5) if isf is not None and len(isf) == len(cs) else np.ones_like(cs, bool)
+    chem = (
+        (isf < 0.5)
+        if isf is not None and len(isf) == len(cs)
+        else np.ones_like(cs, bool)
+    )
     cs_real = cs[chem]
     contrast_cs = (cs_real.max() - cs_real.min()) / (cs_real.mean() + 1e-9)
     contrast_all = (cs.max() - cs.min()) / (cs.mean() + 1e-9)
@@ -130,10 +134,18 @@ def main(argv):
     a3 = vf[VOID_THRESH] <= VOID_MAX
     a4 = contrast_cs > 10 and float(np.mean(v)) > 0
     print("\n" + "=" * 66)
-    print(f"(1) nenhuma particula quase-isolada:              {'OK' if a1 else 'FALHA'}")
-    print(f"C2  suporte do kernel (frac<{SIG_MIN} <= {SIG_FRAC_MAX:.0%}):        {'OK' if a2 else 'FALHA'}")
-    print(f"C1  cobertura areal (vazio>{VOID_THRESH}dx <= {VOID_MAX:.0%}):        {'OK' if a3 else 'FALHA'}")
-    print(f"(4) fisica saudavel (motor vivo):                 {'OK' if a4 else 'FALHA'}")
+    print(
+        f"(1) nenhuma particula quase-isolada:              {'OK' if a1 else 'FALHA'}"
+    )
+    print(
+        f"C2  suporte do kernel (frac<{SIG_MIN} <= {SIG_FRAC_MAX:.0%}):        {'OK' if a2 else 'FALHA'}"
+    )
+    print(
+        f"C1  cobertura areal (vazio>{VOID_THRESH}dx <= {VOID_MAX:.0%}):        {'OK' if a3 else 'FALHA'}"
+    )
+    print(
+        f"(4) fisica saudavel (motor vivo):                 {'OK' if a4 else 'FALHA'}"
+    )
     ok = a1 and a2 and a3 and a4
     print("-" * 66)
     print(

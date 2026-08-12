@@ -10,10 +10,12 @@ from .equations import (
     BiomassDiffusion,
     BiomassEOS,
     BiomassGrowth,
+    ChemotacticFlux,
     FlagellarForce,
     KernelGradientCorrection,
     KernelSum,
     MarangoniForce,
+    NutrientSource,
     OxigenConsumption,
     ParticleShift,
     SurfactantEquation,
@@ -103,6 +105,8 @@ class MyBiomassScheme(Scheme):
         D_n=0.02,
         D_n_int=1e-4,
         k_n=0.5,
+        k_src=0.0,
+        chi=0.0,
         use_shift=False,
         shift_coeff=0.5,
         shift_cap=0.05,
@@ -141,6 +145,8 @@ class MyBiomassScheme(Scheme):
         self.D_n = D_n
         self.D_n_int = D_n_int
         self.k_n = k_n
+        self.k_src = k_src
+        self.chi = chi
         super(MyBiomassScheme, self).__init__(fluids, solids, dim=dim)
 
     def get_equations(self):
@@ -186,9 +192,7 @@ class MyBiomassScheme(Scheme):
                     k_col=self.k_col,
                     rho_max=self.rho_max,
                 ),
-                BiomassDiffusion(
-                    dest="fluid", sources=["fluid"], D_b=self.D_b
-                ),
+                BiomassDiffusion(dest="fluid", sources=["fluid"], D_b=self.D_b),
                 # BiomassGradient DEVE vir antes de MarangoniForce
                 # (Marangoni usa grad_rho_b_mag como gate de interface)
                 BiomassGradient(dest="fluid", sources=["fluid"]),
@@ -219,6 +223,7 @@ class MyBiomassScheme(Scheme):
                     D_n_int=self.D_n_int,
                     k_n=self.k_n,
                 ),
+                NutrientSource(dest="fluid", sources=None, k_src=self.k_src),
                 # OsmolyteProduction(
                 #     dest="fluid",
                 #     sources=["fluid"],
@@ -231,6 +236,14 @@ class MyBiomassScheme(Scheme):
                     dest="fluid",
                     sources=["fluid"],
                     f0=3.0,
+                ),
+            ],
+        )
+
+        equations_chemo = Group(
+            equations=[
+                ChemotacticFlux(
+                    dest="fluid", sources=["fluid"], chi=self.chi, rho_target=0.4
                 ),
             ],
         )
@@ -251,6 +264,8 @@ class MyBiomassScheme(Scheme):
             groups.append(equations_kgc)
 
         groups.append(equations_main)
+        if self.chi > 0.0:
+            groups.append(equations_chemo)
 
         if self.use_shift:
             equations_shift = Group(

@@ -131,6 +131,18 @@ D_n = 0.05
 D_n_int = 1e-4
 k_n = 0.5
 
+# N1 — regime nutrient-rich [T2]: reposicao do nutriente pelo agar.
+# Equilibrio c_n = k_src/(k_src + k_n*rho_b): 0.3 da c_n=0.67 nos braços (gate de
+# crescimento 0.74) contra 0.40 do k_src=0.1, que e o ZERO do gate. 0.0 = desligado.
+k_src = 0.0  # serie N encerrada: regime nutrient-rich validado mas nao resolveu
+# a descontinuidade nucleo-dendrito (licao #53). C4 permanece o baseline.
+
+# X1 — fluxo quimiotatico de biomassa [T3] Giverso: u = chi*(-grad cs), conservativo.
+# chi=0.15: X0 calibrou 0.5 com o gradiente do PERFIL RADIAL (0.19), mas a equacao
+# usa o gradiente LOCAL SPH, cuja mediana e 0.684 (3.6x maior). 0.099/0.684 = 0.145.
+# 0.0 = desligado.
+chi = 0.0  # X1/X1b REPROVADOS: transporte com orcamento fixo dilui (licao #54)
+
 dt_global = 0.001
 total_sim_time = 50.0
 print_freq = 200
@@ -170,7 +182,9 @@ D_b = 0.0  # D1 REPROVADO: destruiu o nucleo (rho_b 1.0->0.48, n_pinned 43->0)
 # no interior) sem drenar o nucleo (so soma) nem preencher as baias (auto-gateada
 # pela vizinhanca vazia). Gate de c_n limita a colonizacao a onde ha nutriente.
 # k_col=0.03 (1.5x r_growth): buraco vai de 0 a ~0.29 em 50 s.
-k_col = 0.0  # K2 REPROVADO: halo preenchido mas a_mar 2.05->0.13 (biomassa 4.6x)
+k_col = 0.0  # K2 REPROVADO: halo preenchido mas a_mar 2.05->0.13 (biomassa 4.6x).
+# Serie Y (producao linear) mostrou que o preenchimento so funciona sem as
+# saturacoes em serie — mas a faixa dinamica de cs explode (licao #56).
 
 use_insert = True
 INSERT_FREQ = 200
@@ -341,6 +355,8 @@ class SwarmApp(Application):
             D_n=D_n,
             D_n_int=D_n_int,
             k_n=k_n,
+            k_src=k_src,
+            chi=chi,
             use_shift=use_shift,
             shift_coeff=SHIFT_COEFF,
             shift_cap=SHIFT_CAP,
@@ -456,8 +472,7 @@ class SwarmApp(Application):
             _ju = (_rr >= 0.4) & (_rr < 1.2)
             c_n_junc = float(np.mean(fluid.c_n[_ju])) if np.any(_ju) else 0.0
             rho_b_junc = (
-                float(np.percentile(fluid.rho_b_grown[_ju], 90))
-                if np.any(_ju) else 0.0
+                float(np.percentile(fluid.rho_b_grown[_ju], 90)) if np.any(_ju) else 0.0
             )
             _th = np.arctan2(fluid.y, fluid.x)
             _arm = (_rr > 2.0) & (_rr < 3.0) & (fluid.rho_b_grown > 0.3)
@@ -466,10 +481,9 @@ class SwarmApp(Application):
                 _h, _e = np.histogram(_th[_arm], bins=72, range=(-np.pi, np.pi))
                 for _b in np.argsort(_h)[-4:]:
                     _c = 0.5 * (_e[_b] + _e[_b + 1])
-                    _in = (
-                        np.abs(((_th - _c + np.pi) % (2 * np.pi)) - np.pi)
-                        < np.deg2rad(9)
-                    )
+                    _in = np.abs(
+                        ((_th - _c + np.pi) % (2 * np.pi)) - np.pi
+                    ) < np.deg2rad(9)
                     _prof = []
                     for _r0 in np.arange(0.4, 2.0, 0.2):
                         _m = _in & (np.abs(_rr - _r0) < 0.2)

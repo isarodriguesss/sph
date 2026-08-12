@@ -78,7 +78,9 @@ class BiomassColonization(Equation):
         d_rho_b_smooth[d_idx] = 0.0
 
     def loop(self, d_idx, s_idx, s_m, s_rho, s_rho_b_grown, WIJ, d_rho_b_smooth):
-        d_rho_b_smooth[d_idx] += (s_m[s_idx] / s_rho[s_idx]) * s_rho_b_grown[s_idx] * WIJ
+        d_rho_b_smooth[d_idx] += (
+            (s_m[s_idx] / s_rho[s_idx]) * s_rho_b_grown[s_idx] * WIJ
+        )
 
     def post_loop(
         self,
@@ -157,6 +159,99 @@ class BiomassDiffusion(Equation):
             d_a_rho_b_grown[d_idx] += (
                 2.0 * self.D_b * gate * vol_j * (rb_ij / rij_sq) * dot
             )
+
+
+class ChemotacticFlux(Equation):
+    """Fluxo quimiotatico de BIOMASSA — a metade que faltava da quimiotaxia.
+
+    [T3] Giverso, Verani & Ciarletta 2016 compara crescimento volumetrico contra
+    fluxo quimiotatico `m = χ·ρ·∇n` e mostra que o segundo produz "padroes mais
+    simetricos com multiplos dendritos". O modelo tinha quimiotaxia so como FORCA
+    sobre particulas (`FlagellarForce`); como `rho_b` e escalar passivo advectado,
+    ela movia sempre os mesmos ~150 portadores e nunca levava biomassa a territorio
+    novo. Dai o estado absorvente da licao #48.
+
+        u = χ·(−∇cs)        deriva quimiotatica (agar fresco, §3.2 Frente 5)
+        dρ_b/dt = −∇·(ρ_b·u)
+
+    Forma antissimetrica par-a-par: o termo do par (i,j) em i e o negativo do termo
+    em j, porque `∇_j W_ji = −∇_i W_ij`. Conserva `Σ V·dρ_b` (Liu §3.4; Violeau §5.3
+    — atencao: o invariante NAO e `Σ ρ_b·V`, que muda com a deformacao do fluido).
+    Particula em `rho_b = 0` tem fluxo de SAIDA zero e recebe do vizinho — e assim
+    que o estado absorvente cai, sem termo aditivo.
+
+    UPWIND obrigatorio. A forma simetrica `(ρ_i u_i + ρ_j u_j)` conserva no contínuo
+    mas nao preserva POSITIVIDADE: num passo de Euler `rho_b` fica negativo onde o
+    fluxo diverge, e o clamp `max(0, rho_b)` do integrador vira termo-FONTE, disparando
+    a cada passo. Medido no teste de conservacao com a forma simetrica: vazamento de
+    **+14% em 5 s**, com 23 739 particulas sentadas em zero recebendo fluxo liquido
+    negativo. Com upwind o doador perde no maximo o que tem (`dρ_b/dt ≥ −C·ρ_b`,
+    decaimento exponencial), `rho_b` nunca fica negativo e o clamp nunca dispara.
+
+    Gate SIMETRICO em `rho_b < rho_b_pin`: assimetrico quebraria a conservacao (o
+    vizinho ganharia o que o nucleo nao perde). Exclui o nucleo maduro, que nao
+    quimiotaxa (§2.4) e cujo fluxo o dreno em τ≈41 s — o pin cinematico nao protege,
+    porque zera a velocidade da particula, nao o fluxo do escalar.
+
+    Roda em Group SEPARADO apos `equations_main`: `grad_cs_x/y` sao acumulados por
+    `FlagellarForce.loop` e so estao finalizados no fim daquele grupo.
+    """
+
+    def __init__(self, dest, sources, chi, rho_b_pin=0.8, rho_target=0.4):
+        self.chi = chi
+        self.rho_b_pin = rho_b_pin
+        self.rho_target = rho_target
+        super().__init__(dest, sources)
+
+    def loop(
+        self,
+        d_idx,
+        s_idx,
+        s_m,
+        s_rho,
+        d_rho_b_grown,
+        s_rho_b_grown,
+        d_grad_cs_x,
+        d_grad_cs_y,
+        s_grad_cs_x,
+        s_grad_cs_y,
+        d_is_filler,
+        s_is_filler,
+        d_a_rho_b_grown,
+        XIJ,
+        DWIJ,
+    ):
+        if (
+            d_rho_b_grown[d_idx] < self.rho_b_pin
+            and s_rho_b_grown[s_idx] < self.rho_b_pin
+            and d_is_filler[d_idx] < 0.5
+            and s_is_filler[s_idx] < 0.5
+        ):
+            ux = -self.chi * (d_grad_cs_x[d_idx] + s_grad_cs_x[s_idx])
+            uy = -self.chi * (d_grad_cs_y[d_idx] + s_grad_cs_y[s_idx])
+            # UPWIND: rho_b de quem o fluxo SAI. XIJ = x_i - x_j, entao o fluxo vai
+            # de i para j quando u aponta de i para j, i.e. u.XIJ < 0. A escolha e
+            # simetrica no par (para o destino j a condicao inverte junto com XIJ),
+            # o que preserva a antissimetria e portanto a conservacao.
+            if ux * XIJ[0] + uy * XIJ[1] < 0.0:
+                rb_up = d_rho_b_grown[d_idx]
+                cap = self.rho_target - s_rho_b_grown[s_idx]
+            else:
+                rb_up = s_rho_b_grown[s_idx]
+                cap = self.rho_target - d_rho_b_grown[d_idx]
+            # CAPACIDADE: o receptor so aceita ate `rho_target`. Sem isso o fluxo
+            # espalha sem limite e dilui abaixo dos gates (licao #54: banda flagelar
+            # 2041->34, colonia congelou). Com o limite a frente avanca como DEGRAU
+            # (onda de preenchimento), que e como frentes de colonia real avancam.
+            # O limite e propriedade do PAR (doador e receptor sao os mesmos qualquer
+            # que seja o destino avaliado), entao a antissimetria — e a conservacao —
+            # sobrevivem.
+            if cap < 0.0:
+                cap = 0.0
+            if rb_up > cap:
+                rb_up = cap
+            vol_j = s_m[s_idx] / s_rho[s_idx]
+            d_a_rho_b_grown[d_idx] -= vol_j * rb_up * (ux * DWIJ[0] + uy * DWIJ[1])
 
 
 class BiomassGradient(Equation):
@@ -262,7 +357,7 @@ class ParticleShift(Equation):
     def loop(self, d_idx, s_idx, s_m, s_rho, DWIJ, d_shift_dC_x, d_shift_dC_y):
         # gradiente da "concentração de partículas"
         vol_j = s_m[s_idx] / s_rho[s_idx]
-        d_shift_dC_x[d_idx] += vol_j * DWIJ[0] 
+        d_shift_dC_x[d_idx] += vol_j * DWIJ[0]
         d_shift_dC_y[d_idx] += vol_j * DWIJ[1]
 
     def post_loop(
@@ -284,7 +379,9 @@ class ParticleShift(Equation):
         if rho_b >= self.rho_b_min and rho_b < self.rho_b_pin:
             h = d_h[d_idx]
             D = self.shift_coeff * h * h
-            sx = -D * d_shift_dC_x[d_idx] # O sinal negativo manda a partícula para longe do aglomerado, em direção ao buraco
+            sx = (
+                -D * d_shift_dC_x[d_idx]
+            )  # O sinal negativo manda a partícula para longe do aglomerado, em direção ao buraco
             sy = -D * d_shift_dC_y[d_idx]
 
             mag = (sx * sx + sy * sy) ** 0.5
@@ -801,3 +898,29 @@ class OxigenConsumption(Equation):
         else:
             consumption = self.k_n * d_rho_b_grown[d_idx] * d_c_n[d_idx]
         d_a_c_n[d_idx] -= consumption
+
+
+class NutrientSource(Equation):
+    """Reposicao do nutriente pelo agar — regime NUTRIENT-RICH.
+
+    [T2] Srinivasan, Kaplan & Mahadevan 2019 (eLife 8, e42697): swarming de
+    P. aeruginosa e regime nutrient-rich, com `c ~ c0` constante. Um `c_n` que
+    esgota monotonicamente descreve BIOFILME — que a propria §3.0 identifica como
+    o regime errado para este organismo. Fisicamente: a placa e um reservatorio 3D
+    e a simulacao e um corte 2D, entao a reposicao vertical nao esta representada.
+
+    Sem este termo a janela util termina em t ~ 55 s (licao #47) e o crescimento
+    so consegue um fator `exp(r_growth*T) = 2.46x` — a semente e o resultado.
+
+    Equilibrio local sob consumo:  c_n = k_src / (k_src + k_n * rho_b).
+
+    Roda no post_loop APOS `OxigenConsumption` (ordem das equacoes no Group), que
+    e quem zera `d_a_c_n` no initialize.
+    """
+
+    def __init__(self, dest, sources, k_src):
+        self.k_src = k_src
+        super(NutrientSource, self).__init__(dest, sources)
+
+    def post_loop(self, d_idx, d_a_c_n, d_c_n):
+        d_a_c_n[d_idx] += self.k_src * (1.0 - d_c_n[d_idx])

@@ -101,6 +101,80 @@ def void_from_hdf5(run, thresholds=(0.7, 1.0, 1.5), n_grid=400):
     return res
 
 
+def envelope_from_hdf5(run, thresholds=(0.7, 1.0, 1.5), n_grid=320):
+    """Mesmas metricas sob definicao GEOMETRICA de colonia, nao pelo disco R99.
+
+    O disco conta as BAIAS como colonia — numa morfologia dendritica isso infla a
+    area em ~3.6x (medido no C4: 60.2 contra 16.7), e como o agar preenche as baias
+    com particulas, ele dilui a fracao de vazio. O envelope segue a forma dos braços:
+    pontos a menos de 1.5h da maior componente conexa da biomassa.
+
+    A populacao de `sigma_a` tambem muda: aqui e GEOMETRICA (quem esta no envelope),
+    e nao `rho_b>0.1`. A segunda cresce quando a rota recruta biomassa e passa a
+    incluir o rim esparso, onde `sigma_a` e baixo por truncamento de kernel
+    (Liu §6.5) — entao ela penaliza estruturalmente quem cria biomassa (licao #46).
+
+    Reporta tambem a TOPOLOGIA: quantas componentes conexas a biomassa forma. No C4
+    sao 32, com 71% das particulas na maior — os dendritos nao estao ligados ao
+    nucleo em `rho_b>0.1`.
+    """
+    from scipy.spatial import cKDTree
+    from scipy.sparse import coo_matrix
+    from scipy.sparse.csgraph import connected_components
+
+    out = {f"e{t}": np.nan for t in thresholds}
+    out.update(e_area=np.nan, d_area=np.nan, e_sig=np.nan, n_comp=0, f_comp=np.nan)
+    fn = last_hdf5(run)
+    if not fn:
+        return out
+    dx = 14.0 / 260
+    h = 1.8 * dx
+    with h5py.File(fn, "r") as f:
+        a = f["particles"]["fluid"]["arrays"]
+        x, y, rb = np.array(a["x"]), np.array(a["y"]), np.array(a["rho_b_grown"])
+        sig = np.array(a["sigma_a"]) if "sigma_a" in a else None
+    bio = rb > 0.1
+    if bio.sum() < 10:
+        return out
+    P = np.column_stack([x, y])
+    pairs = cKDTree(P[bio]).query_pairs(2 * h, output_type="ndarray")
+    n = int(bio.sum())
+    if len(pairs):
+        adj = coo_matrix(
+            (np.ones(len(pairs)), (pairs[:, 0], pairs[:, 1])), shape=(n, n)
+        )
+        ncomp, lab = connected_components(adj, directed=False)
+        core = np.where(bio)[0][lab == np.bincount(lab).argmax()]
+    else:
+        ncomp, core = n, np.where(bio)[0]
+    out["n_comp"] = int(ncomp)
+    out["f_comp"] = float(len(core) / n)
+
+    R = float(np.percentile(np.hypot(x, y)[bio], 99))
+    g = np.linspace(-R, R, n_grid)
+    GX, GY = np.meshgrid(g, g)
+    pts = np.column_stack([GX.ravel(), GY.ravel()])
+    dom = (np.abs(pts[:, 0]) <= np.max(np.abs(x))) & (
+        np.abs(pts[:, 1]) <= np.max(np.abs(y))
+    )
+    cell = (2 * R / n_grid) ** 2
+    d_env, _ = cKDTree(P[core]).query(pts)
+    env = (d_env < 1.5 * h) & dom
+    disk = (np.hypot(pts[:, 0], pts[:, 1]) < R) & dom
+    out["e_area"] = float(env.sum() * cell)
+    out["d_area"] = float(disk.sum() * cell)
+    if env.any():
+        d_all, _ = cKDTree(P).query(pts[env])
+        for t in thresholds:
+            out[f"e{t}"] = float(np.mean(d_all > t * dx))
+    if sig is not None:
+        d_part, _ = cKDTree(P[core]).query(P)
+        inenv = d_part < 1.5 * h
+        if inenv.any():
+            out["e_sig"] = float(np.mean(sig[inenv] < 0.85))
+    return out
+
+
 def sigma_from_hdf5(run):
     out = dict(
         sig_bio=np.nan,
@@ -271,6 +345,7 @@ def metrics(run):
     dx = 10.0 / 186
     # area absoluta do vacuo, em unidades de dx^2 (= "quantas particulas cabem")
     m["a15"] = m["v15"] * np.pi * m["R"] ** 2 / (dx * dx)
+    m.update(envelope_from_hdf5(run))
 
     return m
 
@@ -332,6 +407,33 @@ def main(runs):
         )
         if g or c:
             print(f"      └─ REPROVA: {'; '.join(c + g)}")
+
+    hdr2 = (
+        f"{'run':<8}│{'AREA disco':>11}{'AREA envel':>11}{'razao':>7}│"
+        f"{'VOID>1.5':>9}{'>1.0':>8}{'>0.7':>8}│{'sigFrac':>9}│"
+        f"{'comp':>6}{'na maior':>10}"
+    )
+    print()
+    print("DEFINICAO GEOMETRICA DE COLONIA (envelope = a <1.5h da maior componente")
+    print(
+        "conexa da biomassa). O disco R99 conta as BAIAS como colonia e infla a area;"
+    )
+    print(
+        "a populacao de sigma_a aqui e geometrica, estavel sob recrutamento (licao #46)."
+    )
+    print()
+    print(hdr2)
+    print("─" * len(hdr2))
+    for m in ms:
+        print(
+            f"{m['run']:<8}│{m['d_area']:>11.2f}{m['e_area']:>11.2f}"
+            f"{m['d_area'] / max(m['e_area'], 1e-9):>6.1f}x│"
+            f"{m['e1.5']:>9.3%}{m['e1.0']:>8.2%}{m['e0.7']:>8.2%}│{m['e_sig']:>9.1%}│"
+            f"{m['n_comp']:>6d}{m['f_comp']:>10.1%}"
+        )
+    print()
+    print("  `comp` = componentes conexas da biomassa (rho_b>0.1, vizinhos a <2h).")
+    print("  Valores >1 significam dendritos TOPOLOGICAMENTE separados do nucleo.")
 
     ok = [m for m in ms if not any(evaluate(m))]
     print()

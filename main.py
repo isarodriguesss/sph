@@ -177,14 +177,12 @@ FILLER_NUTRIENT_TRANSPARENT = 0
 # 0.0 = desligado. Estimativa: L_D = sqrt(D_b*t); 0.008 da ~0.5 em 30s no corpo denso.
 D_b = 0.0  # D1 REPROVADO: destruiu o nucleo (rho_b 1.0->0.48, n_pinned 43->0)
 
-# K1 — colonizacao: relaxacao UNILATERAL de rho_b em direcao a vizinhanca. Cura os
-# ~9700 buracos nao-colonizados DENTRO dos braços (59.5% das particulas com rho_b=0
-# no interior) sem drenar o nucleo (so soma) nem preencher as baias (auto-gateada
-# pela vizinhanca vazia). Gate de c_n limita a colonizacao a onde ha nutriente.
-# k_col=0.03 (1.5x r_growth): buraco vai de 0 a ~0.29 em 50 s.
-k_col = 0.0  # K2 REPROVADO: halo preenchido mas a_mar 2.05->0.13 (biomassa 4.6x).
-# Serie Y (producao linear) mostrou que o preenchimento so funciona sem as
-# saturacoes em serie — mas a faixa dinamica de cs explode (licao #56).
+# K3 — colonizacao com alvo-DOADOR (docs/PLANO_K3_JUNCAO.md, licao #59). O alvo e a
+# densidade da MAE (media ponderada por rho_b), nao a Shepard; filler fora dos doadores;
+# gate cs > 0.6*cs_max. Converte de fato (agar invadido 72.5%->52.1%) mas ~92% do
+# convertido para no limbo sub-quorum, porque crescer de 0.15 a 0.5 leva 124 s contra a
+# janela de 50 s. Religar so depois de resolver a maturacao (defeito D, licao #58).
+k_col = 0.0
 
 use_insert = True
 INSERT_FREQ = 200
@@ -273,6 +271,7 @@ class SwarmApp(Application):
                 pa.add_property("sigma_a")
                 pa.sigma_a[:] = 1.0
                 pa.add_property("rho_b_smooth")
+                pa.add_property("rho_b_w2")
                 pa.add_property("shift_dC_x")
                 pa.add_property("shift_dC_y")
                 pa.add_property("shift_x")

@@ -43,76 +43,98 @@ class BiomassGrowth(Equation):
 
 
 class BiomassColonization(Equation):
-    """Invasao de espaco vazio por biomassa vizinha.
+    """Invasao de espaco vazio por biomassa vizinha (K3 — docs/PLANO_K3_JUNCAO.md).
 
-    O crescimento de BiomassGrowth e MULTIPLICATIVO pela propria biomassa
-    (`d_a_rho_b = rate * rho_b`), entao uma particula com rho_b = 0 tem crescimento
-    exatamente zero PARA SEMPRE, por mais biomassa que exista em volta. Medido em
-    C4: 59.5% das particulas com rho_b=0 dentro da colonia (~9700) estao cercadas
-    de biomassa densa — sao buracos nao-colonizados DENTRO dos braços.
+    `BiomassGrowth` e MULTIPLICATIVO pela propria biomassa, entao rho_b = 0 e
+    estado absorvente: a particula nunca se torna viva, por mais biomassa que
+    exista em volta. Este e o unico termo ADITIVO. Biologicamente e a divisao
+    celular — a filha ocupa o espaco vizinho.
 
-    Biologicamente a lacuna e a divisao celular: a filha ocupa o espaco vizinho.
+    Relaxacao UNILATERAL em direcao a densidade do DOADOR,
 
-    Forma: relaxacao UNILATERAL em direcao ao valor da vizinhanca,
+        d_rho_b/dt += k_col * c_n_factor * max(0, rho_b_doador - rho_b)
+        rho_b_doador = sum_j V_j rho_b_j^2 W_ij / sum_j V_j rho_b_j W_ij
 
-        d_rho_b/dt += k_col * c_n_factor * max(0, rho_b_local - rho_b)
+    O doador e a media de rho_b PONDERADA POR rho_b, nao a media Shepard: num
+    campo 92% vazio a Shepard e a media entre a mae e o vacuo (0.006-0.025 medido
+    no C4) e recruta ABAIXO do quorum 0.1, onde a particula e mecanicamente
+    invisivel (licao #53). A filha nasce com a densidade da MAE (licao #48).
 
-    com `rho_b_local` interpolado por Shepard (sigma_a e o denominador, ja
-    calculado por KernelSum no Group anterior).
+    Quatro guardas:
 
-    Duas propriedades que a tornam segura:
-
-    1. UNILATERAL (so soma, nunca subtrai) — o nucleo nunca drena. E a diferenca
-       essencial em relacao a difusao (D1), que esvaziou o nucleo de rho_b=1.0
-       para 0.48 e zerou o hard pin.
-    2. AUTO-GATEADA pela vizinhanca — numa baia, `rho_b_local ~ 0`, entao nao ha
-       colonizacao e a morfologia dendritica e preservada por construcao.
+    1. UNILATERAL (so soma) — o nucleo nunca drena, ao contrario da difusao (D1),
+       que o esvaziou de 1.0 para 0.48 e zerou o hard pin.
+    2. FILLER FORA da soma de doadores — o filler carrega rho_b herdado e
+       congelado; sem esta exclusao 93% dos doadores sao fantasmas (licao #39).
+    3. GATE `cs > cs_min` — recruta so onde o surfactante ja esta perto do teto,
+       onde `(1 - cs/cs_max)` limita por construcao o que uma fonte nova
+       acrescenta. Sem ele, 45% do recrutamento cai na frente e afoga o gradiente
+       de Marangoni (licao #48).
+    4. AUTO-GATEADA pela vizinhanca — numa baia as duas somas vao a zero.
     """
 
-    def __init__(self, dest, sources, k_col, rho_max):
+    def __init__(self, dest, sources, k_col, rho_max, cs_min):
         self.k_col = k_col
         self.rho_max = rho_max
+        self.cs_min = cs_min
         super(BiomassColonization, self).__init__(dest, sources)
 
-    def initialize(self, d_idx, d_rho_b_smooth):
+    def initialize(self, d_idx, d_rho_b_smooth, d_rho_b_w2):
         d_rho_b_smooth[d_idx] = 0.0
+        d_rho_b_w2[d_idx] = 0.0
 
-    def loop(self, d_idx, s_idx, s_m, s_rho, s_rho_b_grown, WIJ, d_rho_b_smooth):
-        d_rho_b_smooth[d_idx] += (
-            (s_m[s_idx] / s_rho[s_idx]) * s_rho_b_grown[s_idx] * WIJ
-        )
+    def loop(
+        self,
+        d_idx,
+        s_idx,
+        s_m,
+        s_rho,
+        s_rho_b_grown,
+        s_is_filler,
+        WIJ,
+        d_rho_b_smooth,
+        d_rho_b_w2,
+    ):
+        if s_is_filler[s_idx] < 0.5:
+            vw = (s_m[s_idx] / s_rho[s_idx]) * s_rho_b_grown[s_idx] * WIJ
+            d_rho_b_smooth[d_idx] += vw
+            d_rho_b_w2[d_idx] += vw * s_rho_b_grown[s_idx]
 
     def post_loop(
         self,
         d_idx,
         d_rho_b_smooth,
-        d_sigma_a,
+        d_rho_b_w2,
         d_rho_b_grown,
         d_a_rho_b_grown,
         d_am,
         d_m,
         d_c_n,
+        d_cs,
         d_is_filler,
     ):
-        if d_rho_b_grown[d_idx] < 0.8 and d_is_filler[d_idx] < 0.5:
-            sig = d_sigma_a[d_idx]
-            if sig < 0.1:  # suporte de kernel degradado: nao confiar na media
-                sig = 0.1
-            local = d_rho_b_smooth[d_idx] / sig
-            deficit = local - d_rho_b_grown[d_idx]
-            if deficit > 0.0:
-                c_n = d_c_n[d_idx]
-                if c_n < 0.4:
-                    c_n_factor = 0.0
-                elif c_n > 0.8:
-                    c_n_factor = 1.0
-                else:
-                    t = (c_n - 0.4) / 0.4
-                    c_n_factor = t * t * (3.0 - 2.0 * t)
+        if (
+            d_rho_b_grown[d_idx] < 0.8
+            and d_is_filler[d_idx] < 0.5
+            and d_cs[d_idx] > self.cs_min
+        ):
+            den = d_rho_b_smooth[d_idx]
+            if den > 1e-9:  # sem doador vivo na vizinhanca: evita 0/0
+                local = d_rho_b_w2[d_idx] / den
+                deficit = local - d_rho_b_grown[d_idx]
+                if deficit > 0.0:
+                    c_n = d_c_n[d_idx]
+                    if c_n < 0.4:
+                        c_n_factor = 0.0
+                    elif c_n > 0.8:
+                        c_n_factor = 1.0
+                    else:
+                        t = (c_n - 0.4) / 0.4
+                        c_n_factor = t * t * (3.0 - 2.0 * t)
 
-                rate = self.k_col * c_n_factor * deficit
-                d_a_rho_b_grown[d_idx] += rate
-                d_am[d_idx] += rate * d_m[d_idx]
+                    rate = self.k_col * c_n_factor * deficit
+                    d_a_rho_b_grown[d_idx] += rate
+                    d_am[d_idx] += d_m[d_idx] * rate / self.rho_max
 
 
 class BiomassDiffusion(Equation):

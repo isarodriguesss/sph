@@ -1300,6 +1300,71 @@ Calibracao pos-Passes A-I.7. **MARCO I.7:** Transicao blob→dendritico confirma
 
     **Terceira armadilha de renderizacao da serie (apos #49 em `ρ_b`):** com `cs` maximo em 14.3, o viewer normaliza a cor por esse valor e a zona de expansao (`cs` 0.08–0.3) renderiza como **zero absoluto** — reportado como "cs esta zero na expansao". Medido, o `cs` do Y3 e **2–4× o do C4 em todo raio**. O painel de `cs` do [tools/plot_fields.py](tools/plot_fields.py) passou a LOG (piso 1e-3) pela mesma razao que o de `ρ_b`; em escala linear o halo radial do C4 — que e o quadro do painel (b) de Trinschek — era invisivel.
 
+57. **A colonia visivel e 94% FILLER — e o `ρ_b` congelado dele alimenta o gate da propria Marangoni** (censo do baseline C4 em t=50, 2026-08-13): medido sobre `runs/C4/main_output/main_03129.hdf5`, separando `is_filler` e `is_wake`. Nao sao duas populacoes, sao **tres**, e o comportamento delas diverge do que a documentacao supunha.
+
+    | | viva (`is_filler=0`) | fantasma INSERT (`is_wake=0`) | fantasma WAKE (`is_wake=1`) |
+    |---|---|---|---|
+    | cresce / produz `cs` / sente Marangoni-flagelo | ✅ | ❌ | ❌ |
+    | consome nutriente / entra em `ρ`, `σ_a`, KGC / tem pressao EOS / e deslocada pelo shifting | ✅ | ✅ | ✅ |
+    | **move-se** | se nao pinada | ❌ nunca | ✅ **sim** |
+
+    **Censo (t=50):** 68 121 reais contra 2739 fantasmas (360 INSERT + **2379 WAKE**). Os fantasmas sao 3.9% das particulas e 3.8% da massa — mas **94% de tudo que tem `ρ_b>0.1`**, e a razao fantasma/viva cresce com o raio: nucleo (r<0.4) 0.7, junção 12.7, anel 58.3, **dendritos (r∈[2,3.5)) 89.5** (1163 fantasmas contra 13 vivas).
+
+    **`Σ ρ_b·V` vale 0.35 nas vivas e 3.45 nos fantasmas — 90.8% do campo `ρ_b` do dominio nao e biologia.** O `biomass_total` do log e honesto (filtra `is_filler`), mas o painel `rho_b`, que e o que se olha para julgar morfologia, e 91% fantasma.
+
+    **O WAKE NAO e pinado** — [scheme.py:64-68](src/scheme.py#L64-L68) tem `(ρ_b>=0.8 ou c_n<0.6 ou filler) **e** is_wake<0.5`. Consequencia medida: das 168 vivas com `ρ_b>0.1`, **152 estao pinadas** por `c_n<0.6` e sobram **16 moveis no dominio inteiro**, contra **638 fantasmas WAKE com `|v|>1e-4`**. A frente que aparece avancando e 97.5% carga passiva: o WAKE nao sente Marangoni nem flagelo (ambos gateiam `is_filler` como fonte E destino), so pressao, viscosidade, arrasto e shifting.
+
+    **O acoplamento nao-intencional mais grave:** `BiomassGradient` ([equations.py:279-309](src/equations.py#L279-L309)) **nao filtra filler**. O `grad_rho_b_mag` que serve de gate de interface a `MarangoniForce` e calculado sobre um campo 91% fantasma — **o `ρ_b` congelado do filler define onde o motor entende que existe interface**. E a licao #39 (filler como fonte de `cs`) repetida em outra variavel, e nao foi corrigida.
+
+    **Raiz estrutural:** `ρ_b` acumula tres funcoes incompativeis — densidade de biomassa viva, chave de ativacao da EOS (`fade_rep`/`fade_att` zeram abaixo de 0.1) e gate de tudo. O fantasma precisa da segunda para ter coesao, entao herda `ρ_b`; ao herdar, herda tambem a aparencia da primeira, e o modelo nao tem como separa-las. Nao da para simplesmente zerar: 2648 dos 2739 tem pressao EOS nao-nula, 38.8% do `σ_a` das vivas na junção vem de fantasma, e vazio aberto no agar nao cicatriza (licao #40). **Saida limpa (nao implementada):** campo separado `rho_eps` que ative a EOS sem entrar em `ρ_b` — resolveria de uma vez a contaminacao das metricas, o painel enganoso e o gate espurio da Marangoni.
+
+    **Divergencia codigo↔doc encontrada no mesmo censo:** o pin quimico e `c_n < 0.6` em [scheme.py:66](src/scheme.py#L66); o §7 documenta `c_n < 0.4` (M-B.8). Em t=50 a diferenca e modesta (152 contra 141 vivas pinadas, porque `c_n` ja colapsou), mas ao longo do run pina mais cedo e mais gente do que o documentado. Mesma classe das divergencias da licao #41. **Nao corrigida** — decisao de fisica pendente.
+
+    **⚠ ENQUADRAMENTO CORRIGIDO PELA LICAO #58.** Esta licao trata o filler como o problema ("fantasma"). Medido no envelope da colonia, ele e 23% e e **fase passiva legitima** ([T2]); o poluente e outra populacao — o **agar invadido**, 72.5%. Ler #58 antes de agir sobre esta.
+
+58. **A colonia ENGOLE o meio em vez de incorpora-lo — 72.5% do corpo e agar invadido, e o filler nao era o problema** (2026-08-13, medido em `runs/C4` e `runs/K3`): a licao #57 chamou o filler de fantasma poluente. Errado. Contando dentro do **envelope** (a <1.5h do corpo `rho_b>0.1`, NAO no disco `R99`, que inclui as baias e infla a area 3.3×), sao **quatro** populacoes:
+
+    | populacao | definicao | C4 (t=50) | K3 (t=50) |
+    |---|---|---:|---:|
+    | fase ativa | `rho_b>0.1`, `is_filler=0` | 168 — 1.4% | 242 — 2.8% |
+    | **fase passiva (matriz/EPS)** | `is_filler=1` (wake+insert) | 2739 — **23.1%** | 2283 — 26.0% |
+    | limbo sub-quorum | `0<rho_b<=0.1`, `is_filler=0` | 357 — 3.0% | 1675 — 19.1% |
+    | **AGAR INVADIDO** | `rho_b=0`, `is_filler=0` | **8608 — 72.5%** | 4565 — 52.1% |
+
+    O filler e minoria e e defensavel como a **fase passiva** de [T2] (matriz/EPS). **O poluente e o agar invadido: meio externo que a colonia engoliu sem converter**, e que entra em toda metrica normalizada por "colonia" e em toda leitura morfologica.
+
+    **MECANISMO DO RASGO (medido).** (a) Existe um anel de agar comprimido: em t=3.65, 203 particulas em r=0.774 com `rho/rho0 = 2.03`. (b) Ele e empurrado **desigualmente**, com assinatura do inoculo: deslocamento por setor azimutal entre t=3.6 e t=15.7 vai de **1.08 a 5.31 dx (razao 4.9×)** e o espectro azimutal tem **modo dominante m = 8** — exatamente o `cos(8θ)` semeado em [particles.py:38](src/particles.py#L38). (c) A frente **ultrapassa** o anel: raio da colonia +0.72 contra +0.17 do anel (**3.6×**); mesmo no setor MAIS empurrado ainda e **2.5×**. (d) O que nao e empurrado e engolido: agar dentro do raio 61 → 416 → 1093 → **1787** em 12 s, e **43% dessas nunca se moveram** (deslocamento < 0.5 dx).
+
+    **CAUSA-RAIZ — a EOS do agar e alavanca de primeira ordem.** [equations.py:655-657](src/equations.py#L655-L657) zera `fade_rep` E `fade_att` abaixo de `rho_b=0.1`: o agar tem `|p| = 0` **exato** e `|v|` mediano `6.5e-76`. **Um meio sem pressao nao transmite empurrao** — a colonia comprime so a camada em contato direto de kernel (dai o 2.03) e essa camada nao repassa. Sem onda de compressao, QUALQUER frente ultrapassa o meio; os lobulos so escolhem o azimute. E o mesmo `p=0` da licao #40 (vazio no agar nao cicatriza) visto pelo outro lado: o agar nao fecha buraco **e** nao sai da frente.
+
+    **DUAS ARQUITETURAS COERENTES, e o modelo nao e nenhuma:**
+
+    | | A — deslocamento | B — incorporacao |
+    |---|---|---|
+    | exige | EOS no agar + insercao massiva | termo **aditivo** em `rho_b` + maturacao |
+    | particulas a inserir | **~20 400** (area 59.1 / dx²) | 0 |
+    | massa | **+30%** do dominio (2.5× o `WAKE_MASS_BUDGET`) | **zero** |
+    | cadencia | 191 part/s em t=15.7 (≈11× o wake em R=4) | — |
+    | literatura | nenhuma referencia descreve | [T1] filme espalhando sobre substrato; [T2] influxo osmotico puxa fluido **do agar para dentro** |
+
+    Sobre A: com `p=0`, **inserir para empurrar nao desloca — acumula**. Cada insercao desloca so o que esta dentro de um raio de kernel e o material se empilha; o anel iria de 2.03 para 3-4×, virando casca de materia sem pressao a varias vezes a densidade nominal. Levada ao fim, A **exige** dar pressao ao agar — e se o agar tiver pressao, a onda se propaga sozinha e a insercao massiva e desnecessaria. **O modelo hoje engole e deixa inerte: paga o custo geometrico sem colher nem deslocamento nem conversao.**
+
+    **COROLARIO QUE INVERTE O ENQUADRAMENTO:** o agar engolido **nao e um defeito a evitar — e a materia-prima da colonia**. O defeito e ele nunca ser incorporado. Ressalva: converter agar em biomassa nao e gratuito biologicamente (celula nova consome nutriente); se a conversao ficar vigorosa, `k_src` (validado em N1) deixa de ser opcional.
+
+    **SAO QUATRO DEFEITOS, NAO TRES** (a formulacao anterior dizia que "a Frente 3 e a unica que transforma agar em colonia" — errado, `BiomassGrowth` e MULTIPLICATIVO e nao tira ninguem do zero): (A) inoculo lobado → rasgo em m=8; (B) rastro furado → vazio geometrico; (C) agar engolido nao convertido → exige termo **aditivo** (colonizacao); (D) convertido nao amadurece → `rho_b` nunca chega a `rho_max`. **C e D sao um encanamento, e D vem primeiro.** Analise completa em [docs/ANALISE_TRES_FRENTES.md](docs/ANALISE_TRES_FRENTES.md).
+
+59. **K3 (alvo-doador + consistencia de massa) — SOLUCAO INSUFICIENTE: converte, mas deposita no limbo sub-quorum porque D nao esta resolvido** (2026-08-13, `runs/K3`, REVERTIDO): terceira tentativa de colonizacao, depois de K2 (`k_col=0.3`) e J7/J8. Quatro mudancas em uma alavanca: (1) alvo passa da media **Shepard** para a media ponderada por biomassa — a densidade do DOADOR, `Σ V ρ_b² W / Σ V ρ_b W`, porque num campo 92% vazio a Shepard vale 0.006-0.025 e recruta abaixo do quorum (licao #53); (2) filler **fora** da soma de doadores (`s_is_filler<0.5`), sem o que 93% dos doadores sao valores historicos congelados; (3) gate `cs > 0.6·cs_max`, porque sem ele **570 dos 1260** recrutamentos caem em `r>2` — na frente, onde vive o gradiente; (4) massa `d_am = m·d_a_rho_b/rho_max` em `BiomassGrowth` E na colonizacao, desarmando a licao #50. `k_col=0.06`, derivado da janela de nutriente (`c_n_junc` cruza o piso 0.4 em t≈40-45, `∫k_col·c_n_f dt ≈ 1.86` → 84% do alvo).
+
+    **O QUE FUNCIONOU:** zero absorvente **eliminado na juncao** (`frac(rho_b==0)` em r=1.0 vai de 0.552 a **0.000**; em r=1.4, de 0.831 a 0.004); biomassa real **+51%** (0.363 → 0.548); `n_bio` 168 → 240; **agar invadido 72.5% → 52.1%** (licao #58) — a conversao acontece e sai de graca em massa. Massa **203.8 contra 205.5** do C4, ou seja ABAIXO do baseline: a correcao (4) faz o que devia. Nucleo intacto (`n_pinned`=43), `a_pressure` 2.9 com 0% de picos, C2 geometrico 3.5%, `a_mar_front` 7.24 (0.84× o C4, acima do limiar 0.8×).
+
+    **POR QUE REPROVOU:** `contrast_cs` 12.93 → **10.23** (limiar 12); componentes conexas 17 → **59** com a maior caindo de 76.7% para **42.8%**; `R99` 4.36 → 3.86 (−11%); braços mais curtos e atarracados nos frames.
+
+    **CAUSA — o encanamento C→D (licao #58).** Dos 16-20 pontos percentuais convertidos, **~92% pararam no limbo sub-quorum** (3.0% → 19.1% do envelope) e so ~1.4 ponto virou fase ativa. A predicao ex-ante acertou a MAGNITUDE e errou o LADO DO LIMIAR: previ `rho_b` ≈ 0.134 e mediu-se p90 de **0.217 (r=0.6) e 0.097 (r=1.0)**, com o quorum em 0.10. Aritmetica: sair de `rho_b=0.15` e chegar a 0.5 leva **124 s** com `r_eff=0.014` (hoje) contra **16 s** com `r_eff=0.11` (alvo da Frente 3) — numa janela de 50 s o primeiro nunca chega. A recrutada fica em (0, 0.1): **mecanicamente invisivel e quimicamente ativa** — sob o Hill, `qs(0.1)=0.5`, meia producao — e centenas delas cravam `cs/cs_max` na juncao em **0.993 (r=0.6) e 0.983 (r=1.0)**, achatando `∇cs` no interior. E a licao #43 (mais biomassa achata o gradiente) disparada por biomassa sub-quorum.
+
+    **O gate de `cs` protegia o mecanismo errado:** ele limitava o NIVEL de `cs`, e o dano veio pela AREA saturada. Regra: ao gatear por um campo com teto, verificar se o risco e de nivel ou de extensao — o teto controla o primeiro e nao toca o segundo.
+
+    **REVERTIDO** (`k_col=0.0`, massa de `BiomassGrowth` de volta a `rate·m`, bit-identico ao C4). O codigo da `BiomassColonization` com alvo-doador + gate de `cs` fica **preservado desligado** (§10, como `OsmoticForce`/`NutrientSource`): quando D estiver resolvido, e ele que deve ser religado — o mecanismo esta certo, faltava a maturacao. Instrumento novo: [tools/diag_recrut.py](tools/diag_recrut.py) (alvo Shepard vs doador por anel, com e sem filler).
+
 **Invariantes morfologicos descobertos (K.5-K.14):**
 1. `smoothstep` em `[a,b]` satura em 1.0 no pico → **max(metric) e cego ao estreitamento do gate**. K.1, K.2 pareceram no-op por isso; diagnostico correto requer `n_active` e `mean_active`, nao `max`.
 2. Tip-boost via `|∇rho_b|` e **uniforme no rim** (pontas, baias e trechos retos tem magnitude similar). Nao discrimina pontas sozinho.

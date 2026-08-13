@@ -116,7 +116,11 @@ class MyBiomassScheme(Scheme):
         filler_nutrient_transparent=0,
         D_b=0.0,
         k_col=0.0,
+        cs_max=0.5,
+        col_cs_frac=0.6,
     ):
+        self.cs_max = cs_max
+        self.col_cs_frac = col_cs_frac
         self.filler_nutrient_transparent = filler_nutrient_transparent
         self.D_b = D_b
         self.k_col = k_col
@@ -191,6 +195,7 @@ class MyBiomassScheme(Scheme):
                     sources=["fluid"],
                     k_col=self.k_col,
                     rho_max=self.rho_max,
+                    cs_min=self.col_cs_frac * self.cs_max,
                 ),
                 BiomassDiffusion(dest="fluid", sources=["fluid"], D_b=self.D_b),
                 # BiomassGradient DEVE vir antes de MarangoniForce
@@ -213,7 +218,7 @@ class MyBiomassScheme(Scheme):
                     lambda_=self.lambda_,
                     lambda_ext_ratio=5.0,
                     k_consume=0.0,
-                    cs_max=0.5,
+                    cs_max=self.cs_max,
                 ),
                 OxigenConsumption(
                     dest="fluid",

@@ -1,0 +1,11 @@
+log.csv (e notas) das 32 rodadas REPROVADAS/REVERTIDAS descartadas em 2026-08-31.
+Os HDF5 foram apagados (8.3 GB); as licoes correspondentes estao no CLAUDE.md §9.
+
+  *_REPROVADO ....... P3, PONTE (licao #68), B1 (#65), D5 (#64), D3b (#63)
+  serie J ........... J0 J0b J5 J6 J7 J8 J9 J10 K2 — REVERTIDA (#48-#50)
+  serie N ........... N1 N2 N2_t50 N3 — C4 permanece baseline (#51-#53)
+  serie Y ........... Y1 Y1b Y2 Y3 — reprovada (#55, #56)
+  serie X ........... X1 X1b — transporte refutado (#54)
+  serie D ........... D6 D4_t100 — REVERTIDA
+  serie M ........... M2 M3 — superadas por M4 (#67)
+  outras ............ P1b P4 A2b_agarfade ATUAL_M4rep

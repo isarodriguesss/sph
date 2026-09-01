@@ -1,0 +1,4 @@
+A2b: agar_fade=1.0 sobre EOS corrigida (E1). Parado em t~29 por decisao da usuaria:
+melhora numerica (rho/rho0 max 3.98->2.69, |p| agar 0 -> 5.7e-2) mas ZERO efeito na
+desjuncao — ocupacao real (sem filler) no vale r[0.45,0.55) identica ao C4 (0.02-0.07).
+C4 permanece baseline.

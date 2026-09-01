@@ -6,12 +6,16 @@ from pysph.sph.equation import Group
 from pysph.sph.basic_equations import SummationDensity
 from pysph.sph.wc.basic import MomentumEquation
 from .equations import (
+    BiomassColonization,
+    BiomassDiffusion,
     BiomassEOS,
     BiomassGrowth,
+    ChemotacticFlux,
     FlagellarForce,
     KernelGradientCorrection,
     KernelSum,
     MarangoniForce,
+    NutrientSource,
     OxigenConsumption,
     ParticleShift,
     SurfactantEquation,
@@ -101,6 +105,8 @@ class MyBiomassScheme(Scheme):
         D_n=0.02,
         D_n_int=1e-4,
         k_n=0.5,
+        k_src=0.0,
+        chi=0.0,
         use_shift=False,
         shift_coeff=0.5,
         shift_cap=0.05,
@@ -108,8 +114,24 @@ class MyBiomassScheme(Scheme):
         use_kgc=False,
         kgc_det_min=0.25,
         filler_nutrient_transparent=0,
+        D_b=0.0,
+        k_col=0.0,
+        agar_drag_ratio=1.0,
+        agar_fade=0.0,
+        cs_max=0.5,
+        col_cs_frac=0.6,
+        hill_k=0.1,
+        lambda_bio_ratio=2.0,
     ):
+        self.cs_max = cs_max
+        self.hill_k = hill_k
+        self.lambda_bio_ratio = lambda_bio_ratio
+        self.col_cs_frac = col_cs_frac
         self.filler_nutrient_transparent = filler_nutrient_transparent
+        self.D_b = D_b
+        self.k_col = k_col
+        self.agar_drag_ratio = agar_drag_ratio
+        self.agar_fade = agar_fade
         self.use_shift = use_shift
         self.shift_coeff = shift_coeff
         self.shift_cap = shift_cap
@@ -135,18 +157,35 @@ class MyBiomassScheme(Scheme):
         self.D_n = D_n
         self.D_n_int = D_n_int
         self.k_n = k_n
+        self.k_src = k_src
+        self.chi = chi
         super(MyBiomassScheme, self).__init__(fluids, solids, dim=dim)
 
     def get_equations(self):
         equations_pre = Group(
             equations=[
                 SummationDensity(dest="fluid", sources=["fluid"]),
+            ],
+            real=False,
+        )
+
+        # E1 (2026-08-25) — `BiomassEOS` em Group SEPARADO. Estava junto com o
+        # `SummationDensity`, entao lia `d_rho` DURANTE a acumulacao do somatorio (que
+        # comeca em 0 no `initialize`), e nao o valor final. Consequencia medida no C4 e
+        # no A2: `p > 0` em ZERO particulas de 70982, com `|p|` maximo cravado em
+        # `B_tension*0.3 = 1.575e-3` — o teto do ramo ATRATIVO. O ramo repulsivo
+        # `if ratio > 1` nunca disparava, apesar de `rho` armazenado chegar a 4.80.
+        #
+        # E a mesma correcao que o `KernelSum` ja tinha recebido, pelo mesmo motivo.
+        equations_eos = Group(
+            equations=[
                 BiomassEOS(
                     dest="fluid",
                     sources=None,
                     rho0=1.0,
                     c0=self.c0,
                     tension_ratio=0.30,
+                    agar_fade=self.agar_fade,
                 ),
             ],
             real=False,
@@ -174,6 +213,14 @@ class MyBiomassScheme(Scheme):
                     r_growth=self.r_growth,
                     rho_max=self.rho_max,
                 ),
+                BiomassColonization(
+                    dest="fluid",
+                    sources=["fluid"],
+                    k_col=self.k_col,
+                    rho_max=self.rho_max,
+                    cs_min=self.col_cs_frac * self.cs_max,
+                ),
+                BiomassDiffusion(dest="fluid", sources=["fluid"], D_b=self.D_b),
                 # BiomassGradient DEVE vir antes de MarangoniForce
                 # (Marangoni usa grad_rho_b_mag como gate de interface)
                 BiomassGradient(dest="fluid", sources=["fluid"]),
@@ -184,6 +231,7 @@ class MyBiomassScheme(Scheme):
                     sources=None,
                     gamma_base=self.gamma,
                     gamma_mature=self.gamma * 1.5,
+                    agar_ratio=self.agar_drag_ratio,
                 ),
                 SurfactantEquation(
                     dest="fluid",
@@ -194,7 +242,9 @@ class MyBiomassScheme(Scheme):
                     lambda_=self.lambda_,
                     lambda_ext_ratio=5.0,
                     k_consume=0.0,
-                    cs_max=0.5,
+                    cs_max=self.cs_max,
+                    hill_k=self.hill_k,
+                    lambda_bio_ratio=self.lambda_bio_ratio,
                 ),
                 OxigenConsumption(
                     dest="fluid",
@@ -204,6 +254,7 @@ class MyBiomassScheme(Scheme):
                     D_n_int=self.D_n_int,
                     k_n=self.k_n,
                 ),
+                NutrientSource(dest="fluid", sources=None, k_src=self.k_src),
                 # OsmolyteProduction(
                 #     dest="fluid",
                 #     sources=["fluid"],
@@ -220,7 +271,15 @@ class MyBiomassScheme(Scheme):
             ],
         )
 
-        groups = [equations_pre, equations_kernel_sum]
+        equations_chemo = Group(
+            equations=[
+                ChemotacticFlux(
+                    dest="fluid", sources=["fluid"], chi=self.chi, rho_target=0.4
+                ),
+            ],
+        )
+
+        groups = [equations_pre, equations_eos, equations_kernel_sum]
 
         if self.use_kgc:
             equations_kgc = Group(
@@ -236,6 +295,8 @@ class MyBiomassScheme(Scheme):
             groups.append(equations_kgc)
 
         groups.append(equations_main)
+        if self.chi > 0.0:
+            groups.append(equations_chemo)
 
         if self.use_shift:
             equations_shift = Group(

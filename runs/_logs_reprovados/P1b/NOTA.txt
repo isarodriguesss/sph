@@ -1,0 +1,7 @@
+log.csv RECONSTRUIDO a partir da leitura integral feita na sessao de 2026-08-14.
+O arquivo original foi sobrescrito por um smoke test (o script faz chdir para o repo
+e LOG_FILE e relativo). Os HDF5 e frames sao ORIGINAIS e integros (t_final=50.00,
+70713 particulas, 5273 portadoras) — so o CSV foi reconstruido.
+
+Config: C4 + promocao P1 (limbo 0<rho_b<=0.1 -> 0.12, gate radial r<1.8), com a
+metrica de dip corrigida (banda escalada por R99, limiar no quorum, coluna dip_r).

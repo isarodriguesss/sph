@@ -3,6 +3,7 @@ import matplotlib
 
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+from matplotlib.colors import LogNorm
 from pysph.solver.utils import load
 import glob
 import os
@@ -11,6 +12,7 @@ TARGET_FRAMES = 40  # nao gera frame para TODO snapshot — subamostra ~40 + o u
 rho0 = 1.0  # densidade de referência SPH
 DOMAIN = (-7.0, 7.0)  # janela = dominio cheio (expandido 2026-08-06)
 MARKER = 15  # tamanho do ponto: 1-particula-de-largura le como braço conectado
+RHO_B_FLOOR = 1e-6  # piso do painel log de rho_b (abaixo disso e ruido de underflow)
 
 # --- Footprint temporal (Parte 2): acumula a biomassa ocupada ao longo do run ---
 # A reference.jpg e ela mesma uma foto do RASTRO integrado do swarm. O esqueleto
@@ -81,20 +83,20 @@ def reconstruct_field(px, py, values, vol, h):
     return field.reshape(_gx.shape)
 
 
-def render_all():
-    os.makedirs("main_output/movie", exist_ok=True)
-    all_files = sorted(glob.glob("main_output/main_*.hdf5"))
+def render_all(root="main_output"):
+    os.makedirs(f"{root}/movie", exist_ok=True)
+    all_files = sorted(glob.glob(f"{root}/main_*.hdf5"))
     stride = max(1, len(all_files) // TARGET_FRAMES)
     files = all_files[::stride]
     if all_files and all_files[-1] not in files:
         files.append(all_files[-1])
     footprint = np.zeros((FOOT_N, FOOT_N))  # acumulador do rastro de biomassa (Parte 2)
     for i, fpath in enumerate(files):
-        _render_frame(i, fpath, footprint)
+        _render_frame(i, fpath, footprint, root)
     print(f"Done. {len(files)} total files.")
 
 
-def _render_frame(i, fpath, footprint):
+def _render_frame(i, fpath, footprint, root="main_output"):
     data = load(fpath)
     fluid = data["arrays"]["fluid"]
     x, y = fluid.x, fluid.y
@@ -115,7 +117,7 @@ def _render_frame(i, fpath, footprint):
     # ~1.1 (mais densos), canais entre braços ~0.5. rho_b (biomassa) e um esqueleto
     # esparso (~300 particulas), ruim para campo — por isso renderizamos por PONTOS
     # grandes no dominio CHEIO, como o PySPH viewer faz.
-    fig, axes = plt.subplots(1, 4, figsize=(32, 8))
+    fig, axes = plt.subplots(1, 5, figsize=(40, 8))
 
     # --- Painel 1: rho — cientifico (fiel ao viewer) ---
     sc1 = axes[0].scatter(
@@ -164,17 +166,35 @@ def _render_frame(i, fpath, footprint):
     axes[3].set_title(f"cs (surfactante) — {tstr}")
     plt.colorbar(sc4, ax=axes[3])
 
-    for a in (axes[0], axes[1], axes[3]):
+    # --- Painel 5: rho_b em escala LOG ---
+    # Em escala linear 0-1, `rho_b = 0.005` e `rho_b = 0` sao a mesma cor: a colonia
+    # parece um halo vazio mesmo quando toda particula tem biomassa. Pos-J7 (serie J)
+    # 74% do corpo vive entre 1e-6 e 1e-2 — so o log mostra que ele e continuo.
+    sc5 = axes[4].scatter(
+        x,
+        y,
+        c=np.maximum(rho_b, RHO_B_FLOOR),
+        cmap="viridis",
+        s=MARKER,
+        norm=LogNorm(vmin=RHO_B_FLOOR, vmax=1.0),
+        linewidths=0,
+    )
+    axes[4].set_title(f"rho_b (biomassa, escala LOG) — {tstr}")
+    plt.colorbar(sc5, ax=axes[4])
+
+    for a in (axes[0], axes[1], axes[3], axes[4]):
         a.set_xlim(DOMAIN)
         a.set_ylim(DOMAIN)
         a.set_aspect("equal")
 
     plt.tight_layout()
-    out = f"main_output/movie/frame_i7_{i:03d}.png"
+    out = f"{root}/movie/frame_i7_{i:03d}.png"
     plt.savefig(out, dpi=120, bbox_inches="tight")
     plt.close()
     print(f"Frame {i:03d} — {tstr}")
 
 
 if __name__ == "__main__":
-    render_all()
+    import sys
+
+    render_all(sys.argv[1] if len(sys.argv) > 1 else "main_output")

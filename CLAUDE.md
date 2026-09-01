@@ -39,6 +39,53 @@ A IA **nunca** deve sugerir mudancas cegas em parametros fisicos. Antes de calib
 - **Referencia visual obrigatoria 2 (numerica):** [reference_result.png](reference_result.png) painel **(b) Fingering** (Trinschek, John, Thiele 2018, Soft Matter — T1 §3.0). Resultado de simulacao thin-film 2D com `W = 0.1` (alta wettability) e `Γ_max = 0.5` (alta producao de surfactante): colonia com **7-9 dedos finos** radiando de um nucleo compacto, baias estaticas entre dedos, campo de surfactante (Γ) extendendo-se alem da biomassa em um halo radial. **Esta e a meta morfologica primaria do projeto** porque e gerada por equacoes governantes da mesma classe que as nossas (Marangoni + wettability + producao bioativa de surfactante) — se Trinschek conseguiu com thin-film, devemos conseguir com SPH. O painel (a) Modulated mostra o estado intermediario (rugosidade radial sem dedos definidos), (c) Circular o estado de falha (motor fraco), (d) Arrested o de bloqueio.
 - **Criterio de sucesso (Pass I-K):** aproximacao monotonica da morfologia de `reference.jpg` (PA14) e do painel (b) de `reference_result.png` (Trinschek) — dendritos cada vez mais finos, longos e separados, com halo de surfactante visivel alem da biomassa.
 - **Criterio de falha:** expansao circular uniforme, anel oco, colapso para disco compacto, ou blob ameboide com muitos bumps curtos (AR ~1:2).
+- **C4 — CONTINUIDADE INTERIOR (obrigatorio, estabelecido 2026-08-28).** Um swarm e uma populacao
+  CONTINUA de celulas: **buracos sem biomassa no interior da regiao que a colonia ja ocupou nao sao
+  uma morfologia, sao artefato.** Os criterios acima (AR, baias, tip-splitting) sao todos de
+  CONTORNO — um esqueleto passa em todos eles. Medido no baseline C4 em t=50: os bracos tem apenas
+  **23% de material dentro do proprio contorno**, e o corpo (`rho_b>0.1`) esta em **66 componentes
+  conexas em escala de contato (1.05 dx), com 4% no maior** — 65 delas sem nenhum caminho de
+  particulas ate o nucleo (licao #68). **O C4 NAO atinge a referencia**, apesar de AR 5.92 com 20
+  dedos, e a razao e esta.
+
+  | | metrica | alvo |
+  |---|---|---|
+  | **C4a** | ocupacao de material dentro do contorno do dedo | ≥ 0.23 (nao piorar); alvo → 1 |
+  | **C4b** | componentes conexas do corpo a **1.05 dx** / fracao no maior | 66 / 4% (nao piorar); alvo → 1 / 100% |
+
+  **A escala de ligacao do grafo e parte do criterio, nao escolha livre** — a 2.7 dx o mesmo C4
+  parece ter 26 componentes com 48% no maior, e foi essa frouxidao que produziu a metrica circular
+  da licao #68. Reportar SEMPRE varrendo a escala (1.05 / 1.2 / 1.4 / 2.0 dx), nunca um valor so.
+- **C5 — CONTINUIDADE DA EXPANSAO (obrigatorio, estabelecido 2026-09-01).** Um swarm expande como
+  populacao CONTIGUA: cada bacteria em raio R chegou la dividindo e empurrando pelos raios
+  intermediarios, junto das vizinhas. **Nao existe mecanismo pelo qual material apareca em R=4
+  enquanto o corpo conexo termina em R=0.8.** Confirmado nas imagens de PA14 em agar de swarming
+  (`reference.jpg`; ver tambem a serie A-F de Morris et al. em varias concentracoes de agar): a
+  frente e continua com a colonia em TODOS os estagios, nunca ha anel de material destacado.
+
+  **Este e um criterio de TRAJETORIA, nao de estado final — e o que o distingue do C4.** C4 mede a
+  colonia em t=50; C5 exige que ela esteja conexa em CADA instante. Uma rodada pode terminar
+  aceitavel em C4 e violar C5 o tempo todo, que e o caso do baseline.
+
+  | | metrica | alvo |
+  |---|---|---|
+  | **C5a** | `R_conn / R99` — raio alcancado pela componente conexa que contem o centro do inoculo, sobre o raio da colonia | → 1.0 |
+  | **C5b** | `frac_conn` — fracao do material nessa componente | → 100% |
+
+  Medido em t=50, a escala de CONTATO (1.05 dx): **C4 da 0.12 / 4.6%** e **E5 da 0.20 / 8.2%** —
+  ou seja **mais de 90% da colonia nao tem caminho de volta ao proprio centro**. Varrendo a escala
+  (obrigatorio, licao #68): a 1.4 dx da 0.20/17.2% (C4) e 0.49/49.0% (E5); mesmo a 2.7 dx, metade
+  do material do C4 continua desligado (1.02 / 49.5%).
+
+  **A assinatura e o raio conexo ESTAGNAR:** no E5 ele fica em 0.66-0.82 de t=8 a t=50 enquanto
+  `R99` vai de 0.95 a 4.13. A colonia nao expande — ela aparece adiante. Isso e visivel a olho em
+  [plots/traj_E5.png](plots/traj_E5.png) ja em t=13-17: os bracos estao avancados e nao ha nada
+  entre eles e o nucleo.
+
+  **Consequencia metodologica:** toda a serie de preenchimento (piso, E7-E10) atacava o SINTOMA de
+  estado final de um defeito de trajetoria, e por isso nenhuma variante resolveu — promover
+  material em t=50 nao faz a colonia ter se expandido de forma contigua. Validar C5 exige rodar
+  [tools/plot_trajetoria.py](tools/plot_trajetoria.py) e olhar a serie, nunca so o ultimo frame.
 - Nao declarar um Pass como "bem-sucedido" baseando-se apenas em metricas escalares — a forma da colonia **comparada a `reference.jpg`** e o validador final.
 - **Gatilho para Pass L (rugosidade):** so propor apos frames mostrarem dendritos de AR >= 1:5 separados por agar limpo. Ate la, refinar mecanismos hidrodinamicos (Pass I-K).
 
@@ -155,6 +202,19 @@ Nenhum dos dois sozinho aprova:
 O alvo do projeto **nao e escolher** entre "ter buracos" e "ter particulas mal suportadas". E atingir os dois simultaneamente: o vacuo deve ser preenchido (Wake/Insert) **E** as inseridas devem atingir `sigma_a ≥ 0.85`.
 
 **Todas as particulas dentro do swarm contam como colonia.** A distincao `is_filler` permanece valida como ferramenta de diagnostico (atribuir causa), mas **nao** como definicao de quem compoe a colonia para fins de metrica de sucesso.
+
+**Ferramentas de diagnostico (`tools/`):** [plot_classes.py](tools/plot_classes.py) (classe da
+particula — agar, viva, limbo, filler, vazio — porque vazio e agar renderizam iguais em qualquer
+painel de campo, licao #66), [plot_coesao.py](tools/plot_coesao.py) (`rho_b` + `fade` da EOS lado a
+lado: material em `rho_b`<0.1 aparece no primeiro e vale ZERO no segundo, licao #53),
+[plot_trajetoria.py](tools/plot_trajetoria.py) (instantaneos + as series de **C5** —
+`R_conn/R99` e `frac_conn` — porque C5 e criterio de TRAJETORIA e nao se ve no frame final),
+[plot_piso.py](tools/plot_piso.py) (`--fill[=N]`: preenchimento topologico na RENDERIZACAO,
+perturbacao zero — licao #72-K),
+[rho_b_vis.py](tools/rho_b_vis.py) (reconstroi o envelope da colonia SO para visualizacao — pos-
+processamento puro, nao toca na dinamica; o `rho_b` do C4 tem 77.6% de zeros exatos por underflow
+da gaussiana inicial) e [verdict_topico2.py](tools/verdict_topico2.py) (criterios pre-registrados
+de agar engolido).
 
 **Instrumentacao:** `void_07`, `void_10`, `void_15` no `log.csv` (funcao `void_fraction` em [main.py](main.py)); ranking e guardrails automatizados em [tools/compare_runs.py](tools/compare_runs.py); comparativo visual com escalas fixas entre rodadas em [tools/compare_frames.py](tools/compare_frames.py).
 
@@ -493,6 +553,12 @@ conda install mpi4py -c conda-forge
 ---
 
 ## 7. Parametros Calibrados (branch `ram-8827-v1`)
+
+> **BASELINE MIGRADO C4 -> E5 (2026-09-01).** A tabela abaixo e do C4. As mudancas para a
+> serie E (`k_src=0.3`, `HILL_K=0.25`, `sigma=11.1`, `k_col=0.03`, e a **correcao de bug**
+> da `BiomassEOS` em `Group` proprio — no C4 o ramo repulsivo NUNCA disparava, `p>0` em
+> **0 de 70982** particulas) estao documentadas com efeito medido em
+> [docs/BASELINE_C4_PARA_E5.md](docs/BASELINE_C4_PARA_E5.md).
 
 Calibracao pos-Passes A-I.7. **MARCO I.7:** Transicao blob→dendritico confirmada. `a_mar` pico **148**, selecao competitiva de dedos, tendril dominante formado. Difusao bi-escala (D_int/D_ext) e o mecanismo-chave para Mullins-Sekerka.
 
@@ -1364,6 +1430,640 @@ Calibracao pos-Passes A-I.7. **MARCO I.7:** Transicao blob→dendritico confirma
     **O gate de `cs` protegia o mecanismo errado:** ele limitava o NIVEL de `cs`, e o dano veio pela AREA saturada. Regra: ao gatear por um campo com teto, verificar se o risco e de nivel ou de extensao — o teto controla o primeiro e nao toca o segundo.
 
     **REVERTIDO** (`k_col=0.0`, massa de `BiomassGrowth` de volta a `rate·m`, bit-identico ao C4). O codigo da `BiomassColonization` com alvo-doador + gate de `cs` fica **preservado desligado** (§10, como `OsmoticForce`/`NutrientSource`): quando D estiver resolvido, e ele que deve ser religado — o mecanismo esta certo, faltava a maturacao. Instrumento novo: [tools/diag_recrut.py](tools/diag_recrut.py) (alvo Shepard vs doador por anel, com e sem filler).
+
+> **SERIE D REVERTIDA (2026-08-14, decisao da usuaria).** `C4` volta a ser o baseline; o
+> codigo esta bit-identico a ele (verificado: 40 colunas × sequencia do dt adaptativo).
+> As licoes #60-#64 permanecem como CONHECIMENTO — o que foi revertido e o codigo, nao o
+> que se aprendeu. Nada de D1/D2/D3a/D4 esta ativo: sem `phi_m`, sem `phi_s`, filler volta
+> a herdar `rho_b`, `k_src=0`, producao Hill com `sigma=10`, e `d_am = rate*m` (o bug da
+> licao #50 volta a existir — inofensivo em `r_growth=0.02`, que e por que o C4 funciona).
+> Runs preservados em `runs/D1`, `D2`, `D3a`, `D4`, `D4_t100`, `D3b_REPROVADO`,
+> `D5_REPROVADO`, `D6`. Proximo passo: **Frente 1 (inoculo)**.
+
+60. **`phi_m` (maturidade) separada de `rho_b` (densidade) — o pin migra de campo e a colonia nao muda em NADA** (Passo D1, 2026-08-13, `runs/D1`, REVERTIDO em 2026-08-14): primeira frente do defeito **D** de [docs/ANALISE_TRES_FRENTES.md](docs/ANALISE_TRES_FRENTES.md) §S3.2. `rho_b` acumulava tres papeis incompativeis — densidade de biomassa viva, chave da EOS e criterio do pin —, e por causa do terceiro qualquer aumento de `r_growth` congelava a colonia (armadilha K.17, medida em K.21). Introduzido `dphi_m/dt = k_m·rho_b·(1−phi_m)` ([equations.py](src/equations.py) `BiomassMaturation`, gate `is_filler<0.5`), com o pin lendo `phi_m>=0.8` ([scheme.py:70](src/scheme.py#L70)) e o teto artificial `rho_b<0.8` do `BiomassGrowth` trocado por `rho_b<rho_max` (S3.1).
+
+    **Resultado: BIT-IDENTICO ao C4** — log em 17 linhas × 40 colunas e **estado final particula a particula** (70 982 particulas, 12 campos, `max|dif| = 0`). `n_pinned` cravado em 43 do inicio ao fim. E o campo novo esta vivo: a mais densa (`rho_b=0.798`) chegou a `phi_m=0.6981` contra `1−e^{−0.03·0.798·50}=0.6979` analitico.
+
+    **Duas decisoes de calibracao que fazem a neutralidade:** (a) `phi_m(0)` e INDICADOR (`1` se `rho_b>=0.8`, senao `0`) e nao `phi_m(0)=rho_b` — com o segundo, uma particula em `rho_b=0.79` cruzaria o limiar em **2 s** e o pin cresceria imediatamente, que e exatamente o que se quer evitar; (b) `k_m=0.03` poe a maturacao em 68-107 s, alem da janela de 50 s e ~5× mais lenta que o alvo de crescimento (~20 s) — maturar TEM que ser mais lento que crescer, senao a separacao nao serve para nada.
+
+    **Remover o teto de 0.8 e no-op na janela atual** e vale saber por que: as particulas com `rho_b>=0.75` nascem com `c_n = 1−0.8·rho_b < 0.4`, onde o gate de nutriente ja zera a taxa. O teto nunca era o que segurava.
+
+    **Regra:** ao migrar um criterio (pin, gate, trigger) de um campo para outro, inicialize o campo novo de modo que o conjunto selecionado em t=0 seja EXATAMENTE o antigo. Isso transforma o refactor numa hipotese falsificavel ("deve reproduzir bit-a-bit") em vez de uma mudanca de fisica disfarcada.
+
+61. **`phi_s = max(rho_b, phi_m)` separa consumidor MECANICO de BIOLOGICO — e zerar `rho_b` do filler sem isso dispara quatro efeitos colaterais silenciosos, um deles ja reprovado** (Passo D2, 2026-08-13, `runs/D2`, MANTIDO): segunda frente do defeito D, atacando a lição #57 (a colonia visivel e 94% filler). O filler passa a nascer com `rho_b=0` e `phi_m = max(rho_b, phi_m)` da mae.
+
+    **A troca ingenua e catastrofica:** fazer a EOS ler `phi_m` no lugar de `rho_b` **zera a pressao da colonia em t=0**, porque so as 43 do nucleo tem `phi_m>0` — a colonia inteira viraria poeira sem pressao, o mesmo `p=0` do agar da lição #58/#40.
+
+    **Auditoria ANTES de editar** (o passo que evitou o estrago) — quatro consumidores de `rho_b` que existem por razao mecanica/numerica e nao biologica:
+
+    | consumidor | se o filler perdesse `rho_b` | |
+    |---|---|---|
+    | `OxigenConsumption.post_loop` | filler para de consumir nutriente | **= alavanca S5, ja REPROVADA** (lição #39) |
+    | `OxigenConsumption.loop` | barreira EPS ao nutriente desaparece | quebra M-B.4 |
+    | `ParticleShift` (gate `rho_b>=0.1`) | filler sai do shifting | quebra a calibracao C4 (lição #45) |
+    | `LinearDrag` (`gamma ∝ rho_b²`) | filler do wake perde arrasto | muda cinematica |
+
+    Solucao: `phi_s = max(rho_b, phi_m)` para **mecanico** (`BiomassEOS`, `LinearDrag`, `ParticleShift`, `OxigenConsumption`, gates de wake/insert, `void_fraction`, `arms_mask` do C2/§2.5, `_Rc`); `rho_b` puro para **biologico** (`BiomassGrowth`, `BiomassMaturation`, `BiomassGradient`→gate da Marangoni, `SurfactantEquation`, `FlagellarForce`, `biomass_total`). Como o filler recebe `phi_s` igual ao `rho_b` que herdava antes, a mecanica e preservada por construcao.
+
+    **Medido (t=50, contra o C4):** `rho_b>0.1` vai de 2937 (dos quais **2770 = 94.3% fantasma**, confirmando a lição #57) para **173, todas vivas**. Biomassa viva 0.3514→0.3469 (−1.3%), massa total 206.83→**205.69** (sem runaway), `a_pressure` pico 6.34→**3.85**, `R99` 4.62→4.63 e modo azimutal m=16 nos dois — **morfologia preservada**. Custo: `a_mar_bio_med` −14% (eu previ −5 a −10% a partir do gate medido; ver abaixo).
+
+    **O gate da Marangoni era contaminado mas quase inconsequente, e isso e util saber:** medindo `∇rho_b` com e sem filler no estado final, a mediana cai 1.679→0.883 (**1.9×**) mas o gate medio so 0.908→0.840 (**7.5%**), com 6 de 167 particulas perdendo ativacao. Motivo: o gate e um smoothstep que **satura em 1.0 acima de `|∇rho_b|=0.5`** e as duas medianas estao bem acima — e o invariante #1 pelo avesso, a saturacao que cega o `max` tambem absorve a contaminacao. **O D2 conserta metrica e painel, nao o motor.**
+
+    **O painel `rho_b` fica quase vazio, e isso e o resultado, nao um bug:** sobram 387 pontos plotaveis, todos vivos (contra 3243, dos quais 2861 filler). Por raio, as portadoras vivas sao 100 em `r<0.5`, 255 em `r∈[0.5,1.5)` e **apenas 32 alem de `r=1.5`**, contra 2030 de matriz — **os braços sao 98.4% fase passiva**. E a lição #41 ("o dendrito e a cauda da gaussiana inicial sendo advectada") somada a #57, agora visivel. As poucas vivas do braço nao sao fracas (`rho_b` medio ≈0.49): **o problema e a CONTAGEM, nao a densidade** — o que aponta para conversao (defeito C), nao maturacao, uma vez que D destrave.
+
+62. **As metricas da junção mediam COMPOSICAO, e o baseline C4 tinha um `rho_b_dip` fantasma** (2026-08-13, quinta ocorrencia da mesma armadilha — cf. #46, #53, #56, #57): `rho_b_junc` era o p90 de `rho_b` sobre TODAS as particulas do anel `r∈[0.4,1.2]`, e `rho_b_dip` tomava o `max` de `rho_b` ao longo de cones de braço detectados por `rho_b>0.3`.
+
+    | | `rho_b_junc` antigo → novo | `rho_b_dip` antigo → novo |
+    |---|---|---|
+    | C4/D1 | 0.3227 → **0.1554** | 0.2928 → **0.0000** |
+    | D2 | 0.0004 → **0.1749** | 1.0000 → **0.0000** |
+
+    Os dois valores antigos mentiam, de formas opostas. **No C4** o anel e dominado por agar invadido (`rho_b=0`, `is_filler=0` — lição #58) e por filler com `rho_b` herdado: o `dip=0.29` contra o alvo impresso de `>0.5` parecia "quase la", mas era matriz. **No D2**, com o filler em `rho_b=0`, o p90 caiu a 0.0004 (parecia "a junção nao tem biomassa") e o gate `rho_b>0.3` do `_arm` passou a achar 16 particulas < 20, entao o dip **nunca era calculado** e ficava em 1.0 — "sem degrau" reportado sem ninguem ter medido.
+
+    **Redefinicao:** `rho_b_junc` = p90 sobre PORTADORAS vivas (`is_filler<0.5 & rho_b>1e-6`); `_arm` detectado por GEOMETRIA (`phi_s>0.3`) com o perfil medindo biomassa viva dentro do cone (bin sem portadora conta 0, que e a leitura honesta); nova coluna `n_junc_bio` (portadoras acima do quorum na junção: **37 no C4, 46 no D2**).
+
+    **O numero que importa: `rho_b_dip = 0.0000` nos DOIS runs.** Ha faixas radiais ao longo dos braços com ZERO biomassa viva — a junção esta completamente desconectada em celulas, **inclusive no baseline**. Isso nunca tinha sido medido, e e o alvo quantitativo do D3/C.
+
+    **Regra (repetida pela quinta vez):** ao definir metrica, decidir explicitamente a POPULACAO antes da estatistica — e reavaliar TODA metrica existente quando uma mudanca altera quem compoe a populacao. Um percentil sobre populacao majoritariamente nula mede quantos nulos existem, nao a grandeza.
+
+63. **D3a APROVADO / D3b REPROVADO — o nutriente destrava o pin quimico, mas `r_growth=0.15` mata a colonia por massa exponencial E por achatamento do gradiente** (2026-08-13, `runs/D3a` e `runs/D3b_REPROVADO`): terceira frente do defeito D, dividida em dois runs para preservar atribuicao (§2.3).
+
+    **D3a (`k_src` 0.0 → 0.3) — APROVADO.** Alvo: o pin quimico `c_n<0.6`, que congelava 152 das 168 vivas (lição #57). Medido em t=50 contra o D2: `min_c_n` 0.0000 → **0.3751** (nunca esgota, igual ao 0.376 do N1), `c_n_bio_arms` 0.552 → **0.786** (pico 0.93, bem acima do limiar), `biomass_total` 0.357 → 0.396, `mean_v` **2×**, `R99` 4.63 → 4.80, modo azimutal m=16 preservado, `a_pressure` 2.58, sem runaway de massa. **`a_mar` na FRENTE 5.955 → 7.334 (+23%)** — exatamente o +23% que o N1 mediu ao ligar `k_src` sobre o C4, reproduzido agora sobre a base D1+D2.
+
+    **Cuidado obrigatorio ao ler o D3a:** `a_mar_bio_med` caiu 2.95 → **0.123 (24×)**, o que isolado leria como motor morto. E o artefato que a lição #51 documenta — com `c_n` uniforme a producao de `cs` perde a estrutura espacial que o gradiente de `c_n` dava, o motor no interior zera e se concentra na frente. N1 mediu 3.15 → 0.16; aqui 2.95 → 0.123. **`a_mar_bio_med` e invalida sob `k_src>0`; medir pela frente (`r>0.75·R99`).**
+
+    **D3b (`r_growth` 0.02 → 0.15, alvo da S3.3) — REPROVADO, run morto em t=39.** Morfologia: **disco compacto sem nenhum dendrito** — criterio de falha explicito do §2.2. `R99` 4.80 → **1.79**, `a_mar` na frente (nao a mediana) 7.33 → **0.05**, amplitude azimutal 36.2 → 8.9.
+
+    **Causa 1 — a massa invalida a discretizacao SPH.** `mass_total` 197 → **502 (+154%)** contra uma predicao minha de +4-8%: errei por raciocinar sobre massa ADICIONADA, ignorando que `d_am = rate·m` da `dm/dt = rate·m`, ou seja crescimento **exponencial em m**. Pior, `rate ∝ (1−rho_b)`, entao **quanto MENOS biomassa a particula tem, mais rapido a massa dela cresce**: as 82 particulas de traço (`rho_b` 1e-12..1e-6) chegaram a **343× dx²** cada — `e^(0.15·38.9)`, taxa cheia — e 243 particulas com `rho_b<0.1` acumularam 48% da massa do dominio. Consequencia fatal: `rho/rho0` mediano chega a **44.39**, e a EOS quase-incompressivel pressupoe `rho ≈ rho0` (Liu §4.1). Nao e "a colonia ficou pesada", e a discretizacao deixando de valer — e foi o que colapsou o `dt` (t avançava 0.07 s a cada 2 min de wall time).
+
+    **Causa 2 — lição #43, e ela sobrevive a correcao de massa.** `frac(cs>0.45)` 44.3% → **90.7%**: com 3.2× mais biomassa o Hill `qs` satura em todo lugar e `cs` crava no teto. O contraste radial de `cs` cai de Δ=0.167 (0.491→0.324) para Δ=0.054 (0.491→0.437), **3× mais plano**. Como a forca e `−β∇cs` e nao `−β·cs`, encher de biomassa COMPETE com o motor.
+
+    **Regra:** corrigir a massa (`d_am = m·d_a_rho_b/rho_max`, forma ja usada no K3) remove a causa 1 e **nao toca a causa 2**. A causa 2 e a mesma parede que a serie Y mapeou (lição #55): sob producao SATURANTE, encher e ter motor sao incompativeis. Religar `r_growth>0.02` exige decidir antes o que fazer com a producao — nao e questao de calibrar a alavanca.
+
+    **Corolario positivo (o D1 pagou):** 47 particulas vivas cruzaram `rho_b>0.8` pela primeira vez no projeto; sob o pin antigo estariam congeladas (armadilha K.17). Vivas pinadas continuaram **exatamente 43**. E `n_pinned` "subiu" 43→59 apenas porque a metrica conta filler, que herda `phi_m` de maes agora saturadas — **sexta ocorrencia** da armadilha de composicao (cf. #46, #53, #56, #57, #62): a metrica precisa filtrar `is_filler`.
+
+64. **S3.3 do documento esta REFUTADO: o teto de `cs` E o mecanismo do achatamento, e a forma da lei de producao nao muda isso** (D4 e D5, 2026-08-14, `runs/D4` e `runs/D5_REPROVADO`): o D3b tinha reprovado por duas causas (lição #63) e restava saber se eram execucao incompleta ou prescricao errada. As duas foram corrigidas e o alvo re-testado.
+
+    **D4 (correcao de massa + S3.3-(ii), em `r_growth=0.02`) — APROVADO.** `d_am = m·d_a_rho_b/rho_max`; `qs` Hill trocado por `qs = rho_b` com o teto `(1−cs/cs_max)` MANTIDO; `sigma` 10 → 18, medido para preservar a producao na FRENTE (`media(qs)/media(rho_b)` da 18.0 em `r>0.75·R99`, 16.5 sobre todas as portadoras). Resultado: `a_mar` na frente **7.33 → 7.33 (identico)**, `contrast_cs` 11.1 → **14.7**, `frac(cs>0.45)` 44.3% → 39.7%, contraste radial de `cs` 0.167 → **0.192**, `max_cs` 0.4966 (teto segurou — sem a explosao de faixa dinamica do Y3, lição #56). Custo: `R99` 4.80 → 4.06, `mean_v` −35%, `biomass_total` 0.396 → 0.322.
+
+    **Falso alarme no D4:** amplitude azimutal caiu 36.2 → 19.2 e o modo dominante foi de m=16 para m=25, o que lia como degradacao. Medindo dedos e proporcao: **17 dedos AR 10.5 (D3a) contra 22 dedos AR 10.3 (D4)** — a razao de aspecto e a MESMA. A queda de amplitude e aritmetica (mesma massa em 22 lobulos em vez de 17), nao perda de estrutura.
+
+    **D5 (`r_growth` 0.02 → 0.15 sobre o D4) — REPROVADO, e o veredito e da prescricao.** **Causa 1 eliminada:** `mass_total` **203.7** contra 516.8 do D3b (identica ao D4 apesar da taxa 7.5× maior), `rho/rho0` mediano 1.10 e maximo 9.8 contra 20.7/285 do D3b, run completou em 3200 iteracoes sem colapso de dt (o D3b rastejava e teve de ser morto em t=39). **Causa 2 intacta:** `frac(cs>0.45)` = **89.6%**, contra 90.7% do D3b — praticamente igual. `R99` **1.77** contra 1.80 do D3b; frames mostram o mesmo blob compacto sem dendritos.
+
+    **Por que a producao linear nao resolve (o dado estava na mesa antes de rodar):** a razao nova/antiga por densidade e 0.36× em `rho_b=0.1`, 0.94× em 0.5 e **1.82× em `rho_b=1`**. Linear discrimina para baixo em densidade baixa mas produz MAIS em densidade alta. Com `r_growth=0.15` empurrando todos para `rho_b≈1`, ela satura o teto com MAIS facilidade que o Hill. Eu havia escrito que "o excesso e absorvido pelo teto" como se fosse benigno — ser absorvido pelo teto **e** a saturacao.
+
+    **A raiz:** `cs_∞ = P/(λ_eff + P/cs_max)` gruda em `cs_max` sempre que `P ≫ λ_eff·cs_max`. Para manter `cs` abaixo do teto com `rho_b≈1` seria preciso `sigma ≈ 0.25` — 72× menor —, o que aniquila a amplitude. **A forma da lei de producao nao e a variavel livre; o teto e.** Enquanto houver teto, encher a colonia de biomassa densa satura `cs` por AREA e mata `∇cs` no interior, qualquer que seja `qs`.
+
+    **Consequencia para o roadmap:** a Frente 3 nao pode ser completada como escrita. S3.1 ✅ (D1), S3.2 ✅ (D1+D2), S3.3-(i) ✅ (D3a) — mas o alvo `r_eff≈0.11` esta **refutado sob teto**, com ou sem S3.3-(ii). Subir `r_growth` exige antes decidir o que fazer com `cs_max`, e a serie Y ja mostrou que remove-lo explode a faixa dinamica (lição #56). Esse e o problema aberto, e ele e anterior a D.
+
+    **O que sobrevive:** a correcao de massa (consistencia, e foi ela que permitiu o D5 sequer completar) e os passos D1/D2/D3a. A troca do Hill por linear teve seu proposito refutado; mantida ou nao, e decisao separada — o D4 e melhor em contraste de `cs` e numero de dedos, o D3a e melhor em raio e velocidade.
+
+65. **Frente 2 (S2.1, deposicao ao longo do rastro) REPROVADA — troca vazio por braço grosso, confirmando a licao #45; e o achado util e outro** (B1, 2026-08-14, `runs/B1_REPROVADO`, REVERTIDO): o wake depositava um cluster so na posicao ANTIGA (`x_dep`), enquanto a ponta percorre 2.0-2.4 dx tipico (10 dx no p90) entre chamadas. S2.1 passou a depositar `n = round(d/dx)` pontos ao longo do segmento `x_dep → x` (`WAKE_SEG_MAX=6`).
+
+    **Os tres criterios pre-registrados falharam:** pico de `void_07` 26.4% → **24.7%** (alvo <15%); razao fantasma/viva nos braços 91.8 → **122.4** (alvo <50, PIOROU); e **AR 10.48 → 7.83 (−25%)**, com os frames mostrando braços nitidamente mais grossos e pontas bulbosas. `R99` 4.62 → 4.48, dedos 19 → 18.
+
+    **A massa quase nao mudou (206.0 → 206.4, +0.2%) — mudou a DISTRIBUICAO:** fantasmas no anel r∈[2,3.5] foram de 1193 para 1346 enquanto as vivas cairam de 13 para 11. O wake nao encheu o rastro; engrossou o braço. E exatamente o que a licao #45 previu ao descartar a serie W (*"implementar W adicionaria massa e engrossaria os braços"*), agora medido.
+
+    **Por que o pico nao cedeu:** o pico de `void_07` em t≈4.4 e o transitorio da expansao inicial, nao rastro de ponta — o wake so pode preencher DEPOIS que a particula passou. O que S2.1 de fato melhorou foi a **velocidade de cicatrizacao**: no ponto seguinte ao pico, 4.5% contra 13.2% do C4 (3×). Ganho real, mas de um defeito que ja valia ~0 em regime (vazio >1.5dx = 0.02% no C4).
+
+    **Achado colateral que sobrevive a reversao:** `a_mar` na FRENTE subiu 7.56 → **8.91 (+18%)** e `frac(sigma_a<0.85)` caiu 7.35% → **5.04%**. Densificar a frente melhora o suporte de kernel e com ele a consistencia do operador de gradiente (Liu §3.3) — o mesmo efeito que a KGC explora. **Sugere que densificar a FRENTE ajuda o motor, o que e reutilizavel**; o erro do S2.1 foi densificar o RASTRO (atras), que so engrossa.
+
+    **Regra:** antes de implementar correcao de vazio, medir se o vazio ainda existe E onde. Aqui o defeito era transitorio e retrogrado (atras da ponta); a correcao acertou o alvo e o alvo nao valia o custo.
+
+66. **⚠ A METRICA DESTA LICAO FOI CORRIGIDA PELA #67-E.** Os "97% da area" contam BAIA como
+    agar engolido, e baia DEVE ser agar (`reference.jpg` / Trinschek (b)). Pelo criterio de
+    enclausuramento (colonia em ≥6 de 8 setores a <2h) o C4 tem **532 particulas (0.79%)**,
+    nao 22 580. O diagnostico dos quatro mecanismos incapazes (B, C, D) permanece valido; o
+    que muda e o TAMANHO do defeito de agar e, com ele, a prioridade dele contra os braços
+    ocos (23% de material dentro do proprio contorno). Ler #67 antes de agir sobre esta.
+
+    **A colonia ENGOLE o agar em vez de desloca-lo: 97% da area dela e agar morto em t=50 — e os quatro mecanismos que deveriam corrigir isso sao estruturalmente incapazes** (diagnostico da desjuncao nucleo-braços, 2026-08-25, medido em `runs/C4`): a usuaria apontou a desjuncao no **painel 5** (`rho_b` LOG) a partir do frame 003 (t=12.9). A investigacao mediu quatro coisas, e as tres ultimas sao o motivo de nove tentativas de preenchimento (series J, K3, N2, P, V, W) nunca terem tocado o problema.
+
+    **(A) Dois regimes opostos, separados em t≈21.5.** Contando particulas com `rho_b = 0` exato e `is_filler=0` DENTRO do `R99`:
+
+    | t | R99 | agar dentro do R99 | % da area |
+    |---:|---:|---:|---:|
+    | 4.4 | 0.77 | 82 | 13% |
+    | 8.7 | 0.99 | 493 | 47% |
+    | 12.9 | 1.26 | 1173 | 68% |
+    | 21.5 | 1.88 | 3268 | 85% |
+    | 29.1 | 2.52 | 6307 | 92% |
+    | 38.3 | 3.46 | 12390 | 96% |
+    | **50.0** | **4.62** | **22580** | **97%** |
+
+    Ate t≈12.9 a colonia EMPURRA o agar e abre um anel de vazio ao redor (na banda `r∈[0.35,0.65)` ha **ZERO** agar de t=4.4 em diante — as 24 que havia em t=0 sairam e nunca voltaram). **A partir de t≈21.5 o agar INVADE**: as baias entre os braços sao agar, e em t=50 a colonia e um conjunto de filamentos sobre fundo de agar. **O vazio inicial NAO e o problema** (ele cicatriza: ocupacao da banda 0.63 → 0.94 em 50 s); o problema e a invasao, que so cresce. Confirma e quantifica a licao #58, cuja medicao parava em t=50 sem separar os dois regimes.
+
+    **(B) Os braços sao filler, nao celulas.** A biomassa VIVA na banda `r∈[0.35,0.65)` fica cravada em **15 particulas** de t=8.7 a t=38.3 (24 em t=0, 20 em t=50) enquanto o filler vai de 0 a 261. O verde (`rho_b>0.1`, `is_filler=0`) nunca sai de `r<0.35` no run inteiro. E a licao #57 (94% do que tem `rho_b>0.1` e filler) somada a #41 (o dendrito e a cauda da gaussiana inicial sendo advectada), agora visivel em imagem: plotar `is_filler` como classe separada mostra nucleo verde + braços vermelhos + baias magenta.
+
+    **(C) Coesao em regiao SUB-DENSA contrai a colonia — e isso e estrutural na EOS, nao calibracao.** A junção tem `rho` = 0.78-0.91, ou seja `ratio < 1`, onde a `BiomassEOS` so tem o ramo **atrativo** (`p = −B_tension·deficit·fade_att`). Dar coesao ali nao sustenta — **puxa para dentro**. E o mecanismo que reprovou P2 (limbo → filler 0.45) e P3, que converteu **1941** particulas e derrubou `R99` de **4.62 para 1.93**. **Regra: nesta EOS nao existe "sustentar" regiao sub-densa. Ou se enche de particula (move `ρ` para `ρ0` e tira do ramo atrativo), ou ela contrai.** Qualquer rota que DE `rho_b` a material sub-denso paga esse preco.
+
+    **(D) O vazio da junção e INVISIVEL aos dois gatilhos do mecanismo de insercao.** `void_mask = (rho_b > INSERT_RHO_B_MIN=0.5) & (sigma_a < 0.85)`. Medido na banda `r∈[0.35,0.65)` ao longo do run:
+    - `rho_b > 0.5`: **0 particulas** de t=4.4 a t=38 (1 em t=41, 5 em t=50). O filler esta em 0.13 e as vivas em 0.15-0.24. **O gate nunca abre.**
+    - `sigma_a < 0.85`: `σ_a` mediano e **0.958-0.973**, muito acima do limiar. **O gatilho tambem nao dispara** — apesar da ocupacao ser 0.72.
+
+    **Por que `σ_a` nao ve:** `σ_a = Σ (m_j/ρ_j) W_aj`. Quando `ρ` cai para 0.78, o volume `V = m/ρ` **sobe** e compensa. **`σ_a` se auto-compensa e fica cego a vazio por rarefacao.** E a advertencia do §2.5 (`sigma_a` e cego ao vacuo absoluto) por um caminho DIFERENTE: nao e ausencia de ponto de amostragem, e inflacao de volume no ponto que existe. Quem enxerga esse vazio e a medicao **areal** (`void_fraction`, criterio C1), que e so diagnostica e nao esta ligada a nenhum mecanismo de preenchimento. **Corolario acionavel: uma rota de preenchimento da junção precisa de gatilho AREAL (deficit de `ρ` ou ocupacao), nunca de `σ_a`; e deve inserir filler MOVEL (`is_wake=1`), nao congelado, sob pena de recair na licao #31.**
+
+    **(E) Assimetria util confirmada no codigo e medida — filler e a unica populacao cujo `rho_b` pode subir sem tocar no `cs`:**
+
+    | equacao | filler entra? |
+    |---|---|
+    | `SurfactantEquation` ([:462](src/equations.py#L462) fonte E destino, [:489](src/equations.py#L489) `a_c_s=0`) | **NAO** |
+    | `MarangoniForce` ([:549-550](src/equations.py#L549)), `FlagellarForce` ([:875](src/equations.py#L875),[:894](src/equations.py#L894)), `BiomassGrowth` ([:27](src/equations.py#L27)) | NAO |
+    | **`BiomassEOS`** ([:690](src/equations.py#L690)) | **SIM** — ganha coesao |
+    | `BiomassGradient` ([:279](src/equations.py#L279)) | SIM — gate da Marangoni (licao #57) |
+    | `LinearDrag`, `ParticleShift`, `OxigenConsumption` | SIM |
+
+    Isso escapa da parede que matou K3, N2, J5 e a serie Y inteira (todas saturaram `cs`). **Verificado empiricamente** no teste do piso: `contrast_cs` 74.44 contra 74.09 do C4 em t=4.4 — inalterado. O gate da Marangoni tambem e imune, medido offline: mediano 1.000 e `n gate>0.5` 153→150 para piso de 0.2 a 0.5, pela saturacao do smoothstep (invariante #1 do §9).
+
+    **Defeito de origem localizado:** o wake herda `rho_b` da mae verbatim ([main.py:1155](main.py#L1155)) e admite mae com `WAKE_RHO_B_MIN = 0.05` — **abaixo do quorum 0.1 da EOS**. Filler nascido sub-quorum tem `fade_rep = fade_att = 0` e **fica assim para sempre**, porque filler nao cresce. Medido na junção: `fade` mediano **0.016** (o filler esta em `rho_b≈0.13`, e o smoothstep da EOS em 0.13 da 0.016) — **1.6% da coesao plena**. Coesao efetiva (`ocup × fade`) cai **5.4×** em uma largura de anel: 0.68 no nucleo (`r∈[0.25,0.35)`) contra 0.11-0.17 na junção. **A desjuncao e constitutiva, nao geometrica** — as particulas estao la, sem propriedades mecanicas.
+
+    **Erro de leitura a nao repetir:** dois paineis diferentes renderizam vazio e agar da mesma cor escura. Foi preciso plotar a CLASSE explicitamente (magenta=agar, verde=viva, amarelo=limbo, vermelho=filler, preto=vazio) para desambiguar — e o resultado inverteu a conclusao duas vezes. **Ao diagnosticar "buraco" num painel, plote a classe da particula, nunca so o campo** — ferramenta em [tools/plot_classes.py](tools/plot_classes.py), que tambem imprime a tabela de agar engolido. Terceira variante da mesma armadilha depois de #49 (escala linear escondendo `rho_b`) e #56 (faixa dinamica escondendo `cs`).
+
+
+67. **Serie M (M1-M6) — converter agar engolido em MATRIZ PASSIVA: tres bloqueios independentes, quatro metricas minhas que mediam a coisa errada, e uma LEI (item L) que fecha o topico 2** (2026-08-25/28, `runs/M1_matriz`, `M2_matriz_semconsumo`, `M3_matriz_ativa`, `M4_wake_matriz`, `M5_seed16`, `M6_env3`): sequencia motivada pela licao #66. Cada passo isolou um bloqueio e produziu a recuperacao prevista. Mecanismo: agar (`is_filler=0`, `rho_b<1e-12`) a menos de `1.5h` do corpo vira `rho_b=0.3, is_filler=1, is_matrix=1, is_wake=1` (movel, nao pinada — licao #31). Marcador `is_conv` impede que a convertida sirva de semente, senao a conversao vira flood-fill para o agar aberto.
+
+    | | mudanca | %agar (disco) | `R99` | `mean_v` | AR / dedos |
+    |---|---|---:|---:|---:|---:|
+    | C4 | — | 97.4 | 4.62 | 4.85e-4 | 5.9 / 20 |
+    | M1 | agar → matriz | **35.1** | **1.80** | 0.9e-5 | 0.8 / 2 |
+    | M2 | + matriz nao metaboliza | 43.1 | 2.13 | 1.8e-5 | 1.5 / 3 |
+    | M3 | + matriz conduz `cs` e sente Marangoni | 67.0 | **3.73** | 2.0e-4 | 1.9 / 8 |
+
+    **(A) O trade-off %agar ↔ `R99` e MECANICO, nao quimico — e M1 e a prova por isolamento.** As rodadas da serie P podiam ser explicadas por saturacao de `cs` (P1b `contrast_cs`=7.3, P4=6.5, contra 12.9 do C4), porque promoviam para biomassa VIVA. **M1 preservou o canal quimico** (filler e gateado fora da `SurfactantEquation` como fonte E destino — licao #66-E, verificada empiricamente no teste do piso: 2700 particulas de `rho_b` 0.13→0.4 e `contrast_cs` 12.61 contra 12.57 do controle) **e encolheu MAIS que todas**. Logo a perda de raio nao vem de afogar o surfactante.
+
+    **(B) M1 — bloqueio de NUTRIENTE.** `c_n` mediano na colonia 0.766 → **0.262**; **90% das particulas com `c_n<0.6`**, ou seja pinadas (contra 33% no C4). Causa: ~8700 consumidores novos onde havia zero, e matriz em `rho_b=0.3` ainda vira barreira difusiva (`D_n_int`), entao nao ha reposicao. Diagnostico por eliminacao: a matriz estava no ramo **repulsivo** (2303 particulas com `p>0` contra 0 no C4), ou seja **coesao NAO era o freio**.
+
+    **(C) M2 — matriz nao metaboliza.** EPS e polimero secretado, nao celula; nao come. Isencao em `OxigenConsumption.post_loop` gateada por `is_matrix`. `c_n` recupera (0.956 contra 0.932 do M1 em t=3.4; a diferenca cresce), `R99` +18%, `mean_v` 2×. **Ainda colapsa** — o bloqueio era outro.
+
+    **(D) M3 — a matriz estava CEGA AO PROPRIO MOTOR.** `MarangoniForce` exige `is_filler<0.5` na fonte E no destino ([:549-550](src/equations.py#L549)); `SurfactantEquation` idem ([:462](src/equations.py#L462), `a_c_s=0` em [:489](src/equations.py#L489)). Converter a colonia em matriz a tornou imune a Marangoni e opaca ao surfactante. Assinatura medida: perfil radial de `cs` com **penhasco** — 0.291 em r/R=0.6 e **0.009** em 0.7, queda de 32× num passo, sem halo; o C4 decai suave de 0.209 a 0.003 ao longo de todo o raio. Fix ([T2] Srinivasan: a fase passiva e ADVECTADA pelo escoamento, nao e inerte): matriz conduz `cs` (difusao + decaimento a `0.5λ`, como agar — nao tem celulas para degradar ramnolipideo), sente e transmite Marangoni, entra no gradiente do flagelo como fonte mas nao e propelida. Resultado: penhasco eliminado, `R99` 2.13 → **3.73**, `mean_v` **11×**, morfologia dendritica de volta com baias limpas.
+
+    **Estado do M3 contra as referencias:** acerta a contagem do painel (b) de Trinschek (**8 dedos**), braços **SOLIDOS** (66% de material dentro do proprio contorno, contra **23%** do C4), baias limpas, nucleo compacto, e **continuidade nucleo↔braço** — o defeito que originou a investigacao. Falha em AR (1.9 contra 5.9 do C4) e no halo (`cs` em r/R=0.9 vale 0.010 contra 0.046).
+
+    **(E) CORRECAO DE METRICA 1 — "% de agar dentro do `R99`" conta BAIA como agar engolido.** Foi a metrica que eu pre-registrei e que produziu os 97% da licao #66. Numa colonia dendritica o disco convexo e quase todo baia, e **baia DEVE ser agar** (`reference.jpg` e Trinschek (b) mostram dedos separados por agar limpo) — a metrica penaliza exatamente a morfologia correta. Criterio correto = **enclausuramento**: colonia presente em ≥6 de 8 setores angulares dentro de `2h`. Por ele: **C4 = 532 particulas (0.79%)**, M3 = 191 (0.30%), M2 = 46. O agar realmente engolido sempre foi defeito pequeno em contagem; o que era grande e **os braços do C4 serem ocos**.
+
+    **(F) CORRECAO DE METRICA 2 — AR medido por setor angular confunde dedo com cone.** A primeira versao (largura = extensao do setor × raio) deu C4=2.49 e M3=1.11, sugerindo que o M3 era pior. Medindo a largura pela **extensao angular OCUPADA** o C4 da **5.92**, que bate com o AR 5.0 documentado no §7 — a medida so entao esta calibrada — e o M3 da 1.90. Pelo mesmo motivo, "39.4% do agar dentro dos cones dos braços" estava inflado: o cone de ±11° e mais largo que o braço. O teste de vizinhanca, que nao depende de geometria arbitraria, da **0.3%**.
+
+    **Regra (setima ocorrencia — cf. #46, #53, #56, #57, #62):** decidir a POPULACAO antes da estatistica, e **calibrar a metrica contra um valor conhecido** antes de ranquear por ela. Duas metricas erradas seguidas quase inverteram o veredito da serie.
+
+    **(G) A matriz e uma CASCA, nao um preenchimento.** Censo do M3 em t=25.8 por anel: das 1674 convertidas dentro de `r<1.8`, **1585 estao em `r∈[1.2,1.8]`** e apenas 86 em `[0.7,1.2]`. Ela se forma na borda enquanto a frente avança, e a frente segue. O interior fica com o filler do wake, depositado em **grumos hexagonais de 7** (`WAKE_CLUSTER_MAX`), com **20% de vazio em `r∈[0.35,0.70)`** e 6% em `[0.70,1.20)`. **Zero agar em todo `r<1.2`** — o roxo que aparece ali no viewer do PySPH e **limbo** (`rho_b` entre 1e-12 e 0.1), que numa escala linear 0–1 tem a mesma cor de zero. Terceira aparicao da armadilha de renderizacao das licoes #49 e #56, agora no viewer e nao num plot meu.
+
+    **(H) O que restou e motivou o M4:** **37% do corpo do M3 (2655 particulas) e filler do wake**, com `rho_b` mediano **0.300 — identico ao da matriz** — e mesmo assim excluido da Marangoni e da difusao de `cs` apenas pela flag. Elas sao o material dos braços. Mesmo defeito que o M3 corrigiu, ainda presente em mais de um terço da colonia.
+
+    **Instrumentos:** [tools/plot_classes.py](tools/plot_classes.py) (classifica particula por CLASSE — agar, viva, limbo, filler, vazio — porque vazio e agar renderizam iguais em qualquer painel de campo) e [tools/verdict_topico2.py](tools/verdict_topico2.py) (criterios pre-registrados). **`is_matrix` e `is_conv` ficam preservados no codigo mesmo se a serie for revertida** (§10, como `OsmoticForce`/`NutrientSource`).
+
+    ---
+
+    **(I) M4 — dar fisica de matriz ao filler do wake RESTAURA o motor ACIMA do baseline** (`runs/M4_wake_matriz`, 2026-08-26): as 2655 particulas de filler do wake tinham `rho_b` mediano **0.300, identico ao da matriz**, e estavam fora da Marangoni e da difusao de `cs` apenas pela flag — sendo que elas SAO o material dos braços. Fix: `is_matrix` passa a significar "fisica de fase passiva" e vale para agar convertido E filler do wake; flag separada `is_conv` marca so o agar convertido e serve unicamente a regra de semente (senao a conversao vira flood-fill). Resultado: `a_mar` 8.44 → **12.14, acima dos 11.35 do C4**; `mean_v` **1.27e-3 = 2.6× o C4**; `R99` 3.73 → 4.25; agar cercado **181, o menor de todo o projeto** (C4: 532). Custo: ocupacao dentro do dedo 0.66 → 0.40 — ao sentir Marangoni, o filler e puxado para fora e os braços se espalham em vez de consolidar.
+
+    **Bug encontrado no caminho:** o dict do `insert` ficou sem `is_conv` (e com indentacao errada), o que faria a propriedade herdar lixo do realloc. E a mesma classe do bug de `is_filler` no Pass N (licao do §12 v2.5). **Toda propriedade persistente nova tem que ser setada explicitamente nos TRES dicts de insercao — Pass N, insert e wake.**
+
+    **(J) M5 — a contagem de dedos NAO e travada pela semente** (`runs/M5_seed16`): trocar `cos(8θ)` por `cos(16θ)` (modo unificado em `rho_b` e `noise`, licao I.1/K.12) deu **11 dedos com modos dominantes m=10,11,12** — nao 16. E o M4, semeado em 8, tem modo dominante em **m=3**. O sistema escolhe o proprio comprimento de onda; a semente desloca, nao fixa. Refuta a hipotese de que a colonia preenchida so amplificava o modo semeado.
+
+    **Armadilha de metrica no M5 (oitava ocorrencia):** `R99`=4.68 parecia "maior que o C4" (4.62). Mas `R99/R90` vale **1.64** no M5 contra 1.23 no C4 — o percentil 99 estava sendo fixado por poucas espiculas. Pelo corpo real o M5 para em `R90`=2.86 contra **3.75** do C4. **Nunca reportar `R99` isolado: cruzar com `R50/R75/R90` para detectar espicula.**
+
+    **(K) M6 — aumentar o alcance da conversao (`MATRIX_ENV` 1.5 → 3.0) vai para o EXTREMO, nao quebra o trade-off** (`runs/M6_env3`): converteu quase todo o agar (**403 restantes contra 14 604**, 5.6% da area) e a colonia virou **disco compacto: 1 dedo, AR 0.13, ocupacao 2.05** (acima de 1 = comprimida), `a_pressure` 3.62.
+
+    **(L) A LEI DA SERIE M — com orcamento de material fixo, morfologia dendritica e colonia preenchida sao os dois extremos de UM eixo:**
+
+    | | ocupacao no dedo | AR | dedos | %agar | `R99` |
+    |---|---:|---:|---:|---:|---:|
+    | M6 | **2.05** | **0.13** | 1 | 5.6 | 2.58 |
+    | M3 | 0.66 | 1.90 | 8 | 67.0 | 3.73 |
+    | M4 | 0.40 | 2.28 | 7 | 74.5 | 4.25 |
+    | M5 | 0.25 | 3.39 | 11 | 76.1 | 4.68 |
+    | C4 | 0.23 | **5.92** | 20 | 97.4 | 4.62 |
+
+    **Monotonico nas quatro colunas, testado por tres mecanismos independentes** (conversao de agar, fisica de matriz no filler, alcance da conversao) mais a semente azimutal. **Afinar o dedo E esvazia-lo; preenche-lo E engrossa-lo. Dedo oco encerra agar** — as tres propriedades da licao #66 nao sao independentes, sao a mesma coisa vista de tres angulos.
+
+    **Consequencia para o roadmap:** a referencia pede AR ≥ 5 **com** dedos solidos, o que pela lei acima exige **mais material por unidade de comprimento de frente** — crescimento de biomassa, nao redistribuicao. E o crescimento esta bloqueado pelo teto de `cs` (licao #64: `r_growth` > 0.02 leva `frac(cs>0.45)` a ~90% e achata `∇cs`, com Hill ou com producao linear, com ou sem correcao de massa). **O topico 2 e a morfologia de referencia convergem no mesmo bloqueio, que e anterior aos dois: `cs_max`.** Enquanto ele existir, encher e afinar sao mutuamente exclusivos.
+
+    **(M) O M4 REPROVA NO §11 — e a comparacao visual inverte o veredito das metricas** (2026-08-28,
+    `tools/compare_frames.py --t 50 runs/C4 runs/M4_wake_matriz`, escalas de cor FIXAS): lado a lado
+    com as duas referencias, o C4 mostra ~20 braços radiais finos — a classe **(b) Fingering** do
+    Trinschek e o padrao dos paineis A/B/C da `reference.jpg` — enquanto o M4 e um blob com 6-7
+    lobulos curtos, que na taxonomia do proprio Trinschek e **(a) Modulated / (c) Circular**, os
+    estados intermediario e de falha da §2.2. O painel de `cs` fecha: o C4 tem halo radial alem da
+    biomassa; o M4 tem nucleo saturado compacto **sem halo**.
+
+    **Nao e troca simetrica de ponto de operacao — e regressao de CLASSE morfologica.** Eu havia
+    apresentado o M4 como equilibrio de pros e contras a partir das metricas escalares; a leitura
+    visual, que o §11 define como arbitro final, reprova. Detalhe que resume a lei (L): o C4 forma
+    os braços com **2861** particulas inseridas e o M4 com **8092** — 2.8× mais material produzindo
+    colonia menor e sem dedos. E no C4 a biomassa viva esta **nas pontas**; no M4 fica retida no
+    interior, empurrando matriz com as celulas presas atras.
+
+    **(N) A SOLUCAO DA DESJUNCAO QUE NAO MEXE NA MORFOLOGIA JA EXISTIA — o piso de coesao do filler**
+    (`runs/F_floor`, `FILLER_RHO_B_FLOOR = 0.4`): rodado no inicio da investigacao e arquivado sem
+    que eu medisse a morfologia dele. Medido depois:
+
+    | | `R99` | dedos | **AR** | ocup no dedo | `fade` na junção | coesao×ocup | `contrast_cs` |
+    |---|---:|---:|---:|---:|---:|---:|---:|
+    | C4 | 4.62 | 20 | 5.92 | 0.23 | 0.07 | 0.23 | 12.57 |
+    | **PISO** | 4.40 | **24** | **6.59** | 0.21 | **0.84** | **0.63** | **12.61** |
+
+    **AR 6.59 com 24 dedos — melhor que o proprio C4** — com a coesao da junção 2.7× maior, `cs`
+    intacto, `a_pressure` 3.00 e massa 205.1. Custo: `R99` −5%. Confirmado visualmente: mesma classe
+    morfologica do C4.
+
+    **POR QUE ELE ESCAPA DA LEI (L) e M1-M6 nao:** o piso **nao muda QUEM e colonia** — nao adiciona
+    material, nao converte agar, nao mexe no orcamento nem na distribuicao espacial. Ele muda **DO QUE
+    e feito o material que o wake ja deposita**: `rho_b` do filler nasce em `max(mae, 0.4)` em vez de
+    herdar valores sub-quorum que o deixam com `fade_rep = fade_att = 0` para sempre (licao #66). E
+    correcao **constitutiva**, nao geometrica. A lei (L) governa redistribuicao de material; o piso
+    nao redistribui nada.
+
+    **Regra geral:** ao atacar um defeito estrutural, distinguir se ele e de **quantidade/posicao** de
+    material (sujeito a (L)) ou de **propriedade** do material que ja esta la. O segundo tipo sai de
+    graca morfologicamente. Perdi seis rodadas atacando o primeiro tipo quando a lesao medida na
+    licao #66 era do segundo (`fade` = 0.016 na junção, ou seja 1.6% da coesao plena).
+
+    **PONTO DE OPERACAO DA SERIE: M4 — REPROVADO pelo item (M).** Motor acima do baseline (`a_mar` 12.14 vs 11.35, `mean_v` 2.6×), agar cercado 181 vs 532, ocupacao no dedo 0.40 vs 0.23, junção continua, massa 209 e `a_pressure` 3.02 no orcamento. Perde em AR (2.28 vs 5.92) e dedos (7 vs 20). **O C4 continua sendo o baseline do projeto** — a adocao do M4 depende de decidir se solidez e continuidade valem mais que AR, e isso e decisao da usuaria, nao minha.
+68. **METRICA CIRCULAR — a "ponte de conectividade" otimizou a regua que eu mesmo escolhi, e o
+    diagnostico da desjuncao estava errado por um fator de 27×** (2026-08-28, `runs/PONTE_REPROVADO`,
+    REVERTIDO): medi que o corpo do C4 (`rho_b>0.1`) parte em 26 componentes a partir de t=17.8 e que
+    ligar todos os bracos ao nucleo custava **31 particulas** (mediana 2 por braco). Implementei
+    recrutamento por caminho minimo (Dijkstra, custo 0 para no que ja e corpo, 1 para recrutar) e o
+    mecanismo funcionou: 12 componentes → 4, fracao no maior 57% → 76%, com apenas 58 particulas.
+
+    **O numero 31 era artefato da distancia de ligacao do grafo.** Eu usei `1.5h = 2.7 dx` — e a
+    PONTE foi construida no mesmo grafo. Ela conecta exatamente na escala em que e medida e em
+    nenhuma outra. Medindo o C4 em t=50 por escala:
+
+    | ligacao | componentes | inalcancaveis | pontes | custo/braco | % no maior |
+    |---|---:|---:|---:|---:|---:|
+    | **1.05 dx** (contato) | **66** | **65** | **impossivel** | — | **4%** |
+    | 1.20 dx | 84 | 9 | **830** | 36 | 9% |
+    | 1.40 dx | 73 | 1 | 397 | 15 | 13% |
+    | 2.00 dx | 49 | 0 | 106 | 3 | 25% |
+    | 2.70 dx (=1.5h, usado) | 26 | 0 | **31** | 2 | 48% |
+
+    A 1.05 dx **65 dos 66 componentes sao INALCANCAVEIS** — nao ha caminho de particulas. E na escala
+    estrita a ponte fica PIOR que o C4 (18 componentes contra 10; 32% no maior contra 43% a 1.3 dx),
+    porque ela deposita a ~2.7 dx de cada lado do gargalo e nao fecha o contato.
+
+    **O diagnostico corrigido:** a desjuncao NAO e um gargalo local de 2 particulas por braco — e a
+    **esparsidade do campo de biomassa em toda a colonia**. 2937 particulas com `rho_b>0.1` espalhadas
+    num raio de 4.62 tem espacamento tipico MAIOR que `dx`; o "corpo" so parece conexo se admitirmos
+    ligacao a 2.7 dx. Isso e consequencia aritmetica da licao #51 (numero de portadoras fixo, 167 →
+    178, enquanto o raio cresce), nao um defeito separado.
+
+    **Custo morfologico medido antes de parar** (t=25.3, com 58 pontes): dedos 18 → 15, **AR 9.65 →
+    7.18 (−26%)**, largura do dedo +50%, `R99` +10%, `contrast_cs` −5%, `a_pressure` 6.34 → 3.00 (a
+    rodada com ponte nao tem o pico do C4), `mean_v` +32%, vivas nos bracos 163 → 218. O engrossamento
+    e a lei (L) da licao #67 em escala pequena. Extrapolar para as 830 particulas da escala de contato
+    poe a rota inteira no regime governado por (L).
+
+    **Regra (sexta ocorrencia — cf. #46, #53, #56, #62, #67-F):** nunca definir a METRICA e o
+    MECANISMO com o mesmo parametro. Aqui a distancia de ligacao do grafo era simultaneamente o
+    criterio de sucesso e o alcance da correcao, entao o mecanismo otimizou a regua em vez do
+    fenomeno. O teste que expoe isso e barato: **varrer o parametro da metrica**. Se o resultado so
+    aparece no valor escolhido, a medicao e circular.
+
+    Codigo preservado desligado (`use_bridge=False`, §10).
+
+
+69. **O ALVO QUANTITATIVO DA DESJUNCAO — ~10 000 portadoras contiguas no envelope estrelado — e nenhuma
+    das ~15 rodadas do projeto chegou perto com a morfologia preservada** (2026-08-28, medido em
+    `runs/C4`, `H1_hillK03`, `Y3`, `M4_wake_matriz`, `N2_t50`, `J7`):
+
+    **(A) A ARITMETICA QUE FECHA O ALVO.** Envelope da colonia (regiao a <1.5h de uma portadora) do C4
+    em t=50: **A = 27.62**. Portadoras (`rho_b>=0.1`): **2937**, das quais apenas **167 sao VIVAS** (o
+    resto e filler). Para haver rede contigua no limiar de contato `1.05 dx`, empacotamento hexagonal
+    exige `N = A/(s²·0.866)` = **9994 particulas**. Deficit: **7057**.
+
+    **(B) REDISTRIBUIR E GEOMETRICAMENTE IMPOSSIVEL — refuta a rota de anti-clumping.** As 2937
+    portadoras estao a **0.72 dx** do vizinho mais proximo (mediana) — ou seja AGLOMERADAS, mais densas
+    que a rede, em **531 tufos de mediana 4 particulas** (p90=9, max=111) mais 214 isoladas, com os
+    tufos a **1.19 dx** uns dos outros (p10=1.07, p90=1.70). Isso corrige a licao #68, que dizia
+    "espacamento tipico maior que dx" — esta errado, o defeito e aglomeracao, nao rarefacao.
+
+    **Mas espalhar as 2937 uniformemente nesse envelope daria `s = sqrt(A/N/0.866)` = 1.94 dx** — quase
+    o dobro do limiar. **Redistribuir perfeitamente deixaria a colonia MAIS desconectada.** Os tufos
+    nao sao o defeito: sao o que ainda mantem alguma conexao. Qualquer proposta de usar `ParticleShift`
+    ou similar para "desfazer os tufos" esta refutada por esta conta.
+
+    **(C) CONVERTER O QUE ESTA NOS VAOS TAMBEM NAO SERVE.** Dos 5960 vaos entre 1.05 e 1.9 dx, **so 34%
+    tem alguma particula no meio** — e dessas, 1911 ja sao portadoras (vao de segunda ordem), contra
+    103 com `rho_b=0` e 19 no limbo. **Em 66% dos vaos nao ha o que converter.**
+
+    **(D) DOBRAR A POPULACAO NAO CONECTA — o Y3 e a prova.** Aplicando ao Y3 os criterios C4a/C4b do
+    §2.2, que nunca tinham sido aplicados nele:
+
+    | | C4 | Y3 |
+    |---|---:|---:|
+    | corpo (`rho_b>=0.1`) | 2937 | **5994** (2.0×) |
+    | vivas | 167 | 232 |
+    | cobertura do envelope | 29% | 44% |
+    | **comps a 1.05 dx** | **66** | **173** |
+    | **% no maior a 1.05 dx** | **3.8%** | **1.9%** |
+    | % no maior a 1.4 dx | 13.2% | 52.6% |
+
+    **O Y3 dobrou a populacao e ficou MAIS fragmentado em escala de contato**, porque a populacao nova
+    nasce aglomerada do mesmo jeito. Ele so parece melhor a 1.4 dx — a mesma ilusao de escala da licao
+    #68. Isso invalida a recomendacao que eu havia feito de retomar o Y3: eu a fiz com base em `Σρ_b` e
+    `R99` sem aplicar nele os criterios que definem o problema.
+
+    **(E) O MAXIMO JA ATINGIDO E 8068 (M4) — e virou blob.** Nenhuma rodada chegou as ~10 000 com a
+    morfologia preservada. M4 cobriu 95% do envelope e reprovou no §11 (fingering → modulated, licao
+    #67-M). O padrao e universal na serie: **cobertura e morfologia dendritica sao antagonistas**
+    (lei (L), licao #67-L), e a unica rodada que cobriu foi a que perdeu a classe morfologica.
+
+    **Regra:** ao propor rota para a desjuncao, computar ANTES o espacamento que a populacao resultante
+    teria no envelope alvo (`sqrt(A/N/0.866)`) e comparar com 1.05 dx. Se der acima, a rota nao conecta
+    por geometria, independente do mecanismo — e isso descarta, sem rodar, redistribuicao,
+    preenchimento de vaos e qualquer recrutamento que nao multiplique a populacao por ~3.4×.
+
+70. **Hill `K` = 0.3 — o unico lever do sistema de `cs` nunca tocado no projeto: entrega contraste e
+    motor, e nao toca na desjuncao** (H1, 2026-08-28, `runs/H1_hillK03`, alavanca unica sobre o C4):
+    `qs = rho_b²/(rho_b² + K²)` estava com `K = 0.1` desde o inicio, o que poe o joelho do quorum
+    sensing em **10% da densidade de saturacao** — `qs(0.1) = 0.5`, meia producao com um decimo da
+    biomassa. E o que torna a banda sub-quorum quimicamente barulhenta e o que afogou as rotas de
+    recrutamento (licoes #48, #52, #53, #59). `K` 0.1→0.3 com `sigma` 10→11.6, calibrado para preservar
+    a producao da biomassa MADURA (`rho_b>0.5`: 64% da producao em 106 particulas).
+
+    | | C4 | H1 | alvo |
+    |---|---:|---:|---|
+    | `contrast_cs` | 12.89 | **14.87** | ≥13 ✅ |
+    | `a_mar` | 11.35 | **13.76** | ≥10 ✅ |
+    | `a_pressure` / massa | 2.99 / 206.0 | 2.98 / 206.1 | ✅ |
+    | dedos | 20 | 19 | ≥18 ✅ |
+    | **AR** | **5.92** | **4.97** | ≥5.5 ❌ |
+    | `R99` | 4.62 | 4.26 | −8% |
+    | **% no maior a 1.05 dx** | **3.8%** | **3.8%** | inalterado |
+
+    **Contraste +15% e motor +21% com a mesma pressao e massa** — o mecanismo se confirma. O custo de
+    recrutar cai **6.3×**: reprojetando a populacao do J7 sob `K=0.3`, a producao adicionada pelo
+    recrutamento vai de **+2170 (+133%)** para **+340 (+25%)**.
+
+    **Mas nao toca a desjuncao**, e nao poderia: `K` muda quem PRODUZ surfactante, nao quem E biomassa.
+    `biomass_total` ate cai 1.4%. E **reprova em AR (4.97 contra 5.5)** com `R99` −8%, provavelmente
+    porque silenciar a banda sub-quorum tira `cs` da zona de transicao, onde o gradiente empurra a
+    frente. **Nao adotar sozinho.** Se for usado, e como pre-requisito de recrutamento, e o ponto de
+    operacao alternativo e `K=0.2` (`sigma=10.6`, silencia 2.9× em vez de 5.5×). Codigo parametrizado:
+    `HILL_K` em [main.py](main.py), fiado ate `SurfactantEquation` via scheme.
+
+71. **Serie E — `k_src` destrava o gate da colonizacao e o Hill `K` INVERTE de sinal quando o
+    nutriente e sustentado; melhor AR do projeto (7.61 com 24 dedos)** (E1-E5, 2026-08-30/31,
+    `runs/E1_ksrc` … `runs/E5_hillK025`): a serie partiu do C4 acrescentando a fonte de nutriente
+    validada no N1 (`k_src=0.3`, [T2] Srinivasan — swarming e regime *nutrient-rich*) e mediu o que
+    isso abre.
+
+    **(A) O gate de nutriente da `BiomassColonization` estava FECHADO no C4.** Com `c_n` esgotado nos
+    bracos, so **36** particulas eram elegiveis a recrutamento; com `k_src=0.3` sao **712**. Toda a
+    serie J (licoes #48-#50) calibrou `k_col` contra um gate quase fechado — o que explica por que
+    `k_col` parecia caro (o pouco que recrutava vinha da regiao errada).
+
+    **(B) O Hill `K` inverte de sinal.** A licao #70 mediu, sobre o C4 puro, que `K`=0.3 REPROVA em
+    AR (5.92 → 4.97). Sobre `k_src=0.3` o mesmo lever SOBE o AR. Medido em duas rodadas
+    independentes, e nas duas eu previ queda: E2 (`K`=0.3) previsto ~5.1-5.4, medido **6.31**; E5
+    (`K`=0.25) previsto ~6.0-6.5, medido **7.61**. **Interpolar linearmente entre rodadas isoladas e
+    invalido quando os mecanismos compoem** — silenciar a banda sub-quorum so custa gradiente na
+    zona de transicao quando essa zona esta faminta; com nutriente sustentado ela nao esta.
+
+    **(C) E4/E4b isolaram o eixo, e ele e o mesmo da lei (L) (#67-L):** motor fraco → colonia
+    compacta e CONECTADA (11.21% no maior); motor forte → extensa e FRAGMENTADA (2.38%). O E4
+    reprovou por erro meu de calibracao circular: dimensionei `sigma`=1.93 para uma populacao
+    pos-maturacao de 2800 que nunca se materializou, porque o proprio `sigma` baixo matou o motor
+    (`a_mar` 3.71, `R99` 1.85). Corrigido no E4b subindo `beta` a 15.
+
+    **(D) PONTO DE OPERACAO — E5** (`k_src=0.3`, `HILL_K=0.25`, `sigma=11.1`, `k_col=0.03`), 7 de 8
+    criterios contra o C4: **AR 7.61 com 24 dedos** (C4: 5.92 com 20 — melhor do projeto),
+    `contrast_cs` 12.65, `a_mar` 12.31, `a_pressure` mediana 2.58, massa 206.1, `min_c_n` 0.376,
+    VIVAS **276 contra 167**, conectividade a 1.05 dx 5.03% contra 3.78%. Unica reprovacao:
+    `frac(cs>0.45)` = 52.4% contra o limiar de 50%.
+
+    **Armadilha de estatistica evitada por pouco (mesma classe de #46):** o E2 "reprovou" em
+    `a_pressure` por 4.97, que era o MAXIMO de 16 amostras; a mediana, 2.574, era a MELHOR da serie.
+
+72. **O piso de `rho_b` na juncao: a alavanca e CONSTITUTIVA, mas o criterio de QUEM recebe define
+    tudo — proximidade produz bainha radial, enclausuramento nao, e o raio tem de escalar com a
+    colonia** (2026-08-31, `runs/E5_hillK025` como base): pedido da usuaria — as particulas de agar
+    entre nucleo e dendritos ja existem, basta trocar o `rho_b` delas para que a expansao leia como
+    conexa. Valor escolhido `RHO_B_FLOOR = 0.1` EXATO, porque o smoothstep da `BiomassEOS` comeca em
+    0.1: `fade(0.1) = 0.0000`, entao a particula conta como corpo em qualquer metrica e tem coesao e
+    pressao NULAS por construcao. Flag `is_env` isenta das outras seis equacoes (crescimento,
+    gradiente/gate da Marangoni, producao de `cs`, consumo de nutriente, shifting e doacao na
+    colonizacao); sobram `LinearDrag` (+1.5% em `gamma`) e a difusao de `cs`, que e desejavel — o
+    marcador conduz surfactante como meio, so nao produz.
+
+    **(A) PROXIMIDADE ESTA ERRADA, e a licao #67-E ja dizia isso.** Marcar `d < 1.5h` de qualquer
+    portadora pinta um disco de raio 2.7 dx em volta de CADA uma; a uniao desses discos e um ANEL.
+    Medido no E5 em t=50: proximidade marca **8132** particulas com **100% dos setores azimutais
+    ocupados** (o corpo ocupa 87.5%), despejando 4941 delas nas baias — e baia DEVE ser agar
+    (`reference.jpg` / Trinschek (b)). Enclausuramento (≥6 de 8 setores com colonia dentro do raio)
+    marca **1089** com 45.8%, concentradas em `r ∈ [0.8, 1.8]`, que e a banda da juncao.
+
+    **(B) O piso NAO pode ser portadora de si mesmo.** Com `rho_b = 0.1` ele entra no conjunto de
+    portadoras do ciclo seguinte e a aureola avanca um raio de busca a cada chamada: medido, `R99`
+    do piso 0.78 → **2.13** em 23 s, sempre ~0.2 A FRENTE do `R99` real, com 478 → 4182 particulas.
+    E flood-fill lento. Mesmo papel do `is_conv` da serie M: o convertido nao serve de semente. A
+    forma limpa e recalcular o conjunto **do zero** a cada chamada — o piso e "o que esta cercado
+    AGORA", sem deriva acumulada. Marcar/desmarcar nao tem consequencia dinamica porque
+    `fade(0.1) = fade(0) = 0`.
+
+    **(C) O raio do criterio TEM de escalar com a colonia.** Com raio FIXO o criterio e frouxo
+    quando a colonia e pequena e estrito quando ela cresce: a 4h o piso ocupa 97-100% dos setores
+    azimutais em `t < 20` (o corpo ocupa 62-74%) e so converge em t=50. Com `raio = 0.09 · R99` a
+    pegada angular do piso fica ABAIXO da do corpo em todo instante e converge a ela em t=50 (58%
+    contra 58%). **Regra: criterio geometrico com escala absoluta muda de significado enquanto o
+    objeto cresce — parametrize pela escala do proprio objeto.**
+
+    **(D) O piso fecha a 1.4 dx e NAO fecha a 1.05 dx, e isso e geometria (licao #69).** Tamanho
+    ABSOLUTO do maior componente no E5 + piso enclausurado: 149 → 154 a 1.05 dx (+3%), 445 →
+    **2326 a 1.4 dx (5.2×)**, 1569 → 2997 a 2.0 dx. A escala de contato nao cede porque so 33.9% das
+    enclausuradas estao a menos de 1.05 dx do corpo (mediana 1.33 dx) — e ambas as populacoes sao
+    tufos internamente densos (87.5% e 92.4% tem vizinha a <1.05 dx) separados por vaos maiores que
+    o contato. Nenhum esquema de MARCACAO muda empacotamento; isso exige as ~10 000 portadoras da
+    licao #69.
+
+    **(E) NONA ocorrencia da contaminacao de composicao** (cf. #46, #53, #56, #57, #62, #67-F, #68):
+    o "% no maior componente" CAIU de 5.0% para 3.8% a 1.05 dx com o piso — e isso e artefato de
+    denominador (o piso soma 1089 ao total). O tamanho absoluto SUBIU. **Ao medir conectividade
+    entre rotas que mudam quantas particulas compoem o corpo, reportar o tamanho ABSOLUTO do maior
+    componente, nunca so a fracao.**
+
+    **(F) Gatear por VALOR atinge quem nao devia; gatear por FLAG nao** (E7, `runs/E7_piso_inerte`):
+    para isentar o piso, gateei `BiomassGrowth` e `BiomassGradient` por `rho_b > 0.01`. O limiar nao
+    atinge so o piso — congela as **79** particulas vivas legitimas da banda de traco do E5. O run
+    ficou MENOS inerte que o sem gate (desvio de biomassa 3.29% → 6.84%). Trocado por isencao via
+    `is_env` em sete pontos. **Toda isencao de um mecanismo artificial deve ser por marcador, nunca
+    por limiar do campo que o mecanismo compartilha com a fisica real.**
+
+    **(G) `rho_b = 0.1` em escala LINEAR 0-1 e quase a cor do zero** — terceira aparicao da
+    armadilha de renderizacao das licoes #49 e #56. O piso so LE como colonia em escala LOG. Painel
+    log ja existe em [plots/plot.py](plots/plot.py); a comparacao dos criterios esta em
+    [plots/piso_criterio.png](plots/piso_criterio.png) e a varredura em
+    [plots/piso_varredura.png](plots/piso_varredura.png).
+
+    **(H) A METRICA DE BURACO ESTAVA ERRADA POR UM TETO QUE EU MESMO IMPUS** (2026-09-01): medi
+    "vazio" so dentro do envelope (`d < 1.5h = 2.7 dx` de material) e conclui que restavam **169
+    pontos (0.3% do envelope)** de buraco cercado — praticamente nada. A usuaria circulou onze
+    buracos nos bracos do painel de classes e nenhum era dos que eu havia mapeado. Causa: um
+    buraco de 4-6 dx de largura tem o centro a 2-3 dx do material, **fora da janela**, entao nunca
+    era contado. Sem o teto e com busca de 6 dx, o C4 tem **3357 dx²** de buraco (1834 cercado +
+    1524 quebra) e o E9 tem 1531 — contra os 27 dx² que eu havia reportado. **Regra: ao medir
+    vazio, o criterio nao pode ter teto de distancia, porque o teto exclui exatamente os buracos
+    grandes.** Confirmacao de que o material esta la para ser promovido: dentro dos 650 dx² de
+    buraco cercado do E9 ha **1610 particulas candidatas**.
+
+    **(I) PREENCHIMENTO TOPOLOGICO DOMINA QUALQUER CRITERIO LOCAL — e a diferenca e que ele nao
+    tem raio** (varredura sobre `runs/E9`, 2026-09-01): rasterizar o corpo, fechar vaos de ate
+    `FLOOR_FECHA·dx` e inundar a partir de FORA; o que a inundacao nao alcanca e buraco. Baia e
+    ligada ao exterior por construcao, entao **nunca** e marcada — nao existe o vazamento que todo
+    criterio local sofre. Medido contra o enclausuramento a 6/8 que ele substitui:
+
+    | | particulas | buraco cercado | dedos | largura | agar engolido | agar limpo na baia |
+    |---|---:|---:|---:|---:|---:|---:|
+    | sem piso | 0 | 1092 | 24 | 0.334 | 1665 | 49.8% |
+    | enclausuramento 6/8 | 4152 | 715 | 17 | 0.760 | 1090 | 44.5% |
+    | **topologico 3.5 dx** | **3565** | — | **17** | **0.618** | **241** | **48.7%** |
+    | topologico 3.0 dx | 2923 | **405** | **20** | **0.451** | 244 | 49.5% |
+
+    Com MENOS particulas o topologico deixa menos buraco, mais dedos, bracos mais finos, mais agar
+    limpo na baia e **4.5x menos agar engolido** — este ultimo e o defeito da licao #58, e nenhum
+    outro mecanismo da sessao o resolveu.
+
+    **Por que os criterios locais falham, medido:** o raio do enclausuramento (6.9 dx) e comparavel
+    a largura da baia no anel medio, entao assim que os bracos engrossam a baia passa a contar como
+    "cercada". Iterar o proprio 6/8 ate convergir — que eu previ ser seguro porque "baia nunca e
+    cercada" — colapsa **17 dedos para 5 em UM passo**. Varreduras que reprovaram junto: afrouxar
+    setores (4/8 leva a 2 dedos), proximidade transversal (funde 18 -> 7), "setores opostos" com e
+    sem restricao radial (fecha quebra mas funde), e ponte dirigida por corredor (promoveu ZERO
+    particulas — um vao de 1.1 dx entre dois componentes nao tem espaco para uma terceira
+    particula no meio).
+
+    **Regra geral:** quando o alvo e "o que esta dentro do contorno", use uma operacao TOPOLOGICA
+    (inundacao a partir do exterior), nunca um criterio de vizinhanca com raio — o raio sempre
+    tem uma escala em que ele confunde "dentro" com "entre", e nao ha valor que separe os dois.
+
+    **(J) O TOPOLOGICO NO SOLVER RELOCA OS BURACOS EM VEZ DE FECHA-LOS** (E10, 2026-09-01,
+    `runs/E10_topo`): rodado com `FLOOR_FECHA=3.5`, entregou o melhor de toda a serie em buraco
+    (650 -> 369 dx²), agar engolido (1001 -> **216**, o menor do projeto), dedos (24 -> **26**) e
+    motor (`a_mar` **16.00**, o maior ja medido; `contrast_cs` 21.15). **E a usuaria reprovou na
+    leitura visual**, corretamente. Comparando os buracos ponto a ponto na mesma grade: apenas
+    **37 dx² coincidem** — o E10 fechou 609 dx² dos buracos do E9 e **abriu 333 dx² novos**. O
+    padrao inteiro mudou de lugar; o saldo (+276) e real mas modesto.
+
+    **Os buracos novos NAO sao artefato de morfologia — o criterio falhou neles:** contem **844
+    particulas de agar nao-marcadas a 2.53 part/dx²** (2.5x a rede cheia). O material esta la e
+    nao foi promovido, porque essas regioes **nao sao topologicamente cercadas** — sao entradas
+    estreitas vindas da baia, e a inundacao as alcanca.
+
+    **Isso fecha a classe inteira de criterios de promocao.** Criterio LOCAL (enclausuramento)
+    preenche as entradas E come a baia; criterio TOPOLOGICO preserva a baia E deixa as entradas.
+    **Entrada estreita e baia sao o mesmo objeto em larguras diferentes**, e o unico parametro que
+    os separa e a largura (`FLOOR_FECHA`), que tem penhasco: 3.5 dx da 14 dedos, 5.0 dx da **2**.
+    Nao existe valor que separe os dois.
+
+    **Erro de metodo meu, a nao repetir:** afirmei que o topologico dominava o enclausuramento
+    "em todos os eixos" e que a baia ficaria MENOS engolida (previ 48.7% de agar limpo). Ambas as
+    afirmacoes valiam no ESTADO CONGELADO onde medi; na rodada, aplicado 28 vezes numa colonia
+    que cresce, a baia ficou em **43.1%** — pior que o E9 (45.4%) e que o proprio criterio antigo
+    (45.5%). Mesma classe da licao #54: medida num estado final nao prediz a dinamica.
+
+    **(K) O PREENCHIMENTO PERTENCE A RENDERIZACAO, e a licao #38 ja dizia isso** (2026-09-01):
+    quatro rodadas (E7-E10) foram gastas mexendo no SOLVER para resolver um problema de IMAGEM. O
+    mesmo preenchimento topologico aplicado no plot entrega a continuidade visual com perturbacao
+    **ZERO** — a fisica fica sendo a do E5 (AR 7.61, 24 dedos, baia 50.5%, o melhor da serie em
+    morfologia). Custo do piso no solver, medido: `a_pressure` mediana 2.58 -> 3.24, `mean_v` a
+    menor da serie, `frac(cs>0.45)` de volta a 53.4%, e os deslocamentos de dedo da licao #72-A.
+
+    Implementado como `python tools/plot_piso.py --fill[=N] <runs...>` (padrao N=3.5 dx), com
+    elemento estruturante em DISCO — o quadrado deixa a borda em degrau. Sobre o E5: `--fill=3.5`
+    desenha +2683 particulas e leva o buraco de 1200 para 472 dx². Comparacao visual em
+    [plots/E5_fill_render.png](plots/E5_fill_render.png). `use_floor = False` em
+    [main.py](main.py); verificado que reproduz o E5 **bit-a-bit** (iteracao 200 identica em
+    `t`, `a_marangoni`, `contrast_cs` e `mass_total`). O codigo do piso fica preservado desligado
+    (§10): com `is_env` sempre 0, as sete isencoes em `src/equations.py` sao no-op.
+
+    **Regra:** antes de mexer no solver para corrigir o que se ve num painel, pergunte se o
+    defeito e de FISICA ou de IMAGEM. Se some ao mudar a renderizacao, era de imagem — e mexer no
+    solver so adiciona perturbacao a um problema que nao existia nele.
+
+
+
+
+73. **A COLONIA NAO EXPANDE — ELA E CONSTRUIDA. Diagnostico do mecanismo por tras do C5**
+    (2026-09-01, medido em `runs/E5_hillK025`): dos 1343 pontos de material nos bracos (`r>2`),
+    **1312 (98%) foram INSERIDOS ali** — apenas 31 sao particulas originais, e essas viajaram 52 dx
+    de mediana partindo de `r`=0.34. Os tres mecanismos que levam material para fora:
+
+    | mecanismo | particulas | natureza |
+    |---|---:|---|
+    | adveccao (transporte real) | **31** | contigua, e desprezivel |
+    | **wake** (rastro da ponta) | **2410** | criacao pontual |
+    | insert (vacuo) | 698 | criacao pontual |
+
+    **(A) A adveccao nao funciona porque o agar nao e empurrado.** Deslocamento mediano das 20641
+    particulas de agar dentro de `r`<4.5: **0.005 dx**; so 26% se moveram mais de 1 dx. Causa na
+    `BiomassEOS`: abaixo de `rho_b=0.1`, `fade_rep = fade_att = 0`, entao o agar tem pressao
+    **exatamente zero** e nao transmite empurrao (licao #58 vista pelo eixo temporal).
+
+    **(B) O crescimento nao funciona porque nao ha portadoras.** Vivas por dx de perimetro:
+    **3.02 (t=0) -> 0.57 (t=50)** — a populacao viva vai de 152 a 276 enquanto o perimetro vai de
+    50 para 482 dx. Cerca de UMA celula viva a cada 2 dx de frente.
+
+    **(C) O wake agrava porque deposita em PULSOS.** Aglomerados de ate 7 a cada `WAKE_FREQ`=100
+    iteracoes, enquanto a ponta percorre 2-7 dx no intervalo. Medido: as 2410 particulas de wake
+    formam **612 componentes na escala de contato, com mediana de 2 particulas cada**. O braco
+    parece um braco e E um colar de grumos desconectados.
+
+    **C5 e violado por CONSTRUCAO, nao por calibracao** — nenhum ajuste de parametro corrige,
+    porque o mecanismo que constroi os bracos e deposicao, e deposicao e descontinua por natureza.
+    Isso explica por que ~15 rodadas de preenchimento (series J, K3, N, P, V, W, E7-E10) falharam:
+    remendavam o produto de um mecanismo estruturalmente errado.
+
+    **ANALISE PREDITIVA DAS TRES ARQUITETURAS (§2.3):**
+
+    **Rota A — portadoras suficientes via crescimento: BLOQUEADA, tres portas medidas fechadas.**
+    Protocolo §3.3.6 com `sigma`=11.1, `HILL_K`=0.25:
+    - *com teto*: o mid-arm ja esta a **0.98 do teto**; no denominador `lam_eff + k*rho_b + P/cs_max`
+      o termo do teto vale **~14** contra `lam_eff`=0.30 e `k*rho_b`<=3. **O teto JA e o sumidouro
+      dominante** — restaurar `k_consume` (que o T1 removeu) mexe 20% num campo que precisa variar
+      por fatores. Com `k_consume`=3 o mid-arm ainda fica a 0.89 do teto.
+    - *sem teto + sumidouro proporcional a `rho_b`*: `cs_inf = P/(lam+k*rho_b)` da MENOS `cs` onde
+      ha MAIS biomassa, **invertendo o perfil** — nucleo 0.13, rim 0.43, razao nucleo/rim = **0.31**
+      para qualquer `k`. Pico no rim externo e a linha **patologica** da §3.3.4 (push para DENTRO).
+    - *sem teto, sem sumidouro*: Y3 mediu — faixa dinamica explode, `a_mar` 116 (licao #56).
+
+    Para o sumidouro importar seria preciso `sigma*qs <= cs_max*(lam+k*rho_b)`, o que da
+    **`sigma` <= 1.0** contra 11.1 — e o E4 ja mediu que `sigma`=1.93 mata o motor (`a_mar` 3.71).
+    **A rota A esta bloqueada por uma DESIGUALDADE, nao por calibracao.**
+
+    **Rota B — dar pressao ao agar: NAO TESTADA NA FORMA CERTA.** A alavanca e `fade_rep > 0` com
+    `fade_att = 0` abaixo de `rho_b=0.1` — ramo **so repulsivo**, que resiste a compressao sem
+    puxar a colonia para dentro. A licao #66-C mediu que dar coesao (ramo atrativo) a regiao
+    sub-densa CONTRAI (P3: `R99` 4.62 -> 1.93), mas isso e o ramo errado. O `runs/A2b_agarfade`
+    testou `agar_fade=1.0` com os DOIS ramos e contra criterios anteriores ao C5.
+
+    **Rota C — wake continuo: A MAIS BARATA E ATACA O C5 DIRETAMENTE.** Medido no E5: o material
+    esta em 663 componentes, **todos a <= 8 dx de um vizinho**; a arvore geradora minima precisa de
+    662 ligacoes com **mediana 1.22 dx** (p90 2.30), e **74% delas cabem em <= 2 particulas**.
+    Custo total **~1467 particulas** (+61% do wake, **+2% de massa**). Predicao: `C5b` 8.2% -> ~100%,
+    `C5a` 0.20 -> ~1.0.
+
+    **Diferenca crucial para o B1 (licao #65), que foi REPROVADO:** o B1 depositava ao longo do
+    segmento INTEIRO a cada chamada, independente de haver vao, e perdeu 25% de AR por
+    engrossamento. A proposta e depositar **so onde o rastro esta quebrado** — ~1467 particulas
+    dirigidas contra a deposicao cega do B1. E o B1 foi julgado contra criterios que **nao
+    incluiam C5**; sob C5 ele ataca o defeito certo.
+
+    **Ordem recomendada: C (barata, direta) -> B (media) -> A (bloqueada ate resolver `cs_max`).
+    Plano completo, com criterios de aceitacao pre-registrados, em
+    [docs/PLANO_C5_CONTINUIDADE.md](docs/PLANO_C5_CONTINUIDADE.md).
+
+    **TESTE E11 (`runs/E11_t100`, E5 sem piso ate t=100) — encher a juncao NAO resolve C5,
+    e revelou um defeito novo.** A juncao fechou por crescimento proprio (`rho_b_p90` da
+    banda 0.100 -> 0.194, portadoras 151 -> 444, biomassa +46%) e o corpo conexo cresceu
+    **7x** (237 -> 1684 particulas) — **mas parou em r=1.92 com `R99`=5.31**: `C5a` foi de
+    0.21 so a **0.36**. Confirma que a juncao era UMA das quebras, nao a quebra, e que os
+    bracos depositados seguem fragmentados. **Defeito novo:** entre t=75 e t=100 o nucleo
+    pinado (`rho_b>=0.8`, `u=v=0` por K.17) **descola do proprio corpo** — fica parado
+    enquanto a casca cresce em volta, abrindo vao em `r≈0.30`; o componente do centro cai
+    de 1228 para **88** particulas. E o vacuo cinematico da licao #32 no centro, e nao
+    aparece em t=50. Subprodutos favoraveis: motor CRESCENTE em t=100 (`a_mar` 13.65 vs
+    12.31), `c_n`=0.758 nos bracos (contra 0.086 do C4 em t=89, licao #47), massa +3.9% —
+    **a janela util do E5 vai muito alem de t=50**, ao contrario do C4.**
 
 **Invariantes morfologicos descobertos (K.5-K.14):**
 1. `smoothstep` em `[a,b]` satura em 1.0 no pico → **max(metric) e cego ao estreitamento do gate**. K.1, K.2 pareceram no-op por isso; diagnostico correto requer `n_active` e `mean_active`, nao `max`.

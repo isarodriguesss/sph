@@ -18,7 +18,75 @@ direto do HDF5. Referências da literatura conforme catalogadas em CLAUDE.md §3
 (escrita por último, leia primeiro) · [Frente 1 — inóculo](#frente-1--o-inóculo-semeado-e-o-halo-de-ρ_b--0) ·
 [Frente 2 — rastro](#frente-2--o-rastro-furado-velocidade-da-ponta-vs-cadência-do-wake) ·
 [Frente 3 — `ρ_b`/`ρ_max`](#frente-3--ρ_b-nunca-chega-a-ρ_max) ·
-[Acoplamento](#acoplamento--quatro-defeitos-não-três)
+[Acoplamento](#acoplamento--quatro-defeitos-não-três) ·
+[**STATUS 2026-08-14**](#status-2026-08-14--o-que-foi-executado-e-o-que-caiu)
+
+---
+
+## STATUS 2026-08-14 — o que foi executado, e o que caiu
+
+> **Leia esta seção antes de agir sobre qualquer prescrição abaixo.** A Frente 3 foi
+> executada e **o alvo dela está refutado**. O texto original das seções seguintes
+> permanece como diagnóstico (as medições continuam válidas), mas a receita do S3.3 não.
+
+**SÉRIE D REVERTIDA (2026-08-14, decisão da usuária).** O baseline **permanece `C4`** e o
+código está bit-idêntico a ele. As medições e lições (#60–#64) continuam válidas como
+conhecimento; os runs estão em `runs/D1`, `D2`, `D3a`, `D4`, `D4_t100`, `D3b_REPROVADO`,
+`D5_REPROVADO`, `D6`. **Trabalho retomado pela Frente 1 (inóculo).**
+
+Comparação D4 × C4 que precedeu a decisão (t equiparado): até t≈50 o C4 é ~20% maior com
+AR equivalente; de t≈65 em diante o D4 tinha mais dedos (19 vs 14), mais finos e AR 10.5
+vs 8.0, com motor 2.7× e sem tocar a parede, enquanto o C4 congela (motor 0.00 em t=79,
+`mean_v` 35× menor em t=100). Nos critérios §2.5 o D4 era melhor (`frac(σ_a<0.85)` 1.79%
+vs 7.35%). A decisão de manter o C4 foi da usuária.
+
+| passo | o que fez | veredito |
+|---|---|---|
+| **S3.1** | teto `ρ_b<0.8` → `ρ_b<ρ_max` | ✅ D1 — no-op na janela, mas correto |
+| **S3.2** | campo `φ_m`, pin migrado, EOS via `φ_s` | ✅ D1 + D2 |
+| **S3.3-(i)** | `k_src=0.3` | ✅ D3a — `a_mar` na frente **+23%** |
+| **S3.3-(ii)** | produção linear em `ρ_b` com teto | ✅ implementado (D4) — **propósito refutado** |
+| **S3.3 alvo** | `r_eff≈0.11` (`r_growth≈0.15`) | ❌ **REFUTADO** (D3b e D5) |
+
+### Por que o alvo caiu
+
+Testado duas vezes. O **D3b** falhou por duas causas: massa exponencial
+(`d_am = rate·m` → `ρ/ρ0` = 44, EOS invalidada, Liu §4.1) e `cs` saturado em 90.7% da
+colônia. O **D5** corrigiu as duas — massa 203.7 contra 516.8, `ρ/ρ0` 1.10 contra 20.7,
+run completou sem colapso de `dt` — e **ainda assim** deu `frac(cs>0.45)` = 89.6% e
+`R99` = 1.77, contra 90.7% e 1.80 do D3b. Morfologia: blob compacto, sem dendritos.
+
+**A raiz é o teto, não a lei de produção.** `cs_∞ = P/(λ_eff + P/cs_max)` gruda em
+`cs_max` sempre que `P ≫ λ_eff·cs_max`. Com biomassa densa isso satura `cs` por **área** e
+mata `∇cs` no interior, qualquer que seja `qs`. Pior: a produção linear é **1.82× maior**
+em `ρ_b=1` que o Hill, então satura com *mais* facilidade justamente no regime que
+`r_growth` alto cria. A hipótese do S3.3-(ii) — "linear com o teto mantido faz encher não
+afogar" — está errada.
+
+Para manter `cs` abaixo do teto com `ρ_b≈1` seria preciso `σ ≈ 0.25`, 72× menor, o que
+aniquila a amplitude. E removê-lo reabre a explosão de faixa dinâmica da lição #56 (Y3:
+`cs` no núcleo 29× o C4).
+
+### Reordenamento
+
+```
+teto de cs  →  destrava D  →  destrava C  →  B  →  A
+```
+
+**O teto de `cs` é anterior à Frente 3** e é o problema aberto. Enquanto ele não for
+resolvido, `r_growth` não pode subir, a maturação não acontece, e `C` deposita no limbo
+sub-quórum — que foi exatamente o que o K3 mediu.
+
+### O que sobrevive das frentes
+
+- **D1/D2/D3a/D4 mantidos.** A separação `φ_m`/`ρ_b`, o `φ_s` para consumidores mecânicos,
+  o regime nutrient-rich e a correção de massa são ganhos permanentes e independentes do
+  teto. A correção de massa em particular é consistência, não calibração — foi ela que
+  permitiu o D5 sequer completar.
+- **Frentes 0, 1 e 2 intocadas** — nenhuma delas foi executada, e os diagnósticos
+  permanecem válidos.
+
+Detalhamento em CLAUDE.md §9, lições **#60 a #64**.
 
 ---
 
@@ -177,6 +245,13 @@ cicatriza tarde.
 
 ### 2.4 Soluções propostas
 
+**S2.1 — ❌ REPROVADA (B1, 2026-08-14, `runs/B1_REPROVADO`, revertida).** Implementada e
+medida: pico de `void_07` 26.4%→24.7% (alvo <15%), razão fantasma/viva 91.8→**122.4**
+(alvo <50, piorou) e **AR 10.48→7.83**. A massa quase não mudou (+0.2%) mas a distribuição
+sim — o wake engrossou o braço em vez de encher o rastro, exatamente como a lição #45
+previu. O único ganho foi cicatrização 3× mais rápida, de um defeito que já valia ~0 em
+regime. Ver lição #65. Texto original preservado abaixo.
+
 **S2.1 — depositar AO LONGO do segmento, não no ponto (recomendada).** Quando a partícula
 acumula deslocamento `d` desde `x_dep`, depositar `n = round(d/dx)` partículas igualmente
 espaçadas no segmento `x_dep → x`, em vez de uma na origem. A trajetória entre chamadas é
@@ -303,6 +378,12 @@ variável só. Resolve simultaneamente a contaminação de métricas (#57), o pa
 o gate espúrio da Marangoni e a armadilha do pin.
 *Custo:* um campo novo, um termo de evolução, e revisão do pin e da EOS. É a maior das
 três frentes.
+
+**S3.3 — ❌ REFUTADO (2026-08-14, ver [STATUS](#status-2026-08-14--o-que-foi-executado-e-o-que-caiu)).**
+O item (i) passou (D3a). O item (ii) foi implementado (D4) e **não entrega o que promete**:
+a produção linear é 1.82× maior em `ρ_b=1` e satura o teto com mais facilidade que o Hill.
+O alvo foi testado em D3b e D5 e falhou nas duas. O bloqueio é o teto `cs_max`, não a lei
+de produção. Texto original preservado abaixo como registro.
 
 **S3.3 — regime nutrient-rich + produção proporcional ao conteúdo.** Com `φ_m` no lugar do
 pin, `r_growth` pode subir sem congelar a colônia — mas precisa de (i) `k_src > 0` para o
@@ -482,6 +563,11 @@ C (conversão)        →  elimina o ágar invadido
 B (rastro)           →  fecha o vazio geométrico residual
 A (inóculo)          →  tira a assinatura m=8, por último
 ```
+
+> **⚠ CORRIGIDO em 2026-08-14.** Esta ordem pressupõe que `D` é alcançável isoladamente.
+> Não é: `D` exige subir `r_growth`, e sob o teto `cs_max` isso satura `cs` por área e
+> mata o motor (D3b e D5, lição #64). A ordem real é
+> `teto de cs → D → C → B → A`.
 
 `D` primeiro porque sem ela `C` deposita no limbo — foi exatamente o que K3 mediu. E
 dentro de `D`, `φ_m` primeiro: sem separar maturidade de densidade, subir `r_growth` faz

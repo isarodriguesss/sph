@@ -2,6 +2,9 @@ import numpy as np
 from pysph.base.utils import get_particle_array
 
 
+SEED_MODE = 8  # M5 (N=16) nao se sustentou: dedos finos mas ocos, agar cercado 417 vs 181
+
+
 def create_initial_state(
     x_dim=128,
     y_dim=128,
@@ -36,7 +39,7 @@ def create_initial_state(
     # a repoe depois. Suavizar (I1: p=2, R=0.45) CURA a borda mas mata o motor:
     # +2.5x biomassa -> cs mais uniforme -> a_mar 2.30->0.75 e morfologia vira
     # Circular (licao #48). O perfil agudo e o preco da seletividade dendritica.
-    R_theta = 0.30 + 0.06 * np.cos(8 * theta)
+    R_theta = 0.30 + 0.06 * np.cos(SEED_MODE * theta)
     rho_b = np.exp(-((dist / R_theta) ** 4))
 
     noise = 0.10 * np.random.randn(*X_grid.shape)

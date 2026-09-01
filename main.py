@@ -1,11 +1,14 @@
 import csv
 import numpy as np
+from scipy import ndimage as ndi
+from scipy.sparse import coo_matrix
+from scipy.sparse.csgraph import connected_components, dijkstra
 from scipy.spatial import cKDTree
 from pysph.solver.application import Application
 from pysph.base.kernels import CubicSpline
 from pysph.solver.solver import Solver
 
-from src.particles import create_initial_state
+from src.particles import SEED_MODE, create_initial_state
 from src.scheme import MyBiomassScheme
 
 
@@ -98,6 +101,8 @@ LOG_HEADER = [
     "c_n_junc",
     "rho_b_junc",
     "rho_b_dip",
+    "rho_b_dip_r",
+    "n_junc_bio",
 ]
 
 # Dominio expandido 2026-08-06: em [-5,5] a colonia rompia a parede em t~51s
@@ -113,11 +118,57 @@ dx = (x_max_domain - x_min_domain) / (x_dim - 1)
 
 mu = 0.020
 gamma = 60.0
+# E4b: 5.0 -> 15.0. O E4 cortou `sigma` 10.3 -> 1.93 (para nao saturar pos-maturacao) e
+# NAO compensou a amplitude: `a_mar = beta*|grad cs|` caiu de 11.50 para 3.71, a frente
+# parou e `R99` foi de 4.58 para 1.85. Como a FORCA e o que se preserva, a razao
+# `|F_mar|/B_tension` da licao #24 nao muda — o risco de fratura e o mesmo do E3.
 beta = 5.0
-sigma = 10.0
+# HILL_K — limiar do quorum sensing em `qs = rho_b^2/(rho_b^2 + K^2)`. Ficou em 0.1 desde
+# o inicio do projeto: o joelho da curva cai em 10% da densidade de saturacao, ou seja
+# `qs(0.1) = 0.5` — MEIA producao com um decimo da biomassa. E o que torna a banda
+# sub-quorum quimicamente barulhenta e o que afogou todas as rotas de recrutamento
+# (licoes #48, #52, #53, #59). Medido no C4 em t=50, com `sigma` recalibrado para
+# preservar a producao da biomassa MADURA (rho_b>0.5, 64% do total em 106 particulas):
+#   K=0.3, sigma=11.6 -> banda sub-quorum produz 0.18x; recruta em rho_b=0.05 sai da
+#                        saturacao (cs_inf 0.490 -> 0.441)
+#   K=0.5, sigma=14.7 -> 0.09x; cs_inf 0.389
+# LAMBDA_BIO_RATIO — decaimento de cs no BIOFILME (agar fica em 0.5*lambda, halo
+# preservado, licao #42). `cs_inf = P/(lambda_eff + P/cs_max)` satura quando
+# `P > 4.5*lambda_eff`. Pos-maturacao P(0.40)=1.437 contra o limiar 1.350 em 2x — a
+# colonia satura por 6% de margem. Em 3x o limiar vai a 2.025 e a fracao saturada zera.
+# Bonus: L_D = sqrt(D/lambda) encurta, entao |grad cs| ~ cs/L_D fica 22% mais afiado.
+# Risco: L_D_int 0.73h -> 0.60h; abaixo de ~1h o SPH resolve mal o gradiente (licao I.3).
+# E5 mediu: com a producao do E3, `cs` gruda no teto em QUALQUER razao (53% saturado em
+# 2x, 2.5x, 3x e 4x) — `lambda` so e alavanca quando `sigma` ja esta baixo, que e a
+# armadilha do E4. Mantido em 2.0.
+LAMBDA_BIO_RATIO = 2.0
+
+# E5: 0.15 -> 0.25. O E3 recrutou 3266 particulas e 90% delas ficaram no limbo — elas
+# nao contribuem com nada mecanico e sao a fonte da saturacao que derrubou o
+# `contrast_cs` para 8.75. Em K=0.25 a banda sub-quorum produz 0.44x e a saturacao
+# prevista cai de 53% para 37%, com `sigma` SUBINDO (10.3 -> 11.1), sem o problema de
+# amplitude que colapsou o E4.
+# Historico: H1 (K=0.3 sobre o C4) deu contraste +15% mas AR 4.97; E2 (K=0.15 sobre o
+# N1) deu AR 6.31 — o K MELHORA o AR quando ha nutriente sustentado.
+HILL_K = 0.25
+sigma = 11.1  # E5: recalibrado p/ producao da biomassa MADURA constante sob K=0.25
 D = 1.5e-3
 D_ext = 0.08
 lambda_ = 0.15
+# REFUTADO sob teto de `cs` (licao #64). Testado em 0.15 duas vezes: D3b (sem a correcao
+# de massa e sem S3.3-ii) e D5 (com as duas). O D5 eliminou a causa de massa — `rho/rho0`
+# 1.10, massa 203.7 contra 516.8 — e AINDA assim deu `frac(cs>0.45)`=89.6% e `R99`=1.77,
+# contra 90.7% e 1.80 do D3b. Enquanto `cs_max` existir, biomassa densa satura `cs` por
+# area e mata `∇cs` no interior, qualquer que seja a lei de producao. Religar so depois
+# de decidir o teto — e a serie Y mostrou que remove-lo explode a faixa dinamica (#56).
+# D6 (2026-08-14): delimita a fronteira entre 0.02 (D4, funciona) e 0.15 (D5, reprovado).
+# 0.05 ja cumpre o objetivo da Frente 3 — logistica 0.3→0.8 em 44.7 s, dentro da janela,
+# contra 112 s em 0.02 — sem ir ao extremo que satura `cs` em 90% da colonia.
+# `R99` e a metrica decisiva: >3.5 significa que ha janela utilizavel sem mexer no teto;
+# ~2 significa que o teto e parede dura (licao #64) e a quimica precisa ser redesenhada.
+# E4: 0.02 -> 0.05. Com r_growth=0.02 nada amadurece na janela — de rho_b=0.03 ate 0.50
+# leva 193 s. Em 0.05 leva 77 s a partir de 0.03 e 49 s a partir de 0.10. Refutado antes
+# (D3b/D5) sob lambda_bio=2 e K=0.1, quando a biomassa madura saturava o cs.
 r_growth = 0.02
 rho_max = 1.0
 alpha_mon = 0.12
@@ -134,8 +185,15 @@ k_n = 0.5
 # N1 — regime nutrient-rich [T2]: reposicao do nutriente pelo agar.
 # Equilibrio c_n = k_src/(k_src + k_n*rho_b): 0.3 da c_n=0.67 nos braços (gate de
 # crescimento 0.74) contra 0.40 do k_src=0.1, que e o ZERO do gate. 0.0 = desligado.
-k_src = 0.0  # serie N encerrada: regime nutrient-rich validado mas nao resolveu
-# a descontinuidade nucleo-dendrito (licao #53). C4 permanece o baseline.
+# P4 (2026-08-14): religado para repor o nutriente que a PROMOCAO consome. O P1 mediu
+# `c_n` da juncao caindo 0.997 -> 0.186 com 2400 promovidas, o que fechou o gate do
+# ParticleShift (3030 -> 263) e levou `frac_clump` a 0.54. `k_src=0.3` e o valor de
+# N1/D3a: equilibrio `c_n = k_src/(k_src + k_n*rho_b)`, `min_c_n` nunca abaixo de 0.375.
+# Nao e alavanca nova nem calibracao — e reposicao do sumidouro que a promocao cria.
+k_src = 0.3  # E1 APROVADO (=N1): min_c_n 0.000 -> 0.376, a_mar +29%, biomassa +15%,
+# AR 5.56, conectividade inalterada. Remove a trava de nutriente. Antes:
+# A1 isolava o arrasto: k_src existia para compensar o sumidouro da
+# promocao (P4). Sem promocao nao ha sumidouro, e mante-lo seria 2a alavanca.
 
 # X1 — fluxo quimiotatico de biomassa [T3] Giverso: u = chi*(-grad cs), conservativo.
 # chi=0.15: X0 calibrou 0.5 com o gradiente do PERFIL RADIAL (0.19), mas a equacao
@@ -144,7 +202,7 @@ k_src = 0.0  # serie N encerrada: regime nutrient-rich validado mas nao resolveu
 chi = 0.0  # X1/X1b REPROVADOS: transporte com orcamento fixo dilui (licao #54)
 
 dt_global = 0.001
-total_sim_time = 50.0
+total_sim_time = 100.0
 print_freq = 200
 
 # None = cada rodada tem condicao inicial propria (producao).
@@ -182,7 +240,102 @@ D_b = 0.0  # D1 REPROVADO: destruiu o nucleo (rho_b 1.0->0.48, n_pinned 43->0)
 # gate cs > 0.6*cs_max. Converte de fato (agar invadido 72.5%->52.1%) mas ~92% do
 # convertido para no limbo sub-quorum, porque crescer de 0.15 a 0.5 leva 124 s contra a
 # janela de 50 s. Religar so depois de resolver a maturacao (defeito D, licao #58).
-k_col = 0.0
+# E3 (2026-08-28): religado sobre E1+E2. O gate de nutriente da colonizacao (`c_n>0.4`)
+# estava FECHADO no C4 — so 36 particulas elegiveis em t=50, porque `c_n` colapsa. Com
+# `k_src=0.3` sao 712. E o alvo-doador mediano e 0.233, ACIMA do quorum, com 100% dos
+# alvos >=0.1: sob k_col=0.03 (tau=33s) a recruta chega a ~0.18 em 50 s.
+k_col = 0.03
+
+# P1 (2026-08-14) — promocao do limbo sub-quorum ao quorum. Ver bloco em post_step.
+# P2 (virar filler com rho_b=0.45) REPROVADO: `OxigenConsumption` nao isenta filler,
+# entao levar 2529 particulas de rho_b~1e-91 para 0.45 criou um sumidouro de nutriente
+# que nao existia; `mean_c_n` 0.999->0.941, o pin quimico `c_n<0.6` disparou e a colonia
+# congelou em t<6 (mean_v 3.1e-4 -> 2e-6). Ver a tabela da licao #61.
+# A1 (2026-08-14) — arrasto do agar. `gamma = 60` se aplicava a TODAS as particulas,
+# inclusive as de `rho_b=0`, o que dava ao agar velocidade terminal 4% da colonia
+# (medido: `|v|` mediano 4.9e-29). Somado a `|p| = 0` exato da EOS, o agar nao podia
+# ser empurrado NEM arrastado — so engolido. `gamma` e friccao flagelo-substrato,
+# propriedade da bacteria; aplica-la ao meio e o que o torna fundo rigido.
+# 0.1 -> gamma=6 no agar; velocidade terminal ~10x maior.
+AGAR_DRAG_RATIO = 1.0  # A1 REPROVADO: sem pressao, o arrasto era o UNICO resistente
+# a compressao. Baixa-lo para 0.1 levou `rho/rho0` do agar engolido de 4.8 para 16.7 e
+# `R99` de 4.62 para 3.06, com o agar ainda engolido na mesma proporcao por area (1.00
+# vs 0.99). Os dois mecanismos nao sao independentes — ver runs/A1.
+
+# A2 (2026-08-25) — REPULSAO no agar. Ataca o mecanismo que sobrou: `|p| = 0` EXATO
+# abaixo de `rho_b=0.1`, medido mesmo com o agar esmagado a `rho/rho0 = 4.8`. Um meio
+# sem pressao nao transmite empurrao, entao a colonia o atravessa. Ver licao #58.
+AGAR_FADE = 0.0
+# ramo repulsivo DESLIGADO por bug de Group, entao AGAR_FADE multiplicava algo que nunca
+# executava e o run saiu bit-identico ao C4 — nao foi refutado, nao foi testado.
+
+# Conversao do agar ENGOLIDO em MATRIZ PASSIVA (licao #66-A/E). O agar dentro do
+# envelope da colonia nunca vira colonia: 97% da area em t=50. Converter para filler
+# (nao para biomassa viva) e a unica rota quimicamente grátis — o filler e gateado
+# fora da SurfactantEquation como fonte E destino. [T2]: fase passiva = matriz/EPS.
+# `is_matrix` marca as convertidas para que NAO sirvam de semente da proxima rodada,
+# senao a conversao vira flood-fill para o agar aberto.
+# PONTE DE CONECTIVIDADE. Medido no C4: o corpo (`rho_b>0.1`) parte em 26 componentes a
+# partir de t=17.8, e ligar TODOS os bracos ao nucleo custa 31 particulas em t=50 (pico de
+# 49 em t=41), mediana de 2 por braco, todas agar. E 1.1% do corpo — contra as 7553 que o
+# preenchimento do envelope pedia. Recruta por CONECTIVIDADE (caminho minimo no grafo),
+# nao por raio nem por vizinhanca, que e o que espalhava o custo do `k_col`.
+# PISO DE ENVELOPE — troca o `rho_b` do agar que a colonia JA ocupou por um valor
+# visivel em escala log, sem tocar na fisica. As particulas ja estao la; o zero exato
+# vem do underflow da gaussiana inicial (licao #48), nao de fisica, e faz o painel
+# mostrar um esqueleto de fios em vez da massa continua da `reference.jpg`.
+#
+# Inercia verificada por calculo (8712 particulas no envelope, eps=1e-3):
+#   quimica  : +0.53% na producao de cs  (qs(1e-3, K=0.25) = 1.6e-5)
+#   mecanica : GRATIS — EOS, ParticleShift e FlagellarForce ja excluem rho_b<0.1
+#   metabolica: ZERO — `OxigenConsumption` isenta a banda [0, 0.01)
+# O teste F1 da licao #48 ja mostrou que um piso inerte sai bit-identico.
+# DESLIGADO (2026-09-01). O piso resolvia um problema de IMAGEM mexendo no SOLVER, o que
+# a licao #38 proibe. O preenchimento topologico foi movido para a RENDERIZACAO
+# (`tools/plot_piso.py --fill`), onde entrega a mesma continuidade visual com perturbacao
+# ZERO. Codigo preservado desligado (§10): com `use_floor=False` o `is_env` fica 0 em toda
+# parte e as sete isencoes em `src/equations.py` sao no-op, entao a fisica e a do E5.
+# Medido no solver antes de desligar (E10, topologico 3.5dx, contra E9/E5):
+#   buraco 650 -> 369 e agar engolido 1001 -> 216, mas `a_pressure` mediana 2.64 -> 3.24,
+#   `mean_v` a menor da serie e `frac(cs>0.45)` de volta a 53.4%. Nao e de graca.
+use_floor = False
+# 0.1 EXATO: o smoothstep da BiomassEOS comeca em 0.1, entao `fade(0.1) = 0.0000` — a
+# particula conta como corpo em qualquer metrica e tem coesao e pressao NULAS por
+# construcao. O flag `is_env` isenta das outras seis: crescimento, gradiente (gate da
+# Marangoni), producao de cs, consumo de nutriente, shifting e doacao na colonizacao.
+# Sobra `LinearDrag` (gamma +0.9 em 60, 1.5%) e a difusao de cs, que e desejavel: o
+# marcador conduz surfactante como meio, so nao produz.
+RHO_B_FLOOR = 0.1
+FLOOR_FREQ = 100
+# PREENCHIMENTO TOPOLOGICO, nao criterio de vizinhanca. Rasteriza o corpo, fecha vaos
+# de ate FLOOR_FECHA*dx, inunda a partir de FORA: o que a inundacao nao alcanca e buraco.
+# Nao tem raio de busca, entao nao existe o vazamento que qualquer criterio local sofre —
+# baia e ligada ao exterior por construcao e NUNCA e marcada. Medido em `runs/E9` contra
+# o enclausuramento a 6/8 que ele substitui, com MENOS particulas (3565 vs 4152):
+#   buraco cercado  715 -> 405      dedos 17 -> 20      largura do braco 0.760 -> 0.618
+#   agar engolido  1090 -> 241      agar limpo na baia 44.5% -> 48.7% (sem piso: 49.8%)
+# O enclausuramento vazava porque o raio (6.9 dx) e comparavel a largura da baia no anel
+# medio; iterar so piorava (17 dedos -> 5 em um passo).
+FLOOR_FECHA = 3.5     # vao maximo fechado antes da inundacao, em multiplos de dx
+FLOOR_CELL = 0.5      # lado da celula da grade, em multiplos de dx
+
+use_bridge = False  # REPROVADO: metrica circular (ver licao #68)
+BRIDGE_FREQ = 100
+BRIDGE_VALUE = 0.3      # fade da EOS = 0.5 (coesao real); em 0.1 exato o fade e ZERO
+BRIDGE_MIN_COMP = 8     # componente menor que isto e ruido, nao braco
+BRIDGE_MAX_COST = 6     # nao construir ponte longa: acima disso o braco esta solto mesmo
+BRIDGE_LINK = 1.5       # multiplos de h para a aresta do grafo
+
+use_matrix = False  # serie M REVERTIDA: reprovou no §11 (regressao fingering -> modulated)
+MATRIX_VALUE = 0.3   # fade da EOS = 0.5; equilibrio c_n = k_src/(k_src+k_n*rho_b)
+MATRIX_FREQ = 50
+MATRIX_ENV = 1.5  # M4 (ponto de operacao). M6 testou 3.0: converteu 96% do agar e a
+# colonia virou disco compacto (1 dedo, AR 0.13, ocupacao 2.05) — extremo do trade-off.
+
+use_promo = False  # A1 isola o arrasto do agar: promocao DESLIGADA
+PROMO_VALUE = 0.12
+PROMO_RHO_B_MAX = 0.1  # alvo: 0 < rho_b <= este valor (o limbo)
+PROMO_R_MAX = 1.8  # coroa uniforme; alem disso o limbo vira spokes nos braços
 
 use_insert = True
 INSERT_FREQ = 200
@@ -198,6 +351,10 @@ WAKE_FREQ = 100
 WAKE_DISP = 1.0
 WAKE_PROX = 0.7
 WAKE_RHO_B_MIN = 0.05
+# Piso de coesao da fase passiva (matriz/EPS, [T2] Srinivasan): o filler herda o rho_b
+# da mae, e mae sub-quorum gera filler com fade_rep=fade_att=0 na BiomassEOS — inerte
+# para sempre, porque filler nao cresce. Medido no C4: fade mediano 0.016 na juncao.
+FILLER_RHO_B_FLOOR = 0.0  # teste do piso concluido (runs/F_floor); desligado p/ isolar a conversao
 WAKE_MAX = 150
 WAKE_MODE = 2
 WAKE_CLUSTER_MAX = 7
@@ -231,6 +388,9 @@ class SwarmApp(Application):
         )
         self._pass_n_spawned_since_log = 0  # acumula spawns entre linhas de log
         self._wake_mass_added = 0.0  # so o que o WAKE adicionou (nao BiomassGrowth)
+        self._promo_total = 0
+        self._matrix_total = 0
+        self._bridge_total = 0
 
     def create_particles(self):
         if SEED is not None:
@@ -252,7 +412,7 @@ class SwarmApp(Application):
                 pa.add_property("noise")
                 pa.noise[:] = (
                     1.0
-                    + 0.6 * np.sin(8 * np.arctan2(pa.y, pa.x))
+                    + 0.6 * np.sin(SEED_MODE * np.arctan2(pa.y, pa.x))
                     + 0.01 * np.random.rand(len(pa.x))
                 )
                 pa.add_property("dt_force")
@@ -294,6 +454,14 @@ class SwarmApp(Application):
                 pa.is_filler[:] = 0.0
                 pa.add_property("is_wake")
                 pa.is_wake[:] = 0.0
+                pa.add_property("is_matrix")
+                pa.is_matrix[:] = 0.0
+                pa.add_property("is_conv")
+                pa.is_conv[:] = 0.0
+                pa.add_property("is_env")
+                pa.is_env[:] = 0.0
+                pa.add_property("rho_b_pre")
+                pa.rho_b_pre[:] = 0.0
                 pa.add_property("x_dep")
                 pa.add_property("y_dep")
                 pa.x_dep[:] = pa.x[:]
@@ -320,6 +488,10 @@ class SwarmApp(Application):
                         "au_mar",
                         "sigma_a",
                         "is_wake",
+                        "is_matrix",
+                        "is_conv",
+                        "is_env",
+                        "rho_b_pre",
                         "is_filler",
                         "c_n",
                         "m",
@@ -365,6 +537,10 @@ class SwarmApp(Application):
             filler_nutrient_transparent=FILLER_NUTRIENT_TRANSPARENT,
             D_b=D_b,
             k_col=k_col,
+            hill_k=HILL_K,
+            lambda_bio_ratio=LAMBDA_BIO_RATIO,
+            agar_drag_ratio=AGAR_DRAG_RATIO,
+            agar_fade=AGAR_FADE,
         )
 
     def create_solver(self):
@@ -385,6 +561,169 @@ class SwarmApp(Application):
         if self._m_initial is None:
             self._m_initial = float(np.sum(self.particles[0].m))
 
+        # P4 — P1 (promocao do limbo) + `k_src`. O P1 e o unico dos tres que ENCHEU a
+        # juncao: `rho_b_dip` 0.0000 -> 0.1398 e `n_junc_bio` 37 -> 1391, sustentado os
+        # 50 s. Ele falhou pelo custo, nao pelo mecanismo: as 2400 promovidas consomem
+        # nutriente (`OxigenConsumption` e proporcional a `rho_b`), `c_n` da juncao caiu
+        # de 0.997 para 0.186, o gate do ParticleShift (`c_n>=0.6`) fechou de 3030 para
+        # 263 e o `frac_clump` foi de 0.00 a 0.54.
+        #
+        # `k_src=0.3` repoe exatamente o que a promocao consome. Nao e alavanca nova:
+        # medida em N1/D3a com `min_c_n` nunca abaixo de 0.375 e motor na frente +23%.
+        #
+        # P2 (limbo -> filler 0.45) e P3 (envelope 1.5h) REPROVADOS — ver runs/. O P3
+        # e o mais informativo: converteu so 1941 particulas e ja bastou para `R99`
+        # ficar em 1.93 contra 4.62. A colonia nao absorve nem 2000 particulas novas,
+        # o que aponta capacidade de absorcao, nao mecanismo de conversao.
+        if use_floor and solver.count % FLOOR_FREQ == 0:
+            fl = self.particles[0]
+            # O piso NAO e portadora de si mesmo, e e recalculado do zero: sem isso a
+            # aureola avanca um raio de busca por chamada e vira flood-fill (medido:
+            # R99 do piso 0.78 -> 2.13 em 23 s, sempre a frente do R99 real). Mesmo
+            # papel do `is_conv` da serie M.
+            # O reset devolve a particula ao estado que ela teria SEM o piso:
+            # `rho_b_pre` (o valor no momento da marcacao) mais o que a colonizacao
+            # acrescentou por cima do piso. Zerar direto destruia 102 recrutamentos
+            # no E8 — e era isso, nao o arrasto, que deslocava os dedos.
+            _old = fl.is_env > 0.5
+            fl.rho_b_grown[_old] = fl.rho_b_pre[_old] + np.maximum(
+                0.0, fl.rho_b_grown[_old] - RHO_B_FLOOR
+            )
+            fl.is_env[_old] = 0.0
+            _corpo = (fl.rho_b_grown >= 0.1) | (fl.is_filler > 0.5)
+            if int(np.count_nonzero(_corpo)) > 20:
+                _dx = FLOOR_CELL * float(fl.h[0]) / 1.8
+                _rc = 1.2 * float(
+                    np.percentile(np.hypot(fl.x[_corpo], fl.y[_corpo]), 99)
+                )
+                _nc = int(2.0 * _rc / _dx) + 1
+                _ix = np.clip(((fl.x + _rc) / _dx).astype(int), 0, _nc - 1)
+                _iy = np.clip(((fl.y + _rc) / _dx).astype(int), 0, _nc - 1)
+                _A = np.zeros((_nc, _nc), dtype=bool)
+                _A[_ix[_corpo], _iy[_corpo]] = True
+                _k = int(np.ceil(FLOOR_FECHA / FLOOR_CELL))
+                _st = np.ones((2 * _k + 1, 2 * _k + 1), dtype=bool)
+                _buraco = ndi.binary_fill_holes(
+                    ndi.binary_closing(_A, structure=_st)
+                ) & (~_A)
+                _pv = (
+                    (fl.rho_b_grown < RHO_B_FLOOR)
+                    & (fl.is_filler < 0.5)
+                    & _buraco[_ix, _iy]
+                )
+                if np.any(_pv):
+                    fl.rho_b_pre[_pv] = fl.rho_b_grown[_pv]
+                    fl.rho_b_grown[_pv] = RHO_B_FLOOR
+                    fl.is_env[_pv] = 1.0
+                # marcador que a colonizacao promoveu de verdade deixa de ser marcador
+                fl.is_env[fl.rho_b_grown > 1.5 * RHO_B_FLOOR] = 0.0
+
+        if use_bridge and solver.count % BRIDGE_FREQ == 0:
+            fl = self.particles[0]
+            _rb = fl.rho_b_grown
+            _r = np.hypot(fl.x, fl.y)
+            _body_all = _rb > 0.1
+            if int(_body_all.sum()) > 40:
+                _R = float(np.percentile(_r[_body_all], 99))
+                _sel = np.where(_r < 1.15 * _R)[0]
+                _X, _Y = fl.x[_sel], fl.y[_sel]
+                _B = _rb[_sel] > 0.1
+                _n = len(_sel)
+                _h0 = float(fl.h[0])
+                _p = cKDTree(np.column_stack([_X, _Y])).query_pairs(
+                    BRIDGE_LINK * _h0, output_type="ndarray"
+                )
+                if len(_p) > 0:
+                    _pb = _p[_B[_p[:, 0]] & _B[_p[:, 1]]]
+                    _nc, _lab = connected_components(
+                        coo_matrix(
+                            (np.ones(len(_pb)), (_pb[:, 0], _pb[:, 1])), shape=(_n, _n)
+                        ),
+                        directed=False,
+                    )
+                    _lb = np.where(_B, _lab, -1)
+                    _tam = np.bincount(_lb[_B], minlength=_nc)
+                    _ic = int(np.argmin(np.hypot(_X, _Y) + 1e9 * (~_B)))
+                    _nuc = _lb[_ic]
+                    _alvos = [
+                        i for i in range(_nc)
+                        if _tam[i] >= BRIDGE_MIN_COMP and i != _nuc
+                    ]
+                    if _alvos:
+                        # custo de ENTRAR num no: 0 se ja e corpo, 1 se precisa recrutar
+                        _w = np.where(_B[_p[:, 1]], 0.0, 1.0)
+                        _w2 = np.where(_B[_p[:, 0]], 0.0, 1.0)
+                        _g = coo_matrix(
+                            (
+                                np.concatenate([_w, _w2]),
+                                (
+                                    np.concatenate([_p[:, 0], _p[:, 1]]),
+                                    np.concatenate([_p[:, 1], _p[:, 0]]),
+                                ),
+                            ),
+                            shape=(_n, _n),
+                        ).tocsr()
+                        _d, _pred, _ = dijkstra(
+                            _g,
+                            indices=np.where(_lb == _nuc)[0],
+                            return_predecessors=True,
+                            min_only=True,
+                        )
+                        _ponte = set()
+                        for _i in _alvos:
+                            _ix = np.where(_lb == _i)[0]
+                            _j = _ix[int(np.argmin(_d[_ix]))]
+                            if not np.isfinite(_d[_j]) or _d[_j] > BRIDGE_MAX_COST:
+                                continue
+                            _c = _j
+                            while _c >= 0 and _pred[_c] >= 0:
+                                if not _B[_c]:
+                                    _ponte.add(int(_c))
+                                _c = _pred[_c]
+                        if _ponte:
+                            _gi = _sel[np.array(sorted(_ponte), dtype=int)]
+                            fl.rho_b_grown[_gi] = np.maximum(
+                                fl.rho_b_grown[_gi], BRIDGE_VALUE
+                            )
+                            self._bridge_total += len(_gi)
+                            print(
+                                f"ponte t={solver.t:.1f}s: {len(_gi)} recrutadas "
+                                f"({len(_alvos)} bracos soltos, total={self._bridge_total})"
+                            )
+
+        if use_matrix and solver.count % MATRIX_FREQ == 0:
+            fl = self.particles[0]
+            _seed = np.where((fl.rho_b_grown > 0.1) & (fl.is_conv < 0.5))[0]
+            if len(_seed) > 10:
+                _h0 = float(fl.h[0])
+                _tb = cKDTree(np.column_stack([fl.x[_seed], fl.y[_seed]]))
+                _dmin, _ = _tb.query(np.column_stack([fl.x, fl.y]))
+                _conv = (
+                    (fl.is_filler < 0.5)
+                    & (fl.rho_b_grown < 1e-12)
+                    & (_dmin < MATRIX_ENV * _h0)
+                )
+                if np.any(_conv):
+                    fl.rho_b_grown[_conv] = MATRIX_VALUE
+                    fl.is_filler[_conv] = 1.0
+                    fl.is_wake[_conv] = 1.0
+                    fl.is_matrix[_conv] = 1.0
+                    fl.is_conv[_conv] = 1.0
+                    self._matrix_total += int(_conv.sum())
+
+        if use_promo:
+            fl = self.particles[0]
+            _r = np.hypot(fl.x, fl.y)
+            _m = (
+                (fl.is_filler < 0.5)
+                & (fl.rho_b_grown > 0.0)
+                & (fl.rho_b_grown <= PROMO_RHO_B_MAX)
+                & (_r < PROMO_R_MAX)
+            )
+            if np.any(_m):
+                fl.rho_b_grown[_m] = PROMO_VALUE
+                self._promo_total += int(_m.sum())
+
         # Print stats
         if solver.count % print_freq == 0:
             fluid = self.particles[0]
@@ -404,7 +743,10 @@ class SwarmApp(Application):
             # Filler e quimicamente transparente: seu cs fica CONGELADO no valor
             # herdado e nao representa o campo. Incluí-lo infla mean_cs e deprime
             # contrast_cs artificialmente.
-            _chem = fluid.is_filler < 0.5
+            # o piso tambem: ele CONDUZ cs mas nao produz, entao seu cs e baixo
+            # (mediana 0.170 contra 0.481 nas vivas). Incluí-lo derruba mean_cs pela
+            # metade e DOBRA contrast_cs — artefato medido no E8.
+            _chem = (fluid.is_filler < 0.5) & (fluid.is_env < 0.5)
             _cs_real = fluid.cs[_chem] if np.any(_chem) else fluid.cs
             min_cs = np.min(_cs_real)
             max_cs = np.max(_cs_real)
@@ -418,10 +760,21 @@ class SwarmApp(Application):
 
             mass_total = float(np.sum(fluid.m))
 
-            arms_mask = (fluid.rho_b_grown >= 0.1) & (fluid.rho_b_grown < 0.5)
-            bio_mask = arms_mask & (fluid.is_filler < 0.5)
+            # C2 (§2.5) exige a colonia INTEIRA, inseridas incluidas: a banda dos
+            # braços e populacao GEOMETRICA (phi_s), enquanto bio_mask e biologica
+            # (rho_b puro). Pos-D2 o filler tem rho_b=0 e sairia da banda.
+            _phi_s = fluid.rho_b_grown
+            # o piso e marcador visual, nao biomassa: em `biomass_total` ele valia
+            # 0.72 de 1.05 no E8, escondendo que a biomassa real CAIU 28%.
+            _real = (fluid.is_filler < 0.5) & (fluid.is_env < 0.5)
+            arms_mask = (_phi_s >= 0.1) & (_phi_s < 0.5)
+            bio_mask = (
+                (fluid.rho_b_grown >= 0.1)
+                & (fluid.rho_b_grown < 0.5)
+                & (fluid.is_filler < 0.5)
+            )
             n_bio_arms = int(np.sum(bio_mask))
-            n_ins_arms = int(np.sum(arms_mask)) - n_bio_arms
+            n_ins_arms = int(np.sum(arms_mask & (fluid.is_filler > 0.5)))
 
             if n_bio_arms > 0:
                 sig_bio = fluid.sigma_a[bio_mask]
@@ -440,6 +793,8 @@ class SwarmApp(Application):
                 mean_sig_all = 1.0
                 frac_lowsig_all = 0.0
 
+            # Envelope da colonia = suporte mecanico (celula viva OU matriz), senao o
+            # filler sai do envelope ao perder rho_b e o vazio vira artefato.
             vf = void_fraction(fluid.x, fluid.y, fluid.rho_b_grown, dx)
 
             # Motor medido SO na biomassa real: 'a_marangoni' acima e um MAXIMO
@@ -449,11 +804,11 @@ class SwarmApp(Application):
             # Clumping (Liu §6.4): resolvido o vacuo, o defeito remanescente e
             # sobreposicao, nao falta de particula. Mede-se pelo vizinho mais proximo.
             _rr = np.hypot(fluid.x, fluid.y)
-            if np.any(fluid.rho_b_grown > 0.1):
-                _Rc = float(np.percentile(_rr[fluid.rho_b_grown > 0.1], 99))
+            if np.any(_phi_s > 0.1):
+                _Rc = float(np.percentile(_rr[_phi_s > 0.1], 99))
             else:
                 _Rc = 1.0
-            _colony = (fluid.rho_b_grown > 0.05) & (_rr > 0.3 * _Rc)
+            _colony = (_phi_s > 0.05) & (_rr > 0.3 * _Rc)
             if int(np.sum(_colony)) > 10:
                 _d, _ = cKDTree(np.column_stack([fluid.x, fluid.y])).query(
                     np.column_stack([fluid.x[_colony], fluid.y[_colony]]), k=2
@@ -468,39 +823,59 @@ class SwarmApp(Application):
             # Junção nucleo-braço (r 0.4-1.2): onde o degrau de rho_b aparece.
             # rho_b_dip = minimo do perfil AO LONGO dos braços (nao media azimutal,
             # que mistura braço com baia e da a falsa impressao de desconexao).
+            # Pos-D2 estas metricas sao medidas SO nas PORTADORAS vivas. O anel e
+            # dominado por agar invadido (rho_b=0 e is_filler=0 — licao #58), entao
+            # um percentil sobre a populacao inteira mede composicao, nao biologia:
+            # dava 0.0004 no D2 e 0.31 no C4 sem que a biomassa viva mudasse.
+            _carrier = _real & (fluid.rho_b_grown > 1e-6)
             _ju = (_rr >= 0.4) & (_rr < 1.2)
             c_n_junc = float(np.mean(fluid.c_n[_ju])) if np.any(_ju) else 0.0
+            _juc = _ju & _carrier
             rho_b_junc = (
-                float(np.percentile(fluid.rho_b_grown[_ju], 90)) if np.any(_ju) else 0.0
+                float(np.percentile(fluid.rho_b_grown[_juc], 90))
+                if np.any(_juc)
+                else 0.0
             )
+            n_junc_bio = int(np.sum(_ju & _real & (fluid.rho_b_grown > 0.1)))
             _th = np.arctan2(fluid.y, fluid.x)
-            _arm = (_rr > 2.0) & (_rr < 3.0) & (fluid.rho_b_grown > 0.3)
+            # Braço detectado por GEOMETRIA, com a banda ESCALADA por _Rc e o limiar no
+            # quorum. As duas correcoes vem de falhas medidas: `rho_b>0.3` cego quando a
+            # promocao poe todos em 0.12, e `r in [2,3]` fixo cego quando a colonia
+            # encolhe (no P1, R99=3.05 e a banda tinha ZERO particulas -> dip nunca
+            # calculado e reportado como 1.0, "sem degrau" sem ninguem medir).
+            # `rho_b_dip_r` diz ONDE o vale esta — sem isso um dip=0 nao localiza nada.
+            _arm = (_rr > 0.55 * _Rc) & (_rr < 0.75 * _Rc) & (_phi_s > 0.1)
             rho_b_dip = 1.0
+            rho_b_dip_r = 0.0
             if int(np.sum(_arm)) > 20:
                 _h, _e = np.histogram(_th[_arm], bins=72, range=(-np.pi, np.pi))
+                _step = max(0.1, 0.05 * _Rc)
                 for _b in np.argsort(_h)[-4:]:
                     _c = 0.5 * (_e[_b] + _e[_b + 1])
                     _in = np.abs(
                         ((_th - _c + np.pi) % (2 * np.pi)) - np.pi
                     ) < np.deg2rad(9)
-                    _prof = []
-                    for _r0 in np.arange(0.4, 2.0, 0.2):
-                        _m = _in & (np.abs(_rr - _r0) < 0.2)
-                        if np.any(_m):
-                            _prof.append(float(np.max(fluid.rho_b_grown[_m])))
-                    if _prof:
-                        rho_b_dip = min(rho_b_dip, min(_prof))
+                    for _r0 in np.arange(0.15 * _Rc, 0.75 * _Rc, _step):
+                        _m = _in & (np.abs(_rr - _r0) < _step)
+                        if not np.any(_m):
+                            continue
+                        _mc = _m & _carrier
+                        _v = (
+                            float(np.max(fluid.rho_b_grown[_mc]))
+                            if np.any(_mc)
+                            else 0.0
+                        )
+                        if _v < rho_b_dip:
+                            rho_b_dip = _v
+                            rho_b_dip_r = float(_r0)
 
             # quantas particulas o ParticleShift efetivamente processa (gate de c_n)
             n_shift_gate = int(
                 np.sum(
-                    (fluid.rho_b_grown >= SHIFT_RHO_B_MIN)
-                    & (fluid.rho_b_grown < 0.8)
-                    & (fluid.c_n >= 0.6)
+                    (_phi_s >= SHIFT_RHO_B_MIN) & (_phi_s < 0.8) & (fluid.c_n >= 0.6)
                 )
             )
 
-            _real = fluid.is_filler < 0.5
             _vol = fluid.m[_real] / np.maximum(fluid.rho[_real], 1e-9)
             biomass_total = float(np.sum(fluid.rho_b_grown[_real] * _vol))
             n_pinned = int(np.sum(fluid.rho_b_grown >= 0.8))
@@ -508,7 +883,7 @@ class SwarmApp(Application):
             _bio = (fluid.rho_b_grown > 0.1) & (fluid.is_filler < 0.5)
             if int(np.sum(_bio)) > 0:
                 _r = np.hypot(fluid.x, fluid.y)
-                _R = float(np.percentile(_r[fluid.rho_b_grown > 0.1], 99))
+                _R = float(np.percentile(_r[_phi_s > 0.1], 99))
                 _arm = _bio & (_r > 0.3 * _R)
                 a_mar_bio_med = float(np.median(fluid.au_mar[_bio]))
                 a_mar_bio_p95 = float(np.percentile(fluid.au_mar[_bio], 95))
@@ -559,8 +934,9 @@ class SwarmApp(Application):
                 f"nn_mediana={nn_median:.3f}dx | shift processa {n_shift_gate} part."
             )
             print(
-                f"junção: c_n={c_n_junc:.3f} rho_b_p90={rho_b_junc:.3f} | "
-                f"vale ao longo do braço={rho_b_dip:.3f}   (alvo: > 0.5)"
+                f"junção (so vivas): c_n={c_n_junc:.3f} "
+                f"rho_b_p90={rho_b_junc:.3f} n_bio={n_junc_bio} | "
+                f"vale ao longo do braço={rho_b_dip:.3f} em r={rho_b_dip_r:.2f}   (alvo: > 0.5)"
             )
             print("Acelerações:")
             print(f"  > Marangoni (líq): {a_mar:.2f}")
@@ -614,6 +990,8 @@ class SwarmApp(Application):
                         f"{c_n_junc:.4f}",
                         f"{rho_b_junc:.4f}",
                         f"{rho_b_dip:.4f}",
+                        f"{rho_b_dip_r:.3f}",
+                        n_junc_bio,
                     ]
                 )
                 self._pass_n_spawned_since_log = 0  # reseta após registrar
@@ -797,6 +1175,10 @@ class SwarmApp(Application):
                         "is_filler": [0.0] * 7,
                         "gen": [float(gen_arr[k]) + 1.0] * 7,
                         "is_wake": [0.0] * 7,
+                        "is_matrix": [0.0] * 7,
+                        "is_conv": [0.0] * 7,
+                        "is_env": [0.0] * 7,
+                        "rho_b_pre": [0.0] * 7,
                         "x_dep": xs,
                         "y_dep": ys,
                     }
@@ -820,7 +1202,8 @@ class SwarmApp(Application):
             fluid = self.particles[0]
             m_target = dx * dx
 
-            void_mask = (fluid.rho_b_grown > INSERT_RHO_B_MIN) & (
+            _phi_s = fluid.rho_b_grown
+            void_mask = (_phi_s > INSERT_RHO_B_MIN) & (
                 fluid.sigma_a < INSERT_SIGMA_TRIG
             )
             void_idx = np.where(void_mask)[0]
@@ -876,7 +1259,7 @@ class SwarmApp(Application):
                         "m": [m_target] * n_ins,
                         "h": list(fluid.h[p]),
                         "rho": list(fluid.rho[p]),
-                        "rho_b_grown": list(fluid.rho_b_grown[p]),
+                        "rho_b_grown": list(np.maximum(fluid.rho_b_grown[p], FILLER_RHO_B_FLOOR)),
                         "cs": list(fluid.cs[p]),
                         "c_o": list(fluid.c_o[p]),
                         "c_n": list(fluid.c_n[p]),
@@ -885,6 +1268,10 @@ class SwarmApp(Application):
                         "noise": list(fluid.noise[p]),
                         "is_filler": [1.0] * n_ins,
                         "is_wake": [0.0] * n_ins,
+                        "is_matrix": [0.0] * n_ins,
+                        "is_conv": [0.0] * n_ins,
+                            "is_env": [0.0] * n_ins,
+                            "rho_b_pre": [0.0] * n_ins,
                         "x_dep": new_x,
                         "y_dep": new_y,
                     }
@@ -902,9 +1289,8 @@ class SwarmApp(Application):
             m_target = dx * dx
 
             disp = np.hypot(fluid.x - fluid.x_dep, fluid.y - fluid.y_dep)
-            wake_idx = np.where(
-                (fluid.rho_b_grown > WAKE_RHO_B_MIN) & (disp >= WAKE_DISP * dx)
-            )[0]
+            _phi_s = fluid.rho_b_grown
+            wake_idx = np.where((_phi_s > WAKE_RHO_B_MIN) & (disp >= WAKE_DISP * dx))[0]
 
             # Conta so a massa que o WAKE adicionou. Antes comparava a massa TOTAL,
             # entao com a biologia ativa o BiomassGrowth sozinho estouraria o teto e
@@ -1041,7 +1427,7 @@ class SwarmApp(Application):
                             "m": [m_target] * n_ins,
                             "h": list(fluid.h[p]),
                             "rho": list(fluid.rho[p]),
-                            "rho_b_grown": list(fluid.rho_b_grown[p]),
+                            "rho_b_grown": list(np.maximum(fluid.rho_b_grown[p], FILLER_RHO_B_FLOOR)),
                             "cs": list(fluid.cs[p]),
                             "c_o": list(fluid.c_o[p]),
                             "c_n": list(fluid.c_n[p]),
@@ -1050,6 +1436,10 @@ class SwarmApp(Application):
                             "noise": list(fluid.noise[p]),
                             "is_filler": [1.0] * n_ins,
                             "is_wake": [1.0] * n_ins,
+                            "is_matrix": [1.0 if use_matrix else 0.0] * n_ins,
+                            "is_conv": [0.0] * n_ins,
+                            "is_env": [0.0] * n_ins,
+                            "rho_b_pre": [0.0] * n_ins,
                             "x_dep": new_x,
                             "y_dep": new_y,
                         }

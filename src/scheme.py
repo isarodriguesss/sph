@@ -119,12 +119,34 @@ class MyBiomassScheme(Scheme):
         agar_drag_ratio=1.0,
         agar_fade=0.0,
         cs_max=0.5,
+        cs_sink_k=0.0,
+        col_cs_min=0.3,
+        col_filler_donor=0.0,
+        col_target_frac=1.0,
+        growth_motile_boost=0.0,
+        growth_mass_gain=1.0,
+        growth_gain_rho_b_min=0.0,
+        growth_v_sat=0.01,
+        prod_cn=1.0,
         col_cs_frac=0.6,
         hill_k=0.1,
+        flag_gate_lo=0.2,
+        flag_gate_hi=0.6,
         lambda_bio_ratio=2.0,
     ):
         self.cs_max = cs_max
+        self.cs_sink_k = cs_sink_k
+        self.col_cs_min = col_cs_min
+        self.col_filler_donor = col_filler_donor
+        self.col_target_frac = col_target_frac
+        self.growth_motile_boost = growth_motile_boost
+        self.growth_mass_gain = growth_mass_gain
+        self.growth_gain_rho_b_min = growth_gain_rho_b_min
+        self.growth_v_sat = growth_v_sat
+        self.prod_cn = prod_cn
         self.hill_k = hill_k
+        self.flag_gate_lo = flag_gate_lo
+        self.flag_gate_hi = flag_gate_hi
         self.lambda_bio_ratio = lambda_bio_ratio
         self.col_cs_frac = col_cs_frac
         self.filler_nutrient_transparent = filler_nutrient_transparent
@@ -212,13 +234,19 @@ class MyBiomassScheme(Scheme):
                     sources=None,
                     r_growth=self.r_growth,
                     rho_max=self.rho_max,
+                    motile_boost=self.growth_motile_boost,
+                    mass_gain=self.growth_mass_gain,
+                    gain_rho_b_min=self.growth_gain_rho_b_min,
+                    v_sat=self.growth_v_sat,
                 ),
                 BiomassColonization(
                     dest="fluid",
                     sources=["fluid"],
                     k_col=self.k_col,
+                    target_frac=self.col_target_frac,
                     rho_max=self.rho_max,
-                    cs_min=self.col_cs_frac * self.cs_max,
+                    cs_min=self.col_cs_min,
+                    filler_donor=self.col_filler_donor,
                 ),
                 BiomassDiffusion(dest="fluid", sources=["fluid"], D_b=self.D_b),
                 # BiomassGradient DEVE vir antes de MarangoniForce
@@ -243,6 +271,8 @@ class MyBiomassScheme(Scheme):
                     lambda_ext_ratio=5.0,
                     k_consume=0.0,
                     cs_max=self.cs_max,
+                    cs_sink_k=self.cs_sink_k,
+                    prod_cn=self.prod_cn,
                     hill_k=self.hill_k,
                     lambda_bio_ratio=self.lambda_bio_ratio,
                 ),
@@ -267,6 +297,8 @@ class MyBiomassScheme(Scheme):
                     dest="fluid",
                     sources=["fluid"],
                     f0=3.0,
+                    gate_lo=self.flag_gate_lo,
+                    gate_hi=self.flag_gate_hi,
                 ),
             ],
         )

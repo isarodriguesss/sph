@@ -2715,11 +2715,28 @@ Calibracao pos-Passes A-I.7. **MARCO I.7:** Transicao blob→dendritico confirma
     E a lei (L) num eixo novo: **preencher contra RECORTAR** — diferente de #67-L
     (preencher contra afinar) porque aqui o numero de dedos sobrevive.
 
-    **TIP-SPLITTING APARECE, e e a primeira vez no projeto** (observado pela usuaria em
-    `main_18600`, t=88.4, e confirmado por medicao): rastreando a posicao angular dos picos
-    de `R(theta)`, **todo pico novo nasce a <25 graus de um antigo** — bifurcacao, nao
-    nucleacao. O §9 registra "tip-splitting ausente" desde o K.15. Condicao habilitante
-    medida: acontece quando a ocupacao cruza ~0.77.
+    **⚠ TIP-SPLITTING — AFIRMACAO RETIRADA (2026-09-09).** Reportei que o P16 produzia
+    bifurcacao de ponta a partir de t=88 ("primeira vez no projeto"), com base em rastrear a
+    posicao angular dos picos de `R(theta)` e classificar como SPLIT todo pico novo a <25
+    graus de um antigo. **O detector estava SATURADO:** com 35-74 picos o espacamento medio e
+    5-14 graus, entao *qualquer* pico novo esta a <25 graus de algum outro **por
+    construcao** — o criterio nao distingue bifurcacao de nucleacao.
+
+    Sintomas que confirmam a degenerescencia: a correlacao dos "splits" com `R99` da **-0.60**
+    (deveria ser positiva se fosse Mullins-Sekerka), e 11.1 splits por intervalo na faixa de
+    largura [0, 0.40) contra 2.1 na faixa [0.75, 1.00) — ou seja o detector dispara onde os
+    dedos sao MAIS finos, que e o contrario do criterio fisico.
+
+    **Verificacao visual (§11), que e o arbitro:** [plots/tipsplit_P16.png](plots/tipsplit_P16.png)
+    segue o MESMO braco (setor fixo em 67 graus, licao #67-F) de t=68 a t=96. Os lobulos
+    **engrossam e ficam crenulados**, com a biomassa viva formando casca em volta do miolo de
+    filler — **nenhum se divide em dois**. O projeto continua sem tip-splitting, como o §9
+    registra desde o K.15.
+
+    **Regra:** detector de evento por limiar de distancia so e valido enquanto o limiar for
+    MENOR que o espacamento tipico da populacao. Antes de usar, comparar os dois — e a mesma
+    classe da licao #68 (metrica circular): ali o parametro da metrica era o do mecanismo,
+    aqui e o da propria populacao que se mede.
 
     **A trajetoria NAO e monotonica** (erro meu ao ler so a descida): picos fazem 42 (t=15)
     -> **75 (t=40)** -> 31 (t=69) -> **40 (t=95)**, com a amplitude estabilizando em ~0.6
@@ -2775,6 +2792,41 @@ Calibracao pos-Passes A-I.7. **MARCO I.7:** Transicao blob→dendritico confirma
     parametrizados; `use_mitose=False` e `GROWTH_MASS_GAIN=1` restauram a base P5.
     `MITOSE_RHO_MAX=99` deixa o gate desligado, preservado (§10). O bloco antigo
     `use_splitting` (bugado) fica desligado como referencia historica.
+
+    **A MITOSE RECONSTRUIU METADE DA CADEIA DE PRESSAO — e isso e o achado que sobrevive**
+    (medido a pedido da usuaria, que propos "fazer no centro o que se esperava dos bracos"):
+
+    | anel r/R99 | P5: % com `p`≠0 | **P16** |
+    |---|---:|---:|
+    | [0, 0.15) nucleo | 64.8 | **71.0** |
+    | [0.15, 0.30) | 75.3 | **85.2** |
+    | [0.30, 0.50) | 74.2 | **86.1** |
+    | [0.50, 0.70) | 52.1 | **74.0** |
+    | [0.70, 0.90) | 22.6 | **48.2** |
+    | [0.90, 1.00) frente | 9.4 | **18.9** |
+    | **corpo inteiro** | **40.2%** | **56.8%** |
+
+    O diagnostico que motivou o P13 media **83.4% do corpo com pressao EXATAMENTE zero**; no
+    P16 sao **43%**. As filhas nascem acima do quorum e ganham `fade` da EOS — coisa que o
+    limbo nao tem. **E o empurrao se propaga:** o anel [0.15,0.30) tem `|v|` = **1.2e-2**,
+    25x o nucleo e o maior do corpo. Primeira vez que se mede transmissao do centro para
+    fora nesta serie.
+
+    **O nucleo NAO esta bloqueado**, ao contrario do que eu supunha: so **14%** dele esta
+    pinado e a taxa de massa (0.0025) e igual a dos bracos — ele divide proporcionalmente ao
+    numero de particulas. O que ele nao faz e MOVER (`|v|` = 4.9e-4, o menor de todos os
+    aneis), porque as filhas nascem dentro do kernel da mae: **dividir SUBDIVIDE o espaco,
+    nao o expande** — expandir exige empurrar o vizinho, e isso depende da cadeia de pressao.
+
+    **ONDE A CADEIA AINDA QUEBRA: o ultimo anel** (18.9% com pressao), onde o material e 94%
+    limbo sub-quorum com `fade`=0 por construcao. A frente segue sendo puxada pela Marangoni,
+    nao empurrada por tras.
+
+    **Distincao importante para a proxima rota:** dar pressao ao **limbo** NAO e o que o P13
+    reprovou. La era o **agar** (meio externo, `rho_b`=0), e o resultado foi um meio que
+    resiste. O limbo e material da COLONIA, esta dentro do envelope, e esta a `rho/rho0` =
+    3.72 — ou seja no ramo **REPULSIVO** da EOS, onde ela empurra, e nao no atrativo que
+    contraiu a colonia na licao #66-C.
 
 75. **A LARGURA DO BRACO: cintura em r/R99=0.65, barriga em 0.83, razao 2.1x — e a barriga
     ACOMPANHA A FRENTE. Quatro alavancas refutadas por medicao antes de rodar, e o

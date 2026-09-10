@@ -385,6 +385,7 @@ print_freq = 200
 # Fixar um inteiro torna a rodada bit-reproduzivel — OBRIGATORIO ao comparar rotas
 # (§2.5): sem semente, diferencas de ate ~9 pontos percentuais em metricas de
 # amostra pequena (n_bio ~70-90) nao sao atribuiveis ao mecanismo.
+NOISE_AMP = 0.6  # P19 testou 0.0 e REPROVOU — ver licao #83
 SEED = 20260806  # serie K: comparacao com C4 exige mesma semente (§2.5)
 
 trajectory_store_interval = 20
@@ -751,7 +752,7 @@ class SwarmApp(Application):
                 pa.add_property("noise")
                 pa.noise[:] = (
                     1.0
-                    + 0.6 * np.sin(SEED_MODE * np.arctan2(pa.y, pa.x))
+                    + NOISE_AMP * np.sin(SEED_MODE * np.arctan2(pa.y, pa.x))
                     + 0.01 * np.random.rand(len(pa.x))
                 )
                 pa.add_property("dt_force")

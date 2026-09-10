@@ -2828,6 +2828,117 @@ Calibracao pos-Passes A-I.7. **MARCO I.7:** Transicao blob→dendritico confirma
     3.72 — ou seja no ramo **REPULSIVO** da EOS, onde ela empurra, e nao no atrativo que
     contraiu a colonia na licao #66-C.
 
+
+82. **O pin mecanico `rho_b>=0.8` do §10 e REDUNDANTE — em 5 instantes do P16 ele nunca
+    pinou UMA particula que o pin quimico ja nao pinasse; quem congela a colonia (e os
+    bracos, ate r=4.67) e o `c_n < 0.6`, que o §7 documenta como 0.4** (medicao 2026-09-09,
+    `runs/P16_massgain3`):
+
+    | corpo movel (`rho_b>=0.1` ou filler, `is_wake<0.5`) | t=9 | t=31 | t=60 | t=100 |
+    |---|---:|---:|---:|---:|
+    | pinado por `rho_b>=0.8` | 43 | 44 | 45 | 45 |
+    | pinado por `c_n<0.6` | 88 | 190 | 765 | **1187** |
+    | **pinado SO por `rho_b>=0.8`** | **0** | **0** | **0** | **0** |
+
+    As 45 particulas do criterio mecanico tem `c_n` ~0.41 — ja estavam pinadas pelo quimico.
+    **Desligar o criterio do §10 hoje e no-op bit-a-bit.** Isso reenquadra a proibicao: ela
+    nomeia o criterio que nao age. As falhas que a fundamentam (K.25a, M-B.9a) foram medidas
+    com `tension_ratio=0.02` (`B_tension`=0.0018); hoje e 0.30 (**0.0274, 15x**).
+
+    **E o pin quimico nao pina so o nucleo** — alcanca **r=4.67**, ou seja congela material
+    DENTRO dos bracos, e a contagem cresce com a colonia (88 -> 1187). Varredura do limiar:
+
+    | limiar | 0.6 (codigo) | 0.4 (§7, M-B.8) | 0.3 | 0.2 |
+    |---|---:|---:|---:|---:|
+    | pinadas em t=100 | 1187 | **28** | **0** | 0 |
+
+    O `c_n` do nucleo fica em 0.41-0.43 o run inteiro — o equilibrio
+    `k_src/(k_src + k_n*rho_b)` = 0.375 com `k_src=0.3` —, exatamente entre 0.4 e 0.6. Por
+    isso a divergencia codigo(0.6) x doc(0.4) da licao #57, nunca corrigida, vale **42x** em
+    numero de pinadas: nao e detalhe de documentacao.
+
+    **OS DOIS CRITERIOS TEM DE CAIR JUNTOS, e a ordem importa.** Baixar so o quimico para
+    0.3 torna o `rho_b>=0.8` — hoje inerte — o UNICO a pinar, e ele pina precisamente o
+    nucleo. A redundancia mascara qual criterio esta ativo; ao mexer em um, o outro assume.
+
+    **Regra:** antes de tratar um criterio como alavanca, medir quantas particulas ele
+    seleciona **em exclusividade** (nao no total). Um criterio com selecao exclusiva zero nao
+    e uma alavanca — e uma clausula dominada por outra, e desliga-lo prova nada. A recíproca
+    tambem vale: desligar a clausula dominante PROMOVE a dominada a ativa, o que e uma
+    mudanca de fisica que nao aparece no diff.
+
+
+83. **P19 (os DOIS pins desligados + semente azimutal zero) REPROVADO — e a razao NAO e a
+    que o §10 previa: nada fragmentou. A colonia PREENCHEU e a interface ALISOU** (2026-09-09,
+    `runs/P19_sempin_REPROVADO`, sobre a base P16):
+
+    **Config:** pin mecanico `rho_b>=0.8` -> 99.0 e quimico `c_n<0.6` -> 0.3 (zero pinadas,
+    licao #82), `SEED_AMP` 0.06 -> 0 e `NOISE_AMP` 0.6 -> 0 (nenhuma perturbacao azimutal
+    imposta; sobra o `0.10*randn` por particula), mitose e ganho como no P16, t=40.
+
+    | t≈40 | P16 | **P19** | |
+    |---|---:|---:|---|
+    | **amplitude da modulacao** | **0.212** | **0.080** | **0.38x — REPROVA** |
+    | vazio >1dx dentro de R99 | 1.25% | **0.10%** | 12x melhor |
+    | corpo (colonia+filler) | 4004 | **5491** | +37% |
+    | **biomassa VIVA** | 1492 | **2531** | **+70%** |
+    | divisoes acumuladas | 278 | **763** | 2.7x |
+    | `R99` | 2.915 | 2.689 | −8% |
+
+    Criterio pre-registrado: reprova se a amplitude cair abaixo de 0.54x a do P16 **com a
+    colonia expandindo**. Cruzou em t≈36 e terminou em **0.38x**, com `R99` crescendo o tempo
+    todo. A leitura visual (§11) concorda: em t≈38 o P16 tem bracos radiais com baias limpas
+    e o P19 e uma massa preenchida de borda crenulada — (a) *Modulated* de Trinschek.
+
+    **O MODO DE FALHA NAO E O DA PROIBICAO.** O §10 fundamenta o pin em K.25a ("gel uniforme
+    sem estrutura") e M-B.9a ("fragmentacao distribuida"), e eu argumentei que a coesao 15x
+    maior tornava a proibicao re-testavel. **A coesao segurou:** `a_pressure` 3.70, massa
+    208.1 sem runaway, vazio 0.10% — o menor do projeto —, ZERO fragmentacao. O que matou a
+    morfologia foi o oposto: sem ancora, a colonia inteira infla e as pontas perdem
+    trajetoria propria (o diagnostico ORIGINAL do K.15, §2.4-A), entao a interface alisa em
+    vez de se romper. **A conclusao da proibicao continua valida; o mecanismo que ela nomeia,
+    nao.**
+
+    **A TRAJETORIA DA AMPLITUDE E O DADO:** 0.295 (t=13) -> 0.216 (t=25) -> 0.187 (t=30) ->
+    0.112 (t=36) -> **0.080 (t=40)**, monotonica, enquanto o P16 fica em 0.21-0.32. E o
+    espectro acompanha: o P19 seleciona **m=28** em t≈10-13 (comprimento de onda ~3.6 dx),
+    que **nao sobrevive** — coalesce sem deixar estrutura, e em t=40 o espectro esta achatado.
+    Sem semente o sistema escolhe um modo curto demais para se sustentar.
+
+    **A CONTAGEM DE DEDOS NAO DETECTOU NADA** — 32-40 no P19 contra 34-37 no P16 o run
+    inteiro, enquanto a amplitude caia 3.3x. Contar picos de `R(theta)` mede crenulacao, nao
+    relevo. **Reportar SEMPRE contagem de dedos junto da AMPLITUDE**; sozinha ela e cega ao
+    achatamento, do mesmo modo que a continuidade e cega ao blob (licao #76).
+
+    **A MITOSE NAO REGE A LARGADA — e isso responde a premissa da rota.** Contando por classe
+    (cada divisao troca 1 mae por 2 filhas = +1 nao-filler), o P19 tem **ZERO divisoes ate
+    t=13** e a primeira em **t≈16**; tudo que entra antes e filler do wake. Bate com a
+    aritmetica: `ganho·r_growth·(1−rho_b)·c_n_f ≈ 0.0175/s` e `ln(1.3)/0.0175 = 15.0 s` ate
+    cruzar `MITOSE_M_RATIO`. **Entre t=0 e t=16 a expansao e 100% Marangoni**, exatamente como
+    antes — a mitose entra depois.
+
+    **O rasgo inicial (t≈3.6) e um cisalhamento, e independe do pin.** Deslocamento por
+    identidade de t=0 a t=3.6, por banda de raio inicial:
+
+    | banda | P16 (com pin) | P19 (sem pin) |
+    |---|---:|---:|
+    | nucleo denso r<0.25 | 0.00 dx | **0.11 dx** |
+    | **borda do nucleo 0.25-0.45** | **5.28 dx** | **5.07 dx** |
+    | banda sub-quorum 0.45-0.70 | 2.47 dx | 2.74 dx |
+
+    A borda do inoculo e arrancada ~5 dx enquanto a banda a frente anda 2.5 dx — **o vazio e
+    essa diferenca**, e ela e a MESMA com e sem pin. O nucleo solto **nao dilatou** (0.11 dx),
+    o que corrige o que eu havia afirmado. A banda que fica para tras nao acompanha porque
+    **nasce sem mecanica**: em `r∈[0.4,0.5)` o `rho_b` mediano em t=0 e **0.0041**, 0% acima
+    do quorum, `fade` = **0.000**; em `[0.3,0.4)` o `fade` mediano e 0.033 (3% da coesao
+    plena). E a lesao constitutiva da licao #66, presente no nascimento.
+
+    **O QUE FICA:** mais uma face da lei (L) (#67-L) — agora **ancorar contra preencher**.
+    O P19 e o melhor resultado do projeto em continuidade (vazio 0.10%, 12x melhor) e em
+    biomassa viva (+70%), e perde a classe morfologica. **REVERTIDO**: `>= 0.8` e `< 0.6` em
+    [src/scheme.py](src/scheme.py), `SEED_AMP=0.06`, `NOISE_AMP=0.6`. A suspensao do §10 era
+    escopada ao P19 e esta encerrada; a configuracao fica a duas constantes de distancia.
+
 75. **A LARGURA DO BRACO: cintura em r/R99=0.65, barriga em 0.83, razao 2.1x — e a barriga
     ACOMPANHA A FRENTE. Quatro alavancas refutadas por medicao antes de rodar, e o
     `contrast_cs` invalidado como orcamento** (diagnostico sobre o P5, 2026-09-03):
@@ -3076,6 +3187,7 @@ Resultado: pulsacoes episodicas (n_fast pico=114 em t=1.5s via perturbacao inici
 - **Nao mudar parametros de surfactante (`σ`, `k_consume`, `D_ext`, `λ_ext`) sem verificar criterios duplos §2.4.** Bloqueio mecanico (A) resolvido por K.17. Bloqueio quimico (B) ATIVO — alavanca permitida atual: `k_consume` (lever direta sobre sumidouro). Nao mexer em `D_ext` e `λ_ext` simultaneamente (lição K.18-K.19). Nao reduzir `λ_ext` abaixo de `λ_int` enquanto motile_boost ativo (destroi Pass J).
 - **Nao sugerir Pass L (rugosidade)** enquanto morfologia nao reproduzir `reference.jpg` (dendritos AR ≥ 1:5, baias estacionarias, tip-splitting visivel). Bloqueio C (Mullins-Sekerka geometrico) provavelmente requer abordagem apos B resolvido.
 - **Nao remover hard pinning mecanico `rho_b>=0.8`** (K.17). Confirmado nao negociavel por K.25a (falha catastrofica) e M-B.9a (fragmentacao distribuida quando substituido por drag forte, lição §22). Pin cinematico e estruturalmente protetor — coesao SPH atual `B_tension≈0.0028` nao resiste ao diferencial de v_term ~ 0.1 entre core e tip sem o pin.
+  **TESTADO E RESTAURADO (P19, 2026-09-09, licao #83).** A suspensao foi escopada a UMA rodada e esta encerrada: os dois pins voltaram a `>= 0.8` e `< 0.6`. O que o teste estabeleceu: (a) o criterio mecanico tem selecao EXCLUSIVA ZERO enquanto o quimico estiver em 0.6 (licao #82) — os dois so caem juntos; (b) **a proibicao esta CERTA na conclusao e ERRADA no mecanismo** — com `tension_ratio`=0.30 (15x a coesao de K.25a/M-B.9a) NAO houve fragmentacao alguma (`a_pressure` 3.70, vazio 0.10%, o menor do projeto), e ainda assim a morfologia reprovou, por ALISAMENTO da interface: amplitude 0.212 -> 0.080 (0.38x) com `R99` crescendo. Sem ancora as pontas perdem trajetoria propria (K.15, §2.4-A). **Nao re-testar por argumento de coesao** — a coesao nao e o que o pin protege.
 - **Ao introduzir mecanismo que aumenta tracao no rim** (f0 maior, motile_boost maior, etc), **re-avaliar `tension_ratio` no mesmo passo** (lição §23). Cohesao SPH deve escalar com motor — ignorar isso reproduz brittle neck (lição §15).
 - **OBRIGATORIO — executar o protocolo §3.3.6 antes de qualquer mudanca em fator de producao ou sumidouro de cs.** Forcas `MarangoniForce` e `FlagellarForce` apontam na direcao `−∇cs` (de alto cs para baixo cs). Para push outward, cs deve **decrescer monotonicamente para fora** ao longo da biomassa — o pico cs deve cair dentro do corpo da colonia, com biomassa contigua entre o pico e o agar. Mudancas em `c_n_factor`, `growth_headroom`, `sigma`, `tip_boost`, `motile_boost`, `qs`, `k_consume`, `lambda` que movam o pico para o agar ou para o rim externo isolado sao PATOLOGICAS — geram push inward na maior parte da colonia. **A falacia "cs concentrado nas pontas puxa para fora" e proibida** — calcular cs_∞ em 4 zonas antes de propor.
 - **OBRIGATORIO — qualquer refinamento adaptativo (Pass N e variantes) deve seguir Vacondio 2013 / Feldman 2006 (Soleimani 2017 §3.2.6).** Substituir 1 mãe por N filhas (hexagonal 2D, N=7) com massa dividida IGUALMENTE (`m_filha = m_mãe/N`), velocidade IDÊNTICA herdada (`u_filha = u_mãe, v_filha = v_mãe` — conservação de momentum). **Sobre `α`/`ε` (AMENDADO 2026-06-02, Pass N v2.5):** Feldman 2006 deriva `ε/α=1` como otimo de densidade para particula **isolada**; em dominio **empacotado** isso e inviável (ε grande → filhas colidem com vizinhos a ~dx → proximity guard aborta). Politica do projeto: `α` pode EXCEDER `ε` (over-pack transitorio) quando o objetivo for preservar dt (h_filha grande) E houver coesao+viscosidade suficientes para relaxar (compromisso Liu §6.5). Trade-off explicito — v2.4 usou `α=ε=0.35` (sub-amostragem, dt 85× pior); v2.5 usa `α=0.75, ε=0.35` (over-pack aceito, dt preservado). **Toda escolha `α≠ε` DEVE citar Liu §6.5 e validar o critério "dt avg t>30s ≥ 0.5× inicial"** (teste de relaxacao do over-pack; lição #27 mostra que over-pack não-relaxado trava o run). **Proibido "adicionar 1 filha"** (lição §25 — falha estrutural em 3 modos comprovada por Pass N v1). **Proibido n_d < 7** (licao §27/§28 — splits parciais quebram momento angular e amplificam tensile instability Liu §6.4). Antes de propor variação, computar: (a) ganho de resolução por split = N (não fração), (b) conservação simultânea de mass + linear momentum + angular momentum. Se algum for violado, voltar ao paper. Filhas com `rho_b ≥ 0.8` herdam pin automaticamente do scheme.py.

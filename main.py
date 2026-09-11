@@ -209,10 +209,13 @@ LAMBDA_BIO_RATIO = 2.0
 # buraco no rastro. Com o sumidouro `cs_inf` varia DENTRO do braco (0.575 interior, **0.828
 # mid-arm**, 0.193 limbo): o gradiente ao longo do dedo puxa material do nucleo para o
 # mid-arm e empurra o mid-arm para fora. Esteira ao longo do braco, em vez de so a ponta.
-CS_SINK_K = 0.0    # ROTA FECHADA (licao #80): 3 pontos, 20x em K, morfologia perdida
+CS_SINK_K = 200.0  # P20: reaberta COM mitose (P12/P14 rodaram antes dela existir).
+# O sumidouro e o unico mecanismo medido que cria contraste AZIMUTAL: cs(baia)/cs(dedo)
+# 1.00 (teto) -> 0.34 (K=90) / 0.52 (K=200). Licao #80: rota fechada SEM mitose
 # em toda a faixa. Preservado parametrizado (§10) — o mecanismo esta certo, o custo e a forma.
 
-CS_CEILING = 0.5   # base P5 restaurada.
+CS_CEILING = 0.0   # P20: desligado — os dois sumidouros nao podem agir juntos.
+# 0.5 = base P5 restaurada.
 # 0.5 era o valor de toda a serie ate aqui (P1 reprovou remover o teto SEM substituto).
 CS_PROD_CN = 1.0   # P1 REPROVADA: c_n de volta. 0 = producao nao depende de c_n
 # `cs_max` tinha DOIS papeis: teto da producao e escala do gate da colonizacao
@@ -236,7 +239,14 @@ CS_PROD_CN = 1.0   # P1 REPROVADA: c_n de volta. 0 = producao nao depende de c_n
 # P5; 179 vivas contra 547) e a rodada testou uma colonia sem recrutamento, nao o sumidouro.
 # Mesmo laco de realimentacao para baixo do P6 (licao #74): menos colonia -> menos `cs` ->
 # menos elegiveis. 0.10 * (0.381/1.130) = 0.034 preserva a FRACAO do campo que e elegivel.
-COL_CS_MIN = 0.10   # base P5. Limiar ABSOLUTO na escala de `cs`: se `CS_SINK_K` mudar,
+COL_CS_MIN = 0.030  # P22: janela de seletividade medida no P21 (dedo 97-99%, baia 33-52%).
+# O P20 usou 0.052 (razao dos max) e cortou a colonizacao a 1.7% das candidatas —
+# sob o teto o campo e PLANO (cs p50=0.295 vs max 0.494) e o gate 0.10 era no-op a
+# 100%; sob o sumidouro e ESTRUTURADO (p50=0.0184 vs max 0.256). 0.005 = 96% elegiveis
+# (P21, no-op nos dois lados). 0.030 e o unico ponto que separa: a distribuicao de `cs`
+# das candidatas do DEDO (p50 ~0.060) e da BAIA (p50 0.031 -> 0.021 entre t=11 e t=30)
+# divergem sob o sumidouro, e a razao baia/dedo cai 0.63 -> 0.34 ao longo do run.
+# 0.10 = base P5. Limiar ABSOLUTO na escala de `cs`: se `CS_SINK_K` mudar,
 # ESTE valor tem de ser reescalado junto (licao #78-b, erro do P11).
 # Alvo da relaxacao = COL_TARGET_FRAC * doador. Preservado desligado em 1.0 (§10): o
 # mecanismo esta certo — separa "nasce colonia" de "nasce limbo" — mas so cabe no orcamento
@@ -377,7 +387,11 @@ k_src = 0.3  # E1 APROVADO (=N1): min_c_n 0.000 -> 0.376, a_mar +29%, biomassa +
 chi = 0.0  # X1/X1b REPROVADOS: transporte com orcamento fixo dilui (licao #54)
 
 dt_global = 0.001
-total_sim_time = 60.0   # P17: cobre o tip-splitting previsto em t~53 com 7 s de folga
+total_sim_time = 40.0   # ETAPA 2 do inoculo. A Etapa 1 (t=8) confirmou a mecanica da
+# banda (fade=0 35%->16%, corpo com p!=0 80.9%->87.4%, R99 +12%) mas a adveccao normalizada
+# ficou IGUAL (12% nos dois) — e nao poderia mudar, porque a mitose so arranca em t~12-22.
+# 40 s e a menor janela que cobre a mitose. Controle = P22, mesma config com
+# INOC_MODE="quartica". Vigiar a_pressure: o pico transiente foi 5.02 contra 2.6 do controle.
 # mostrou o motor do E5 ainda CRESCENDO em t=100. Checagem antes do sumidouro quadratico.
 print_freq = 200
 
@@ -626,7 +640,11 @@ PROMO_VALUE = 0.12
 PROMO_RHO_B_MAX = 0.1  # alvo: 0 < rho_b <= este valor (o limbo)
 PROMO_R_MAX = 1.8  # coroa uniforme; alem disso o limbo vira spokes nos braços
 
-use_insert = True
+use_insert = True  # I4 (use_insert=False) REPROVADO — ver licao #85. Cortar o segundo
+# caminho de deposicao NAO liberou transporte: o excedente de R99 sobre a linha nula CAIU
+# de +6.4% (I3) para +2.9% (I4), e o ganho radial por particula viva ficou identico
+# (0.2456 vs 0.2448) com 57% menos filler. A deposicao nao suprimia o transporte; ela E o
+# mecanismo de construcao. Config restaurada ao I3.
 INSERT_FREQ = 200
 INSERT_SIGMA_TRIG = 0.85
 INSERT_RHO_B_MIN = (
@@ -648,7 +666,29 @@ WAKE_MAX = 150
 WAKE_MODE = 2
 WAKE_CLUSTER_MAX = 7
 WAKE_RING_RATIO = 0.75
-WAKE_MASS_BUDGET = 0.12
+WAKE_MASS_BUDGET = 0.009  # I3: ESTRANGULAMENTO. O I2 depositou 7.217 de massa = 30% do
+# teto de 0.12 — o wake nunca foi limitado por orcamento (licao #74), so por mae e
+# deslocamento. 0.009 poe o teto em 1.78, e o wake opera normal ate travar: antes/depois
+# dentro da mesma rodada, com os bracos ja formados.
+#
+# A PRIMEIRA calibracao (0.018) FALHOU e o run foi morto em t=15: eu supus deposicao
+# LINEAR no tempo, e ela ACELERA (mais maes conforme a colonia cresce). Medido no parcial,
+# 0.018 so travaria em t~35 — restariam 5 s de operacao estrangulada e 10% do raio por
+# construir, sem poder de discriminar. Com 0.009 trava em t~15-16, deixando 45%.
+# Regra: calibrar teto acumulado exige a CURVA de consumo, nao a media sobre o run.
+#
+# HIPOTESE: existem dois caminhos para acomodar a expansao volumetrica (massa e area
+# crescem juntas 21x, densidade areal constante 0.00217 -> 0.00214). O barato e a
+# deposicao criar particula no espaco novo (86% da frente NASCEU ali); o caro e a pressao
+# empurrar material (219x abaixo da Marangoni). Enquanto o barato estiver aberto, o caro
+# nunca e exercitado — foi isso que a licao #73 mediu como invariante em tres regimes de
+# meio e a Etapa 2 mediu como invariante ao dobrar a mitose.
+#
+# Contabilidade do resultado NULO: cortando em t~16 removem-se ~75% da deposicao que o I2
+# faria, ou seja ~37% da massa do corpo; com densidade areal constante isso da
+# R99 = 2.556*sqrt(0.63) ~ 2.03. Acima de 2.25 o transporte compensou; abaixo de 1.85 o
+# wake era estrutural. Barras adicionais: ganho radial medio das VIVAS >= 0.278 (I2:
+# 0.2219) e desloc. p50 do coorte original >= 6.5 dx (I2: 5.00).
 # ROTA C do docs/PLANO_C5_CONTINUIDADE.md — fecha o RASTRO entre a posicao antiga e a
 # atual da ponta, nao so a antiga. O wake deposita 1 ponto (mais anel) enquanto a ponta
 # percorre 2-7 dx, entao o braco nasce como colar de grumos: medido no E5, 2410 particulas

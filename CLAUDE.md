@@ -2939,6 +2939,268 @@ Calibracao pos-Passes A-I.7. **MARCO I.7:** Transicao blob→dendritico confirma
     [src/scheme.py](src/scheme.py), `SEED_AMP=0.06`, `NOISE_AMP=0.6`. A suspensao do §10 era
     escopada ao P19 e esta encerrada; a configuracao fica a duas constantes de distancia.
 
+
+84. **O LIMBO E TECIDO CONECTIVO E SUJEIRA AO MESMO TEMPO — e nenhum ajuste de `cs` separa os
+    dois, porque a colonizacao recruta por campo local e o campo nao sabe se aquela posicao e
+    juncao ou baia** (P20/P21, 2026-09-10, `runs/P20_gate_errado`):
+
+    **MOTIVACAO.** A licao #83 fechou a rota do pin. Restava o problema 1 — bracos sem
+    espacamento — diagnosticado assim: o `cs` e azimutalmente uniforme (razao baia/dedo
+    **1.00** em todos os raios, P16 e P19), porque o teto `(1−cs/cs_max)` **corta producao mas
+    nao remove**: taxa de remocao 0.073/s contra 5.87/s do sumidouro, com `L_D`=1.03 ≈ raio da
+    colonia. E um segundo defeito medido junto: **em nenhum run a baia e agar** — 0.0% agar,
+    88-99% limbo, contra o agar limpo das referencias.
+
+    O sumidouro quadratico CRIA o contraste (medido em P12/P14, que rodaram ANTES da mitose
+    existir): razao 0.34 (K=90) / 0.52 (K=200) contra 1.00 do teto. Dai o P20 = P17 +
+    `CS_SINK_K=200`, `CS_CEILING=0`.
+
+    **ERRO DE CALIBRACAO MEU, por 16x — a licao #78-b reproduzida por baixo.** Reescalei
+    `COL_CS_MIN` pela razao dos `max_cs` (0.256/0.494 → 0.052). Mas:
+
+    | candidatas sub-quorum no envelope, t≈21 | P16 (teto) | P20 (sink) |
+    |---|---:|---:|
+    | `max_cs` | 0.4943 | 0.2564 |
+    | **`cs` MEDIANO** | **0.2945** | **0.0184** |
+    | elegiveis pelo gate aplicado | **100.0%** | **1.7%** |
+
+    Sob o teto o campo e **plano** (mediana/max = 0.60) e `COL_CS_MIN=0.10` **nao gateava
+    nada**. Sob o sumidouro ele e **estruturado** (mediana/max = 0.072) — que e o objetivo da
+    mudanca. Preservar a razao ao MAXIMO nao preserva a AREA elegivel: para igualar a fracao o
+    gate teria de ser **0.0032**. Converti um no-op num corte de 98.3%.
+
+    **Regra:** ao reescalar um limiar absoluto sobre um campo cuja mudanca e justamente parar de
+    ser plano, o invariante e a **fracao da populacao que o limiar seleciona**, nunca a razao ao
+    valor de pico. Medir a distribuicao das CANDIDATAS, nao o `max` do campo.
+
+    **O TESTE DECISIVO (P21 = P20 com `COL_CS_MIN` 0.052 → 0.005, uma alavanca):**
+
+    | t≈15 | limbo | **agar** | duty(0.70) | **baia: agar/limbo** | **C5b +limbo** | C5a |
+    |---|---:|---:|---:|---:|---:|---:|
+    | P16 (teto) | 1773 | 0 | 46% | **0% / 98%** | **94.8%** | 1.02 |
+    | **P20** (gate 0.052) | 343 | 987 | 31% | **63% / 32%** | **29.7%** | 0.75 |
+    | **P21** (gate 0.005) | 1312 | **0** | 41% | **0% / 92%** | **93.5%** | 1.05 |
+
+    **As baias de agar do P20 eram o ESTRANGULAMENTO da colonizacao, nao o sumidouro.**
+    Restaurar o gate devolveu o limbo (343 → 1312), zerou o agar no envelope, encheu a baia
+    exatamente como o P16 e recuperou C5b de 29.7% para 93.5%. O sumidouro segue entregando o
+    contraste azimutal (0.83-0.92 medido no P20) — **e nao e isso que limpa a baia**.
+
+    **A LEI:** o limbo e o MESMO material nos dois papeis. Entre nucleo e braco e **tecido
+    conectivo** (a revisao de §2.2 de 2026-09-03 o conta para C5, e e ele que da C5b=93%); entre
+    braco e braco e **sujeira** (impede a baia de ser agar). Produzir da continuidade e baia
+    suja; nao produzir da baia limpa e C5b de 30%. E a lei (L) da licao #67 num eixo novo —
+    **conectar contra separar** — com um unico estoque servindo as duas funcoes.
+
+    **A PREVISAO DO MECANISMO ERROU 2x, e o erro e informativo.** Previ razao baia/dedo de
+    0.30-0.50 sob o sink; medido **0.83-0.92**. Causa: calculei para baia em `rho_b`=0.05
+    (limbo). Com a baia virando agar (`rho_b`≈0) o `cs_∞` local vale 0.0007 — logo o `cs` da
+    baia **nao e produzido la, e importado por difusao dos bracos**. O balanco local nao governa
+    a baia, e por isso o contraste nunca chega ao valor de equilibrio.
+
+    **GANHO COLATERAL REAL, que sobrevive** — o sumidouro reduz o rasgo inicial da licao #83.
+    Predicao ex-ante: o salto `cs` nucleo→agar em t=0 cai de 0.4825 (teto) para 0.1914 (K=200),
+    0.40x; a largura da rampa em t≈4 e geometrica e igual nos dois; logo `|∇cs|` e o
+    cisalhamento caem na mesma proporcao. Medido em raio equivalente:
+
+    | | `R99` | vazio | area | `a_mar` frente |
+    |---|---:|---:|---:|---:|
+    | P5 (teto) t=4.4 | 0.778 | 21.1% | **138 dx²** | 1.585 |
+    | P20 (sink) t=7.0 | 0.750 | 3.9% | **24 dx²** | **0.725** |
+
+    **5.8x menos rasgo** (previ ~55 dx², deu 24) com `a_mar` em 0.46x do previsto 0.40x — erro
+    de 15%. Custo: ~30% mais lento em tempo-para-raio na largada.
+
+    **E o `cs ~ sqrt(P/K)` acertou a 3a casa pela quarta vez:** previsto `max_cs`=0.256, medido
+    **0.2564**.
+
+    ---
+
+    **QUALIFICACAO DA LEI (medida no P21, t=11 a 41): sob o SUMIDOURO o campo PASSA a saber
+    onde e dedo e onde e baia — a lei acima vale sob o TETO.** Distribuicao de `cs` das
+    candidatas a colonizacao, separadas por estarem em setor de dedo ou de baia no proprio raio:
+
+    | t | `cs` dedo (p50) | `cs` baia (p50) | razao | seletividade em gate 0.030 |
+    |---|---:|---:|---:|---|
+    | 11.4 | 0.0491 | 0.0309 | 0.63 | 100% / 52% = 1.9x |
+    | 15.2 | 0.0533 | 0.0297 | 0.56 | 97% / 49% = 2.0x |
+    | 21.2 | 0.0618 | 0.0301 | 0.49 | 98% / 50% = 2.0x |
+    | 29.8 | 0.0603 | 0.0206 | 0.34 | **99% / 33% = 3.0x** |
+
+    Estavel em 5 instantes e **crescendo** — nao e artefato de um ponto. Sob o teto essa janela
+    NAO EXISTE (campo plano, razao 1.00, qualquer gate corta dedo e baia por igual). Os dois
+    runs a atravessaram sem usa-la: P20 com gate 0.052 cortou a baia a 9% **e o dedo a 68%**;
+    P21 com 0.005 deixou passar 100%/87%. **A janela util e ~0.030, nunca testada.**
+
+    **VEREDITO DO P21 — REPROVADO, e fecha a rota do sumidouro pela terceira vez, agora na
+    combinacao que faltava** (com mitose e `COL_CS_MIN` calibrado certo):
+
+    | t≈40 | P16 (teto) | **P21 (sink)** | |
+    |---|---:|---:|---|
+    | agar na baia (r/R99 0.70 e 0.85) | 0% | **0%** | nao resolveu o alvo |
+    | duty em r/R99=0.70 | 25% | **66%** | reprova (limiar 45%) |
+    | **dedos** | 31 | **18** | reprova (limiar 20) |
+    | amplitude | 0.212 | 0.175 | −17% |
+    | **dR/dt t[25,50]** | 0.0594 | **0.0580** | **sem ganho** |
+    | `R99` (t=50) | 3.49 | **3.07** | −12% |
+    | C5b +limbo | 92.2% | 93.9% | preservado |
+    | vazio | 1.2% | 0.9% | preservado |
+
+    **O GANHO TARDIO DA LICAO #78 NAO EXISTE SOB MITOSE.** Aquela licao mediu o sumidouro
+    contra o P5 (SEM mitose) e achou 1.25-1.61x em `dR/dt`. Com mitose, P21 e P16 ficam
+    indistinguiveis (0.0580 vs 0.0594) e **ambos abaixo do P5 puro (0.0736)**. O ganho era
+    contra uma base que ja nao e a nossa. **Regra: vantagem medida contra um baseline antigo
+    tem de ser re-medida quando o baseline muda — nao se soma a mecanismos posteriores.**
+
+    **O CONTRASTE AZIMUTAL E REAL E NAO LIMPA A BAIA.** Em t=40 a razao baia/dedo e 0.81 em
+    r/R99=0.70 e **0.50** em 0.85 — 50% de contraste — e a baia continua **0% agar**. Motivo
+    mecanico: com o gate em 0.005, 96% das candidatas passam, e quem decide o recrutamento e
+    `c_n` (uniforme sob `k_src`=0.3) e o doador. **Nenhum dos dois tem estrutura azimutal** — a
+    colonizacao nao le o campo que o sumidouro estruturou. Estruturar o campo e condicao
+    necessaria e NAO suficiente; falta o gate ler a estrutura.
+
+    **Erro de criterio meu:** pre-registrei "reprova se `a_mar` > 9" lendo a coluna do log, que
+    e um `np.max` (invariante #1 do §9). Em t=40 ela marcou 8.71 e o **p95 sobre quem recebe
+    forca era 1.44** (razao `|F_mar|/B_tension` = 52, contra 66 do P16) — nao havia risco de
+    fratura nenhum. E o 8.71 caiu sozinho a 5.79 em t=49. Criterio de tracao deve usar p95 na
+    populacao ativa, nunca o max do log.
+
+85. **A DEPOSICAO NAO SUPRIME O TRANSPORTE — ELA *E* O MECANISMO DE CONSTRUCAO. A adveccao
+    e invariante pelo QUINTO teste independente, e cortar deposicao MELHORA a morfologia
+    monotonicamente** (serie do inoculo I1-I4 sobre o P22, 2026-09-10/11):
+
+    **CONTEXTO — a cadeia da usuaria.** A lei proposta era: mitose aumenta densidade ->
+    produz surfactante -> gera Marangoni -> expande. Ela e a governante de [T1]
+    (`dh/dt = -div(J_conv + J_Mar) + crescimento`) e o modelo a implementa — mas com um elo
+    a menos do que o enunciado supoe, e foi isso que a serie mediu.
+
+    **(A) O INOCULO PLATO (I1/I2).** A quartica `exp(-(r/0.30)^4)` poe 1/3 da biomassa numa
+    saia de densidade decrescente e o resto numa cauda de 1e-3 que nao divide (gate 0.05),
+    nao produz `cs` e tem `fade`=0. Nao e uma gota depositada. Trocado por densidade
+    uniforme com linha de contato: `A`=0.45, `R`=0.500, `w`=1.5h, `SEED_FRAC`=20% relativo.
+
+    O ponto de operacao e o canto de **tres restricoes simultaneas**, e so ele:
+    - pin exige `rho_b > 0.40` (senao `c_n_eq = k_src/(k_src+k_n*rho_b) >= 0.6` e o nucleo
+      solta — modo de falha do P19)
+    - `fade_rep` pica em `rho_b` ~0.45-0.55 (e vale **ZERO** acima de 0.8)
+    - divisao rapida quer `rho_b < 0.35`
+
+    Em `A`=0.45: biomassa 1.048x (conservada), `c_n_eq`=0.571 (pina), `fade_rep`=**0.957
+    contra 0.000 de hoje**, T de divisao 12 s contra **nunca**, portadoras 152 -> 236.
+
+    **Isso NAO e o I1 da licao #48** ("suavizar CURA a borda mas mata o motor"): aquele
+    reprovou com **+150% de biomassa**, e foi a biomassa que achatou o `cs`. A biomassa
+    constante e o que separa os dois, e e o que a analise preditiva teve de garantir.
+
+    **Resultados I1 (t=8) e I2 (t=40):** `fade`=0 na banda 35% -> 16%; corpo com `p`!=0
+    80.9% -> 87.4%; `cs` no corpo +11% (nao achatou); divisoes 518 -> **1094 (2.1x)** com
+    filhas em `r<0.5` indo de 3.3% para 8.3%. O inoculo **destravou a mitose** exatamente
+    como previsto. Custo: amplitude 0.214+-0.006 -> 0.162+-0.002 (**0.76x**, contra a barra
+    pre-registrada de 0.8x) — a usuaria aceitou na leitura visual (§11 e dela).
+
+    **(B) O DIAGNOSTICO — 219x, medido, nao estimado.** Com a mitose dobrada a adveccao nao
+    mudou. O balanco de forcas no corpo em t=39:
+
+    | | nucleo | meio | frente |
+    |---|---:|---:|---:|
+    | `p` mediano | 2.05e-3 | 6.47e-4 | 1.63e-5 |
+    | `a_mar` mediano | 0.000 | 0.211 | 0.000 |
+    | `\|v\|` mediano | 2.0e-4 | 3.75e-3 | 6.7e-5 |
+
+    O gradiente de pressao existe e aponta para fora (`p` cai **126x** do nucleo a frente),
+    mas da `a_p` = 9.6e-4 -> `v_term` = 1.6e-5, contra `a_mar` = 0.211 -> 3.5e-3. **Razao
+    219x**, e o `|v|` medido (3.75e-3) bate com `a_mar/gamma` na primeira casa: **a
+    velocidade e inteiramente Marangoni; a pressao contribui 0.5%.** Em 40 s o empurrao da
+    pressao desloca material por **0.012 dx**.
+
+    E e estrutural: com `B = rho0*c0^2/7` e `c0`=**0.35** (o §7 documenta 0.8 — divergencia
+    codigo x doc, mesma classe das licoes #41/#57), igualar a Marangoni exigiria
+    `rho/rho0` = 3.33, e a EOS quase-incompressivel pressupoe ~1 (Liu §4.1).
+
+    **(C) A OPCAO 2 (termo-fonte na continuidade) E REDUNDANTE, e o motivo importa.** O
+    projeto usa `SummationDensity` (`rho_a = Sum m_b W_ab`) — **nao ha equacao de
+    continuidade sendo integrada**, entao nao ha onde por o termo (Liu §4.1, Violeau §5.2).
+    Impor `div v = Gamma` exigiria projecao eliptica (ISPH, Violeau §5.4).
+
+    Mas o termo-fonte **ja existe e ja opera**: o `d_am` do `BiomassGrowth` e ele, e medido,
+    **area e massa do corpo crescem JUNTAS 21x com densidade areal constante**
+    (0.00217 -> 0.00214). `div v = Gamma > 0` esta acontecendo. Subir `c0` nao ajudaria: em
+    SPH quase-incompressivel, `c0` maior **reduz a flutuacao de densidade para a mesma
+    pressao** — a pressao e fixada pelo balanco de forcas, nao por `B`. E o CFL nem limita
+    o `dt` hoje (`dt_CFL`=0.086 contra `dt` real 0.007; quem limita e o arrasto, 2/gamma_eff
+    = 0.013).
+
+    **(D) A HIPOTESE DOS DOIS CAMINHOS — E A REFUTACAO.** Se a expansao volumetrica pode ser
+    acomodada por (i) deposicao criando particula no espaco novo, custo ~zero, ou (ii)
+    pressao empurrando material, custo 219x, entao enquanto (i) estiver aberto (ii) nunca e
+    exercitado. Medido: **86% do material da frente NASCEU ali** (viajou <2 dx desde que
+    apareceu); o filler viaja **0.34 dx** de mediana com **0%** alem de 2 dx, contra 10.21 dx
+    das vivas.
+
+    Testado cortando a deposicao:
+
+    | | filler | massa do corpo | `R99` | excedente sobre a linha nula | ganho radial/viva | dedos | amplitude |
+    |---|---:|---:|---:|---:|---:|---:|---:|
+    | I2 | 2489 | 15.40 | 2.556 | — | 0.2213 | 30 | 0.165 |
+    | I3 (so wake cortado) | 1478 | 11.95 (0.78x) | 2.395 | **+6.4%** | 0.2456 | 36 | 0.175 |
+    | I4 (wake + insert) | 636 | 8.20 (0.53x) | 1.919 | **+2.9%** | **0.2448** | **43** | **0.204** |
+
+    A "linha nula" e `R99_I2 * sqrt(massa_rel)` — o raio que a contabilidade de massa
+    preve a densidade areal constante.
+
+    **O excedente CAIU ao cortar mais deposicao (+6.4% -> +2.9%), e o ganho radial por
+    particula viva ficou IDENTICO (0.2456 vs 0.2448) com 57% menos filler.** Se o caminho
+    barato estivesse curto-circuitando o caro, fecha-lo mais deveria AUMENTAR o excedente.
+    Foi o contrario. **A deposicao nao suprimia o transporte — ela e o mecanismo.**
+
+    **(E) A INVARIANCIA DA ADVECCAO, AGORA COM CINCO PONTOS.** O transporte radial por
+    particula viva fica em **0.22-0.25** em: tres regimes de meio (licao #73: rigido sem
+    pressao, rigido com pressao, movel com pressao — 31/31/34 particulas), ao **dobrar a
+    mitose** (I2), e ao **cortar 74% da deposicao** (I4). Nenhuma alavanca mecanica
+    testada no projeto moveu esse numero.
+
+    **(F) O ACHADO COLATERAL, e ele e grande: cortar deposicao MELHORA a morfologia,
+    monotonicamente.** Dedos 30 -> 36 -> **43** e amplitude 0.165 -> 0.175 -> **0.204**,
+    com filler caindo 2489 -> 636. **A amplitude do I4 supera a do proprio P22 (0.166)**,
+    que e o baseline aprovado. Custo: `R99` 2.56 -> 1.92.
+
+    E a lei (L) da licao #67 num sentido nunca testado: todas as series anteriores (V, W, C,
+    B1, P7) mexeram no wake para **adicionar** ou **REALOCAR**; nenhuma cortou fundo.
+    **I4 foi REPROVADO pela usuaria por `R99`**, e a config voltou ao I3 — mas o eixo
+    `R99` x recorte fica aberto e e o mais proximo que o projeto ja chegou de "muitos dedos
+    finos com relevo" simultaneamente.
+
+    **(G) QUATRO ERROS DE METODO MEUS NESTA SERIE, todos com regra geral:**
+
+    1. **Estatistica de cauda.** Reportei "adveccao identica, 3.4% nos dois" usando
+       "originais alem de 0.9*R99" — que olha **8 particulas de 237**, o extremo. O coorte
+       TIPICO viajou 2.3x mais com o plato (desloc. p50 2.15 -> 5.00 dx; ganho radial p50
+       0.099 -> 0.228). **Regra: metrica de transporte em percentil alto e cega ao tipico
+       (invariante #1 do §9). Usar mediana do coorte ou media por particula.**
+
+    2. **Confundidor de raio absoluto.** A primeira medicao de adveccao deu "124 contra 5"
+       cruzando `r`=0.9 — parecia confirmacao espetacular. Era artefato: o plato comeca com
+       material ate `r`=0.50 e a quartica ate 0.40. Normalizado por `R99`, **12% nos dois**.
+       **Regra: cruzamento de raio ABSOLUTO nao compara colonias de tamanho inicial
+       diferente.**
+
+    3. **Teto acumulado calibrado por media.** Dimensionei `WAKE_MASS_BUDGET`=0.018 supondo
+       deposicao LINEAR (metade da massa em t=20). Ela **acelera** — mais maes conforme a
+       colonia cresce — e o teto so travaria em t~35, deixando 5 s de operacao estrangulada.
+       Run morto em t=15 e relancado com 0.009, que travou em t=15.7 (previsto 14-18).
+       **Regra: teto acumulado se calibra pela CURVA de consumo, nunca pela media do run.**
+
+    4. **Estrangular um de dois caminhos.** O I3 cortou o wake e o `insert` depositou **962
+       particulas** (t=8.3 a 39.8) — mais que as 619 do wake — mantendo o caminho aberto por
+       outra porta. So o I4 fechou os dois. **Regra: antes de declarar que um mecanismo foi
+       removido, listar TODAS as vias que produzem o mesmo efeito.**
+
+    **CONSEQUENCIA:** a rota mecanica esta fechada com medicao, nao com argumento. Se a
+    expansao por proliferacao for retomada, tem de ser por ISPH com projecao (Violeau §5.4)
+    — o que exige trocar `SummationDensity` por continuidade, refazer a calibracao da
+    `BiomassEOS`, o `KernelSum`, a KGC e todos os limiares de `rho/rho0`. E migracao de
+    esquema, nao um Pass.
+
 75. **A LARGURA DO BRACO: cintura em r/R99=0.65, barriga em 0.83, razao 2.1x — e a barriga
     ACOMPANHA A FRENTE. Quatro alavancas refutadas por medicao antes de rodar, e o
     `contrast_cs` invalidado como orcamento** (diagnostico sobre o P5, 2026-09-03):

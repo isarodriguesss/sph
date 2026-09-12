@@ -327,8 +327,8 @@ HILL_K = 0.25
 # saturacao de `cs` — precisa so da direcao. O gate `[0.2, 0.6]` seleciona 72 particulas de
 # 276 vivas: sao elas que cavalgam 50-77 dx enquanto o corpo anda 7. Alargar distribui a
 # forca por ~230. O K.2 so testou ESTREITAR; alargar nunca foi testado.
-FLAG_GATE_LO = 0.2  # P3 REPROVADA: alargar p/ [0.1,0.8] levou a razao p90/p50 de 5.0 a 6.8
-FLAG_GATE_HI = 0.6  # (forca constante nao move corpo, cria cavaleiros). Preservado parametrizado.
+FLAG_GATE_LO = 0.1  # P3 REPROVADA: alargar p/ [0.1,0.8] levou a razao p90/p50 de 5.0 a 6.8
+FLAG_GATE_HI = 0.8  # (forca constante nao move corpo, cria cavaleiros). Preservado parametrizado.
 FLAG_F0 = 3.0 * MOTOR_SCALE
 sigma = 11.1  # E5: recalibrado p/ producao da biomassa MADURA constante sob K=0.25
 D = 1.5e-3
@@ -392,7 +392,7 @@ k_src = 0.3  # E1 APROVADO (=N1): min_c_n 0.000 -> 0.376, a_mar +29%, biomassa +
 chi = 0.0  # X1/X1b REPROVADOS: transporte com orcamento fixo dilui (licao #54)
 
 dt_global = 0.001
-total_sim_time = 100.0   # BASELINE P2 (E11 + COL_FILLER_DONOR=1).
+total_sim_time = 50.0   # BASELINE P2 (E11 + COL_FILLER_DONOR=1).
 # banda (fade=0 35%->16%, corpo com p!=0 80.9%->87.4%, R99 +12%) mas a adveccao normalizada
 # ficou IGUAL (12% nos dois) — e nao poderia mudar, porque a mitose so arranca em t~12-22.
 # 40 s e a menor janela que cobre a mitose. Controle = P22, mesma config com

@@ -2,20 +2,7 @@ import numpy as np
 from pysph.base.utils import get_particle_array
 
 
-SEED_AMP = 0.06  # P19 testou 0.0 (sem semente) e REPROVOU — ver licao #83
 SEED_MODE = 8  # M5 (N=16) nao se sustentou: dedos finos mas ocos, agar cercado 417 vs 181
-
-# SEED_FRAC e a modulacao RELATIVA do raio (so o "plato" a usa). A "quartica" fica na
-# forma historica `0.30 + SEED_AMP*cos`: `0.30*(1 + SEED_FRAC*cos)` e igual so na
-# matematica, difere em ate 5.5e-17 e quebra a reproducao bit-a-bit do E11.
-SEED_FRAC = SEED_AMP / 0.30
-
-INOC_MODE = "quartica"  # BASELINE E11. "plato" = serie I (licao #85-A)
-INOC_A = 0.45  # plato: rho_b uniforme. 0.45 e o canto de TRES restricoes simultaneas —
-INOC_R = 0.500  # pin exige rho_b>0.40 (c_n_eq<0.6), fade_rep pica em ~0.5, divisao
-INOC_W = 0.145  # rapida quer <0.35. Em 0.45: c_n_eq=0.571, fade_rep=0.957, T_div=12s.
-# R=0.500 conserva a biomassa (1.02x) — o I1 reprovou por +150% de massa, nao pela borda.
-# W = 1.5h: a borda tem de ser resolvida pelo kernel (Liu §3.3).
 
 
 def create_initial_state(
@@ -52,17 +39,8 @@ def create_initial_state(
     # a repoe depois. Suavizar (I1: p=2, R=0.45) CURA a borda mas mata o motor:
     # +2.5x biomassa -> cs mais uniforme -> a_mar 2.30->0.75 e morfologia vira
     # Circular (licao #48). O perfil agudo e o preco da seletividade dendritica.
-    if INOC_MODE == "plato":
-        # Densidade uniforme com linha de contato — a gota depositada nao tem cauda
-        # gaussiana. A quartica poe 1/3 da biomassa numa saia de densidade decrescente
-        # e o resto numa cauda de 1e-3 que nao divide (gate 0.05), nao produz cs e tem
-        # fade=0. Ver licao #83 e a analise preditiva do inoculo.
-        R_theta = INOC_R * (1.0 + SEED_FRAC * np.cos(SEED_MODE * theta))
-        t_edge = np.clip((R_theta - dist) / INOC_W, 0.0, 1.0)
-        rho_b = INOC_A * t_edge * t_edge * (3.0 - 2.0 * t_edge)
-    else:
-        R_theta = 0.30 + SEED_AMP * np.cos(SEED_MODE * theta)
-        rho_b = np.exp(-((dist / R_theta) ** 4))
+    R_theta = 0.30 + 0.06 * np.cos(SEED_MODE * theta)
+    rho_b = np.exp(-((dist / R_theta) ** 4))
 
     noise = 0.10 * np.random.randn(*X_grid.shape)
     rho_b += rho_b * noise

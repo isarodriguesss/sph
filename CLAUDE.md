@@ -243,6 +243,13 @@ O alvo do projeto **nao e escolher** entre "ter buracos" e "ter particulas mal s
 
 **Todas as particulas dentro do swarm contam como colonia.** A distincao `is_filler` permanece valida como ferramenta de diagnostico (atribuir causa), mas **nao** como definicao de quem compoe a colonia para fins de metrica de sucesso.
 
+**Figura de tese:** [plots/fig_tese.py](plots/fig_tese.py) (`make fig RUN=runs/X T=50`) — 2x2 no
+formato do painel (b) de Trinschek: (a) colonia como campo continuo (Shepard, h=dx) com buracos
+FECHADOS de ate 3.5 dx preenchidos so na renderizacao (licao #72-K), (b) borda externa em 5
+instantes, (c) raios maximo/minimo x t medidos nessa mesma borda, (d) `c_s` log fixo [1e-3, 0.5]
+sem filler. Colonia = `rho_b>=0.1` ou filler (§2.2); `--limbo` inclui o limbo. Escalas fixas,
+entao figuras de runs diferentes sao comparaveis. A legenda na tese DEVE declarar o preenchimento.
+
 **Ferramentas de diagnostico (`tools/`):** [plot_classes.py](tools/plot_classes.py) (classe da
 particula — agar, viva, limbo, filler, vazio — porque vazio e agar renderizam iguais em qualquer
 painel de campo, licao #66), [plot_coesao.py](tools/plot_coesao.py) (`rho_b` + `fade` da EOS lado a
@@ -594,6 +601,19 @@ conda install mpi4py -c conda-forge
 
 ## 7. Parametros Calibrados (branch `ram-8827-v1`)
 
+> **BASELINE = P2 = E11 + `COL_FILLER_DONOR=1` (2026-09-11, decisao da usuaria, licao #88).**
+> Reproduz `runs/P2_fillerdonor` BIT-A-BIT (45 colunas + `t` nas iteracoes 0 e 200,
+> `runs/_verif_P2`). E o unico da serie P que liga os bracos ao nucleo sem sair da classe
+> dendritica. Validacao ate t=100 em `runs/P2_t100`. O bloco abaixo (E11) continua valendo
+> para todas as outras constantes.
+>
+> **BASELINE = E11 (2026-09-11, decisao da usuaria).** `main.py` e `src/` reproduzem
+> `runs/E11_t100` BIT-A-BIT (45 colunas do log e o `t` do dt adaptativo nas iteracoes 0 e
+> 200, `runs/_verif_E11`). E o E5 sem piso, `k_src=0.3`, `HILL_K=0.25`, `sigma=11.1`,
+> `k_col=0.03`, teto `cs_max=0.5`, inoculo quartico, wake+insert, SEM mitose, ganho 1,
+> t=100. Todo o codigo posterior (mitose, sumidouro, plato, `WAKE_ATTACH`, `MOTOR_SCALE`,
+> gates parametrizados) fica PRESERVADO DESLIGADO (§10) — ver bloco apos a licao #87.
+>
 > **BASELINE MIGRADO C4 -> E5 (2026-09-01).** A tabela abaixo e do C4. As mudancas para a
 > serie E (`k_src=0.3`, `HILL_K=0.25`, `sigma=11.1`, `k_col=0.03`, e a **correcao de bug**
 > da `BiomassEOS` em `Group` proprio — no C4 o ramo repulsivo NUNCA disparava, `p>0` em
@@ -3200,6 +3220,353 @@ Calibracao pos-Passes A-I.7. **MARCO I.7:** Transicao blob→dendritico confirma
     — o que exige trocar `SummationDensity` por continuidade, refazer a calibracao da
     `BiomassEOS`, o `KernelSum`, a KGC e todos os limiares de `rho/rho0`. E migracao de
     esquema, nao um Pass.
+
+86. **AS VIVAS NAO ESTAO PRESAS — A FRENTE E QUE CORRE 3.6x A FRENTE DA PROLIFERACAO.
+    Balanco de forcas reconstruido por particula, e um bug de colisao de nome no `cs`**
+    (2026-09-11, `runs/I3_wake009`, instrumento [tools/diag_forcas.py](tools/diag_forcas.py)):
+
+    **(A) A CONTAGEM JA FECHA; A POSICAO NAO.** O "12x" de descompasso (territorio aberto
+    contra celulas geradas) foi medido no E11 — config E5, SEM mitose e ganho 1. No I3
+    (mitose + `GROWTH_MASS_GAIN`=5) a mesma conta da, em t=20-40, **~113 vivas/s contra
+    102-140 slots/s** de envelope: razao 0.8-1. Das 113/s, **54/s sao divisao** (aumento de
+    nao-filler) e **59/s recrutamento** (limbo/agar cruzando o quorum). O que falha e ONDE:
+    as vivas alem de 0.85*R99 ficam em ~30 (39 -> 39 -> 27 de t=20 a 40) e a fracao viva do
+    corpo nesse anel cai **78% -> 36% -> 16%**, enquanto 2476 vivas se acumulam em
+    0.3-0.7*R99. A frente e preenchida por filler.
+
+    **(B) BALANCO RADIAL (t=40), validado.** Cada termo do `equations_main` recalculado
+    offline com a formula do solver (CubicSpline 2D, KGC de Bonet-Lok na Marangoni, gradiente
+    sem KGC no flagelo). Validacao: correlacao **1.000** com `au_mar` e `au_flag` gravados, e
+    `soma ~ gamma_eff*u_r` a 1% nas bandas externas.
+
+    | r/R99 | n | rho_b | %rho_b<0.2 | a_mar | a_flag | pressao | viscosa | u_r |
+    |---|---:|---:|---:|---:|---:|---:|---:|---:|
+    | 0.3-0.5 | 1105 | 0.21 | 45% | 0.18 | **0.00** | -6e-4 | +1e-3 | 0.004 |
+    | 0.5-0.7 | 1371 | 0.16 | **78%** | 0.48 | **0.00** | -1e-3 | -0.01 | 0.008 |
+    | 0.7-0.85 | 116 | 0.15 | 71% | 1.59 | 0.00 | -2e-4 | -0.09 | 0.026 |
+    | 0.85-1.0 | 17 | 0.47 | 11% | 2.88 | 0.16 | +5e-4 | -0.33 | 0.050 |
+    | >1.0 | 10 | 0.51 | 0% | 4.70 | 1.29 | -2e-3 | -0.52 | 0.065 |
+
+    Regime SUPERAMORTECIDO: `u_r = (a_mar + a_flag)/gamma_eff`. Pressao ~1e-3 (confirma os
+    219x de #85), pin em so 1-11%, viscosidade desprezivel no meio (na frente ela FREIA ~10%:
+    o corpo segura a ponta). **O meio anda devagar por falta de MOTOR, por duas causas:**
+    (1) o gate flagelar e [0.2, 0.6] e 78% das vivas de 0.5-0.7*R99 estao em `rho_b`<0.2 —
+    forca flagelar mediana EXATAMENTE zero; na frente 89% tem `rho_b`>=0.3 e recebem 1.3-2.6;
+    (2) a Marangoni e 6-25x mais fraca no interior NAO pelo gate (aberto em 97-99%) mas pelo
+    GRADIENTE — o `grad cs` se concentra na frente. Direcao de `-grad cs`: para fora em
+    85-100% das vivas alem de 0.5*R99; neutra/para dentro no nucleo (cos -0.05 a -0.31).
+
+    **(C) O NUMERO QUE MUDA O ENQUADRAMENTO — frente contra proliferacao.** Para manter a
+    posicao RELATIVA numa colonia que cresce, uma celula precisa de `u_r = (r/R99)*dR/dt`.
+    Numa colonia que expande SO por divisao (a lei proposta pela usuaria), o campo e
+    `u_r = k*r/2`, com `k = G*r_growth*rho_b(1-rho_b)*f(c_n)` a taxa especifica de ganho de
+    massa. Com `k` mediano medido nas vivas (0.0125/s), isso da **0.009 em 0.6*R99 — contra
+    0.008 medido**. As vivas do meio andam na velocidade que a proliferacao justifica; o
+    anomalo e a FRENTE, levada por flagelo + Marangoni a 0.05-0.065/s:
+
+    | | expansao exigida `2*(dR/dt)/R` | `k` das vivas | razao frente/proliferacao |
+    |---|---:|---:|---:|
+    | t=20 | 0.054/s | 0.0093/s | **5.8x** |
+    | t=40 | 0.044/s | 0.0123/s | **3.6x** |
+
+    Explica tres coisas ja medidas sem causa: a invariancia do transporte por viva (#85 — ela
+    e fixada pela distribuicao do motor sobre as vivas, que nenhuma alavanca mecanica toca);
+    o P17 (ganho 3->5 encheu o corpo e nao mudou `dR/dt` — a frente nao depende de `k`); e o
+    cruzamento das curvas em t~75-80 no E11 (a razao cai com R porque `dR/dt` desacelera).
+    **Na frente o balanco `k*R/(2*dR/dt)` vale ~0.9**: as ~30 celulas de la mal se
+    sustentam, nunca crescem, e ja estao no TETO de `k` (0.024 contra `G*r/4` = 0.025).
+
+    **(D) COROLARIO: `MITOSE_M_RATIO` NAO acelera a mitose.** A filha nasce com `M_RATIO/2` e
+    divide em `M_RATIO`, entao o tempo entre divisoes e `ln2/k` para QUALQUER limiar. Baixar
+    1.3 -> 1.05 so antecipa a 1a divisao (medido: 14 s -> ~2 s; 39% das vivas ja passam de
+    1.05*m0 em t=2.7) e da um ganho UNICO de contagem `1.3/1.05` = **1.24x**, sem acumular.
+    Divisao ORIENTADA por `-grad cs` tambem nao alcanca a frente: desloca `eps*h` = 0.63 dx
+    por divisao, ~0.001/s de avanco de linhagem contra 0.05/s da frente (50x); 98% das filhas
+    nascem no meio (soma de `k` por anel: ~35/s no meio, ~0.6/s na frente).
+
+    **(E) BUG — colisao de nome: a viscosidade artificial le o SURFACTANTE como velocidade
+    do som.** `pysph.sph.wc.basic.MomentumEquation.loop` usa `cij = 0.5*(d_cs + s_cs)` no
+    termo de Monaghan (`piij = -alpha*cij*muij/rho_ij`). Neste projeto `cs` e o ramnolipideo.
+    O `c0=0.35` passado ao construtor so entra no `dt_cfl`. Consequencias medidas no I3,
+    t=40: no corpo `cs` mediano 0.13 -> viscosidade artificial **2.7x mais fraca** que a
+    pretendida; no agar `cs`=0.012 -> **29x mais fraca**; e ela VARIA com o surfactante
+    (mais forte onde ha mais ramnolipideo). No balanco das vivas o termo e <=3.5e-3, entao
+    **nao e a causa das vivas lentas** — mas toda calibracao de `alpha_mon` desde o K.23
+    (licao #15, "brittle neck") foi feita com esta viscosidade distorcida. **NAO corrigido:**
+    renomear o campo de surfactante ou usar uma equacao de momento propria muda a numerica de
+    TODOS os runs e exige validacao separada (Liu §4.3 — o papel da viscosidade artificial
+    depende de `c` ser a velocidade do som). A mesma classe de risco vale para qualquer
+    equacao do PySPH que leia uma propriedade com nome generico (`cs`, `p`, `h`, `rho`):
+    **antes de nomear um campo novo, conferir se alguma equacao da biblioteca ja o le com
+    outro significado.**
+
+    **(F) As saidas, nenhuma rodada:** (A) dar motor ao meio — forca flagelar de magnitude
+    constante so tem dois regimes, pouco (gate ~0.1 em `rho_b`=0.15 -> u ~0.013) ou demais
+    (gate cheio -> u=0.05, os "cavaleiros" do P3); (B) por a frente sob a lei da proliferacao,
+    `dR/dt <= k*R/2` — ~3.6x menos motor na frente em t=40, risco de perder o fingering
+    (K.5, E4); (C) expansao por crescimento de fato (div v = k, ISPH, Violeau §5.4). Decisao
+    com a usuaria.
+
+    **(G) SAIDA B TESTADA E REPROVADA — B1-motor (`MOTOR_SCALE`=0.5: `beta` 5->2.5 E `f0`
+    3->1.5 pelo mesmo fator), 2026-09-11, `runs/B1_motor05_REPROVADO`, abortado em R99=1.25
+    pelo criterio pre-registrado.** Por que essa alavanca e nao outra: no regime
+    superamortecido `u = F/gamma`, entao escalar os dois motores juntos equivale a `gamma`
+    uniforme maior sem o custo de `dt`. Arrasto so na ponta foi descartado antes de rodar:
+    fingering E a ponta correndo mais que a baia, frear so a ponta ataca a instabilidade e o
+    salto de `gamma` no pescoco e o brittle neck (#15/#22). Reduzir `sigma` foi o E4, que
+    muda o proprio campo (e o reanalisei: frente 3x mais lenta, relevo 0.41x, e o `k` das
+    vivas caiu 3.6x porque a colonia compacta, as vivas ficam cercadas de vivas e `c_n`
+    relaxa a `k_src/(k_src+k_n*rho_b)`, que cruza o pin 0.6 em `rho_b`=0.4).
+
+    Comparacao em R99 IGUAL ([tools/compara_raio.py](tools/compara_raio.py)), R99=1.2:
+
+    | | I3 | B1-motor | |
+    |---|---:|---:|---|
+    | t | 14.3 | 28.3 | frente ~0.33x (previ 0.5x) |
+    | razao frente/proliferacao | 8.7x | ~2.5x | caiu 3.5x — **a alavanca funcionou** |
+    | vivas | 456 | **1029** | 2.3x |
+    | **vivas alem de 0.85*R99** | 38 | **113** | **3x — o objetivo foi atingido** |
+    | `k` mediano / `c_n` / %pin das vivas | 0.0109 / 0.83 / 25% | 0.0127 / 0.84 / 22% | **o mecanismo do E4 NAO ocorreu** |
+    | **amplitude** | 0.184 | **0.114 (0.62x)** | **reprova (limite 0.7x)** |
+    | R99/R90 | 1.30 | 1.18 | mais compacta |
+
+    E a perda de relevo vem DO INICIO, nao e flutuacao: 0.68x em R99~0.7, 0.77x em 1.04,
+    ~0.6x em 1.2. Visual (§11, [plots/B1motor_vs_I3_mesmoR.png](plots/B1motor_vs_I3_mesmoR.png)):
+    o I3 tem borda lobulada com tendrils nascendo; o B1 e disco denso de borda crenulada —
+    (a) *Modulated* / (c) *Circular* do Trinschek.
+
+    **LEITURA:** a biologia alcancou a frente EXATAMENTE como a analise previu — 3x mais
+    vivas na vanguarda, crescimento e nutriente intactos — e o relevo foi embora junto. Os
+    processos que dependem de TEMPO (colonizacao, `tau`=33 s; mitose; crescimento; e a
+    relaxacao difusiva/coesiva da perturbacao semeada) ganham 2-3x mais tempo por unidade de
+    avanco; o que depende de DESLOCAMENTO (wake) nao muda. **E a lei (L) (#67-L) em forma de
+    TAXA: nesta arquitetura o relevo so existe enquanto a frente corre a frente da
+    proliferacao.** A razao 3.6x nao e so um defeito a remover — e, com os dois pontos que
+    temos (E4, confundido; B1, limpo), a condicao de existencia dos dedos no modelo.
+    **Nao repetir a Saida B por outra alavanca de motor** (`gamma`, `beta` isolado, rampa
+    tardia) sem antes explicar por que ela escaparia desta leitura — a rampa so e candidata
+    se a perda de relevo for de NUCLEACAO, e aqui ela ja aparece em R99=0.7.
+
+    Codigo preservado parametrizado: `MOTOR_SCALE` em [main.py](main.py) (1.0 = I3
+    bit-a-bit) e `flag_f0` no scheme, que antes era literal `3.0` no `FlagellarForce`.
+
+    **(H) SAIDA C AVALIADA POR PROJECAO EXATA, SEM RODADA — e ela nao empurra a ponta**
+    (2026-09-11, [tools/projecao_crescimento.py](tools/projecao_crescimento.py)). Resolvi
+    offline a etapa de projecao do ISPH (Cummins & Rudman 1999, Violeau §5.4) restrita ao
+    crescimento: `lap(phi) = Gamma` na colonia, `phi = 0` no agar (superficie livre sem
+    pressao), `u_g = grad(phi)`, com `Gamma = G*r_growth*rho_b(1-rho_b)*f(c_n)`. Laplaciano de
+    Brookshaw em matriz esparsa, gradiente com KGC. **Validado no disco analitico
+    (`u = Gamma*r/2`): erro +1.3 a +1.8% em todos os raios.** E a velocidade que a colonia
+    teria se expandisse SO por proliferacao, medida sobre os frames reais:
+
+    | | `int Gamma dV` / area da colonia | crescimento da area real | corpo 0.3-0.7*R99: `u_g` vs real | frente >0.85*R99: `u_g` vs real |
+    |---|---:|---:|---:|---:|
+    | **E11** (G=1, sem mitose), t=21-80 | 2e-4 a 3e-4 /s | **50-75x maior** | 17-1000x menor | 0.0001 vs 0.05-0.11 |
+    | **I3** (G=5, mitose), t=20-40 | 0.007 /s | ~6x maior | **0.9-1.2x — ja bate** | **0.0002 vs 0.043 (200x)** |
+
+    **Dois achados.** (1) No E11 a biologia e ~1% do corpo, entao a expansao por
+    proliferacao seria 50-75x mais lenta que a real: a Saida C sobre o E11 **congelaria a
+    colonia** (area duplicando em ~1 h de simulacao). Para igualar seria preciso `G`~60 E
+    mitose, que o E11 nao tem. (2) Mesmo onde o crescimento e forte (I3), **a velocidade de
+    crescimento na ponta e ~zero**: num braco fino a superficie livre (`phi=0`) esta a 1-2 dx
+    em todo o contorno, entao o volume novo SAI PELOS LADOS — engorda o braco em vez de
+    alonga-lo. No corpo, o I3 ja se move exatamente na velocidade que a projecao preve (#86-C
+    confirmado por outro metodo). **Expansao por crescimento com superficie livre e
+    intrinsecamente anti-dendritica** — e o resultado de [T3] Giverso (expansao volumetrica ->
+    modo k=1, sem dendritos; quimiotatica -> dendritos), agora medido no nosso modelo.
+
+    **Consequencia para a lei proposta pela usuaria** ("expansao regida pela mitose"): nao e
+    o que a literatura de swarming descreve. [T2] Srinivasan e [T5] Bru atribuem o VOLUME do
+    swarm ao influxo osmotico de agua do agar (van't Hoff), nao a divisao, e [T3] mostra que
+    fonte volumetrica sozinha nao faz dendrito. A mitose POVOA; quem EXPANDE e agua + tracao
+    na frente. Juntando (G) e (H): frear a frente para a biologia alcancar mata o relevo, e
+    fazer a biologia empurrar a frente nao alcanca a ponta. **Saida C nao foi implementada no
+    solver**; a projecao fica como instrumento. Se retomada, a fonte de volume coerente com a
+    literatura e o influxo osmotico (Frente 4 / Objetivo 2 do §1), nao `Gamma` de divisao.
+    **Testado como construcao em seguida — REPROVADO, licao #87.**
+
+87. **OSM1 — INFLUXO OSMOTICO COMO CONSTRUCAO (absorver o agar vizinho das vivas) REPROVADO:
+    absorcao nao cria particula, e o que falta onde a colonia se rompe e PARTICULA** (2026-09-11,
+    `runs/OSM1_osmotico_REPROVADO`, controle `runs/OSM0_semdep`, base E11 reproduzida em
+    `runs/OSM_repro` — 45 colunas bit-a-bit nas iteracoes 0/200/400, inclusive a sequencia do
+    dt): arquitetura B da licao #58 ([T2]: o influxo puxa fluido DO agar para dentro) na forma de
+    taxa. Sobre o E11 (`git fe49aba`), wake e insert DESLIGADOS e agar vizinho de viva absorvido
+    com probabilidade `1-exp(-OSM_K*D*dt)`, `D = sum_j V_j rho_b_j W_ij` so sobre vivas
+    (`OSM_K`=32). O absorvido fica com `rho_b`=0 (QUIMICA de agar: nao cresce, nao produz `cs`,
+    nao consome `c_n`, colonizavel) e `phi_osm`=0.4 lido pela `BiomassEOS` como
+    `max(rho_b, phi_osm)` (MECANICA de colonia, fade 0.84). OSM0 = o mesmo codigo com
+    `use_osm=False`, para separar "tirar a deposicao" de "absorver". O codigo existe so no
+    snapshot dos runs (`runs/OSM1.../main.py`, `src/`), nao no repositorio.
+
+    | R99 igual | amplitude da colonia E11 / OSM1 | C5b (1.05 dx) E11 / OSM1 | agar limpo 0.5-0.9·R99 E11 / OSM1 |
+    |---|---|---|---|
+    | 1.2 | 0.358 / **0.111** | 37.7% / **2.9%** | 60% / 22% |
+    | 1.6 | 0.406 / **0.130** | 26.6% / **2.2%** | 71% / 36% |
+    | 2.0 | 0.357 / **0.147** | 21.1% / **1.7%** | 86% / 46% |
+
+    Reprova nos dois criterios pre-registrados (`runs/OSM1_osmotico_REPROVADO/CRITERIOS.md`:
+    C5b >= 50%, amplitude >= 0.8x), piorando com R99. Interrompido em t=26.6 (ver D).
+
+    **(A) O DIAGNOSTICO: um FOSSO DE VAZIO de 3-5 dx em volta do nucleo.** Varrendo a escala de
+    ligacao em t≈24: o OSM1 liga 1.7% a 1.05 dx, 3.6% a 3 dx e **100% a 5 dx** (alcance 1.07·R99)
+    — a casca absorvida mais os bracos e internamente continua, e um unico fosso a separa do
+    nucleo. E o espaco que as vivas DESOCUPARAM. Vazio `void_10` em t≈26: OSM1 **0.083**, OSM0
+    **0.077**, E11 **0.019**. A absorcao nao preencheu nada, e a pressao do absorvido nao trouxe
+    material para dentro do fosso (219x abaixo da Marangoni, licao #85).
+
+    **(B) O CONTROLE MOSTRA O QUE A DEPOSICAO FAZ.** Sem deposicao (OSM0), as vivas da ponta
+    CAVAM ~20 tuneis radiais no agar, com baias **99.7% limpas** e o miolo vazio — o padrao
+    dendritico e o RASTRO das trajetorias das vivas. Os bracos do E11 sao esses mesmos tuneis,
+    preenchidos pelo filler do wake ([plots/osm1_vs_osm0_vs_E11.png](plots/osm1_vs_osm0_vs_E11.png)).
+    E a licao #85 vista pelo outro lado: a forma vem da trajetoria, o material vem da deposicao.
+
+    **(C) A SELETIVIDADE DE PONTA QUE EU MEDI NAO SE MATERIALIZOU.** O `D` 9.5x maior na ponta
+    que na baia foi medido no E11 em t=49.6, com as vivas nas pontas. Em R99 1.2-2.0 as vivas
+    estao no nucleo e num anel na borda, entao o impulso vai para a borda INTEIRA, e o absorvido
+    ocupa as baias (agar limpo 22-46% contra 60-86%). E ha um erro de principio meu:
+    seletividade por unidade de TAXA nao e seletividade por unidade de TEMPO — uma viva parada
+    acumula exposicao indefinidamente, e a baia a absorve toda dentro de 2h.
+
+    **(D) CUSTO NUMERICO — o dt cai 30x em dois modos.** (1) A absorcao pega justamente o anel
+    de agar COMPRIMIDO que as vivas empurram (`rho/rho0` 1.7-2.0, licao #58); ao ganhar EOS ele
+    descomprime e os pares se afastam rapido (dt_cfl 1.2e-3 em t≈11, recuperado depois). (2) As
+    vivas da ponta ATRAVESSAM as absorvidas: 46 dos 51 pares com r < 0.05 dx envolvem absorvida
+    (minimo 0.0035 dx), e o dt_cfl `h*vij.xij/r²` vai a 1e-3. A t=26.6 os 23 s restantes
+    levariam ~3 h.
+
+    **(E) TRES ERROS MEUS DE PREDICAO.** (1) Previ C5 alto "por construcao", supondo que a viva
+    deixa rastro continuo de material — ela deixa um TUNEL vazio, e a absorcao so reveste as
+    paredes. (2) Previ o absorvido mecanicamente inerte — ele nao move material para o fosso,
+    mas custou o dt (D). (3) Antes de implementar, afirmei que tratar o absorvido "como o filler
+    do wake" evitaria a cegueira de `cs` do M3 e o consumo do M1 — errado: o filler do wake e
+    excluido do `cs` E consome nutriente. Corrigi antes de rodar separando quimica de agar e
+    mecanica de colonia.
+
+    **REGRA (fecha a classe de CONVERSAO):** neste SPH, a continuidade exige PARTICULAS no espaco
+    que a colonia desocupa. Toda regra que so muda propriedade de particula que ja existe —
+    matriz (serie M), piso (E7-E10), promocao (serie P), absorcao (OSM1) — e incapaz de
+    substituir a deposicao, porque no fosso nao ha particula para converter. Os mecanismos que
+    poem particula no espaco vazio sao so quatro: wake, insert, mitose (#81) e Pass N. **Nao
+    testado:** absorcao POR CIMA da deposicao (E11 + OSM). Pelo item (C) ela ocuparia as baias e
+    reduziria a amplitude (lei (L), #67-L); nao recomendado sem argumento novo.
+
+> **RETORNO AO BASELINE E11 (2026-09-11, decisao da usuaria).** Encerra a sequencia P/I/B1/
+> OSM. Feito por CONSTANTES, nao por checkout: todo o codigo posterior ao E11 fica no
+> repositorio, desligado (§10). Valores que reproduzem o E11:
+>
+> | constante | E11 | ultimo valor testado |
+> |---|---|---|
+> | `CS_SINK_K` / `CS_CEILING` | 0.0 / 0.5 | 200 / 0 (P20-P22) |
+> | `COL_CS_MIN` | 0.3 (`= 0.6*cs_max`) | 0.030 (P22) |
+> | `COL_FILLER_DONOR` | 0.0 | 1.0 |
+> | `GROWTH_MASS_GAIN` / `GROWTH_GAIN_RHO_B_MIN` | 1.0 / 0.0 | 5.0 / 0.05 (I3) |
+> | `use_mitose` | False | True (P15-I3) |
+> | `WAKE_MASS_BUDGET` / `WAKE_ATTACH` | 0.12 / 0.0 | 0.009 (I3) / 1.05 |
+> | `INOC_MODE` (particles.py) | "quartica" | "plato" (serie I) |
+> | `total_sim_time` | 100 | 40 |
+> | `MOTOR_SCALE`, `FLAG_F0`, `FLAG_GATE_*`, `NOISE_AMP`, `SEED_AMP` | ja nos valores do E11 | — |
+>
+> **Duas reescritas "matematicamente iguais" quebravam o bit-a-bit, corrigidas:** (a) o gate
+> flagelar dividia a metade de cima por `gate_hi - gate_mid` = 0.19999999999999996, e o E11
+> por 0.2 — agora as duas metades usam `gate_mid - gate_lo`; (b) o inoculo quartico usava
+> `0.30*(1 + SEED_FRAC*cos)`, que difere de `0.30 + 0.06*cos` em ate 5.5e-17 — voltou a
+> forma historica (o comentario do codigo afirmava "bit-identico" e nao era). **Regra:** ao
+> parametrizar uma expressao, conferir a igualdade em PONTO FLUTUANTE contra a forma antiga
+> (`np.array_equal`), nao so na algebra — a divergencia de 1 ulp se amplifica caoticamente e
+> invalida qualquer comparacao bit-a-bit posterior. Consequencia: os runs da serie P/I que
+> usaram o gate parametrizado ou o inoculo `SEED_FRAC` nao reproduzem bit-a-bit com o codigo
+> atual (so na 16a casa).
+>
+> **Limpeza de `plots/` (mesma data):** 51 figuras de diagnostico das series P/I/E removidas
+> (versionadas, recuperaveis pelo git). Ficaram os scripts e as figuras citadas neste
+> documento mais `traj_E11.png` e `E11_C5.png`.
+
+88. **BRACOS DESLOCADOS DO NUCLEO — o defeito que a figura de tese expos, e o P2 como
+    baseline** (2026-09-11, `plots/fig_tese.py`, `tools/rank_runs.py`): a figura do E11 em t=50
+    mostrou bracos que comecam separados do nucleo. Medido: cada um e uma ILHA de filler do
+    wake mais algumas vivas, separada do corpo por 4-8 dx de AGAR (particulas presentes, nao
+    vazio). O braco ja NASCE solto — no ponto medido, um grumo aparece em t=29 longe do corpo
+    e cresce para fora sem nunca se ligar. Mecanismo da licao #73: o wake deposita onde a viva
+    ESTAVA na chamada anterior, e ela anda 2-16 dx entre chamadas; o intervalo fica agar.
+
+    **Nao se resolve na figura** — ligar os bracos na renderizacao seria desenhar material que
+    nao existe (a licao #72-K so autoriza fechar buracos ENCLAUSURADOS). Resolve-se na
+    simulacao, e a alavanca ja existia: `COL_FILLER_DONOR=1` (P2). Com o filler como doador, o
+    agar entre o braco e o nucleo e recrutado na densidade do filler (~0.3) e vira colonia.
+    **E consistente com a licao #87:** conversao funciona onde HA particula; o fosso do OSM1 era
+    vazio, este e agar.
+
+    **Ranking da serie P inteira com as mesmas reguas** (janela t in [35, 50]; forma em R99
+    igual; painel em `plots/rank_serieP_t50.png`). Oito rodadas (P5, P7, P13, P15-P17, P21,
+    P22) viraram blob e duas (P8, P9) disco — e estas tem os MELHORES numeros de continuidade
+    (C5b 50-76%, zero braco solto), a armadilha da licao #76. Separando pela classe:
+
+    | t≈50 | bracos soltos | fora do corpo | C5a | amplitude | dedos | agar limpo | fundo baia |
+    |---|---:|---:|---:|---:|---:|---:|---:|
+    | E11 | 5.2 | 8.1% | 0.25 | 0.345 | 35 | 89% | 1.27 |
+    | P1 | 3.1 | 6.3% | 0.29 | 0.364 | 38 | 89% | 1.12 |
+    | **P2** | **1.3** | **2.0%** | **0.45** | 0.312 | 36 | 78% | 1.81 |
+    | P3 | 3.3 | 3.8% | 0.21 | **0.412** | **40** | **90%** | **1.08** |
+    | P4 | 5.6 | 8.6% | 0.35 | 0.308 | 40 | 72% | 1.48 |
+    | P6 | 5.3 | 11.5% | 0.18 | 0.438 | 34 | 95% | 1.13 |
+
+    O P2 e o unico que resolve os bracos soltos (1.3 contra 5.2) mantendo o fingering; custo
+    ~10% de relevo, baias mais rasas (fundo 1.81 vs 1.27) e 78% de agar limpo. Expansao igual
+    (dR/dt 0.078 vs 0.080), pressao sem picos, 4.4x mais vivas (1206 vs 272), 8% delas pinadas
+    contra 37%.
+
+    **CORRECAO DA LICAO #74 — o `WAKE_ATTACH` NAO resolve.** Os 41% de continuidade do P4 eram
+    de UM instante; na janela t in [35, 50] o C5b e **18 +- 16%**, dentro do ruido do P2, e na
+    figura ele fragmenta tanto quanto o E11 (5.6 bracos soltos). E o erro que a regra de janela
+    do §2.2 existe para evitar, cometido antes da regra.
+
+    **P2P3 (P2 + gate flagelar [0.1, 0.8]) — REPROVADO** (`runs/P2P3`, criterios pre-registrados
+    em `runs/P2P3/CRITERIOS.md`). O P3 tinha o melhor relevo da classe e o P2 a melhor ligacao;
+    a pergunta era se somavam. Nao somam. A segunda realizacao do P2 (`runs/P2_t100`, mesma
+    config com outra ordem de arredondamento) da o piso de ruido:
+
+    | t in [35, 50] | P2 | P2 (2a realizacao) | P2P3 |
+    |---|---:|---:|---:|
+    | bracos soltos / fora do corpo | 1.3 / 2.0% | 2.6 / 3.5% | **3.6 / 4.4%** |
+    | C5a | 0.45 | 0.43 | **0.24** |
+    | amplitude (R99=2.4) / fundo da baia | 0.312 / 1.81 | 0.317 / 1.53 | 0.345 / 1.47 |
+    | picos de pressao > 4 | 0% | 0% | 13% |
+    | cavaleiros (p90/p50 do deslocamento) | 2.0 | 1.85 | 2.1 |
+
+    O gate alargado DESFAZ a ligacao do P2: C5a volta ao nivel do E11 (0.24), 10x o ruido
+    entre realizacoes. O ganho de relevo e ~10%, longe do salto do P3 sobre o E5 (0.412). Os
+    cavaleiros NAO voltaram (2.1 contra 6.8 do P3) — com as vivas extras do P2 no corpo a
+    distribuicao de deslocamento fica estreita; o que se perde deve ser a ponte de recrutas
+    entre braco e nucleo, empurrada para fora pelo gate (nao medido diretamente). O frame de
+    t=50 isolado parece otimo ([plots/fig_P2P3_t50.png](plots/fig_P2P3_t50.png)) — e o ruido
+    entre realizacoes (bracos soltos 1.3 vs 2.6 no MESMO P2) que torna a janela obrigatoria.
+    **O baseline segue P2 puro.**
+
+    **SEGUNDA METADE DO P2 (`runs/P2_t100`, interrompido em t=87.4) — janela util t ≲ 75.**
+    Ganha do E11 no defeito tardio: o componente do centro fica em ~70% da colonia ate t=77,
+    enquanto o do E11 despenca a 83 particulas (1%) em t=80 — o nucleo descolando (licao #73).
+    E os bracos seguem finos, longos e ligados ([plots/cmp_E11_P2_tardio.png](plots/cmp_E11_P2_tardio.png)).
+    Dois defeitos proprios, ambos crescendo com o recrutamento (vivas 1333 -> 3957 de t=51 a 77):
+    (a) o corpo vira um DISCO que engole as baias — fundo 1.66 -> 2.66 contra 1.31 -> 1.73 do
+    E11; (b) **aglomeracao em cascata apos t≈75**: pares a menos de 0.05 dx vao de 779 (t=70)
+    a **5644** (t=87), 1478 deles entre vivas recrutadas (`rho_b` 0.1-0.5), com `rho/rho0` p99
+    5.9; o E11 tambem acumula pares (1246 em t=87), mas devagar e quase sem vivas. O dt caiu a
+    ~1e-4 e o run foi interrompido — levaria horas para t=100. Mecanismo provavel: a recruta
+    em `rho_b`~0.2 tem `fade_rep`~0.16 na `BiomassEOS` e, quando dois vizinhos chegam muito
+    perto, o gradiente do spline cubico vai a zero e nada os separa — instabilidade de
+    PAREAMENTO (Liu §6.4; o shifting, com cap 0.0006h, nao acompanha). **Nao corrigido.**
+    Candidatas, nenhuma testada: kernel Wendland C2 (sem instabilidade de pareamento — Dehnen
+    & Aly 2012, MNRAS 425:1068), piso de repulsao na EOS para vivas, ou shifting mais forte na
+    banda `rho_b` 0.1-0.5 (Lind 2012 [T8]).
+
+    **DETERMINISMO DEPENDE DO NUMERO DE THREADS (verificado, `runs/_verif_P2_5t`).** O
+    `P2_t100` rodou com `OMP_NUM_THREADS=5` e diverge do P2 original (10 threads) a partir da
+    iteracao 600, na 4a-5a casa (t 12.7260 vs 12.7259), amplificando-se depois. Uma copia com
+    5 threads reproduz o `P2_t100` exatamente nas iteracoes 0-600. Causa provavel: a ordem das
+    somas SPH sobre vizinhos muda com a particao entre threads. **Regra:** comparacao
+    bit-a-bit so vale com o MESMO numero de threads (e as verificacoes de hoje, `_verif_E11` e
+    `_verif_P2`, usaram o padrao da maquina, 10); e duas rodadas da mesma config com threads
+    diferentes sao REALIZACOES distintas — usar a diferenca entre elas como piso de ruido.
 
 75. **A LARGURA DO BRACO: cintura em r/R99=0.65, barriga em 0.83, razao 2.1x — e a barriga
     ACOMPANHA A FRENTE. Quatro alavancas refutadas por medicao antes de rodar, e o

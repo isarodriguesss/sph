@@ -1,0 +1,82 @@
+Generating output in /Users/isa/Developer/sph/runs/_verif_P2_5t/main_output
+----------------------------------------------------------------------
+No of particles:
+  fluid: 68121
+  solid: 2108
+  Total: 70229
+----------------------------------------------------------------------
+Setup took: 0.07355 secs
+--------------------------------------------------
+Tempo: 0.00s | Iteração: 0
+Velocidade Máx: 0.4292
+Contraste CS: 828.2406
+c_n: mean=0.9990 max=1.0000 contrast=0.79 | massa: 197.51
+sigma_a braços biomassa (n=67): min=1.000 mean=1.000 frac<0.85=0.00% | c/ inseridas (n=0): mean=1.000 frac<0.85=0.00%
+vazio areal: >0.7dx=2.55% >1.0dx=0.00% >1.5dx=0.00%  (alvo: >1.5dx -> 0)
+motor na biomassa: a_mar med=1.530 p95=2.10 | bracos: cs=0.4909 c_n=0.642   (S0: med=3.38 p95=9.46 cs=0.353 c_n=0.552)
+biomassa real: total=0.2543 bracos=0.1886 | n_pinned(rho_b>=0.8)=43
+empacotamento: clump(<0.5dx)=0.0% nn_mediana=0.919dx | shift processa 68 part.
+junção (so vivas): c_n=0.997 rho_b_p90=0.062 n_bio=11 | vale ao longo do braço=0.748 em r=0.27   (alvo: > 0.5)
+Acelerações:
+  > Marangoni (líq): 2.24
+  > Drag:            0.00 (Freio)
+  > Pressão (est):   2.99
+  > Total |a|:       5.17
+wake inserção t=2.3s: 145 inseridas
+--------------------------------------------------
+Tempo: 3.75s | Iteração: 200
+Velocidade Máx: 0.1644
+Contraste CS: 91.0816
+c_n: mean=0.9986 max=1.0000 contrast=0.63 | massa: 197.94
+sigma_a braços biomassa (n=70): min=0.623 mean=0.923 frac<0.85=40.00% | c/ inseridas (n=76): mean=0.971 frac<0.85=19.86%
+vazio areal: >0.7dx=25.35% >1.0dx=14.39% >1.5dx=2.85%  (alvo: >1.5dx -> 0)
+motor na biomassa: a_mar med=0.217 p95=4.71 | bracos: cs=0.3770 c_n=0.794   (S0: med=3.38 p95=9.46 cs=0.353 c_n=0.552)
+biomassa real: total=0.2644 bracos=0.1204 | n_pinned(rho_b>=0.8)=43
+empacotamento: clump(<0.5dx)=20.9% nn_mediana=0.749dx | shift processa 141 part.
+junção (so vivas): c_n=0.981 rho_b_p90=0.298 n_bio=69 | vale ao longo do braço=1.000 em r=0.00   (alvo: > 0.5)
+Acelerações:
+  > Marangoni (líq): 7.76
+  > Drag:            9.72 (Freio)
+  > Pressão (est):   2.89
+  > Total |a|:       10.42
+C3 inserção t=3.7s: 2 partículas inseridas
+wake inserção t=3.7s: 56 inseridas
+wake inserção t=6.1s: 110 inseridas
+--------------------------------------------------
+Tempo: 8.21s | Iteração: 400
+Velocidade Máx: 0.0742
+Contraste CS: 55.7962
+c_n: mean=0.9978 max=1.0000 contrast=0.63 | massa: 198.43
+sigma_a braços biomassa (n=68): min=0.673 mean=0.994 frac<0.85=13.24% | c/ inseridas (n=192): mean=0.975 frac<0.85=10.77%
+vazio areal: >0.7dx=12.74% >1.0dx=4.01% >1.5dx=0.25%  (alvo: >1.5dx -> 0)
+motor na biomassa: a_mar med=0.167 p95=2.90 | bracos: cs=0.3292 c_n=0.900   (S0: med=3.38 p95=9.46 cs=0.353 c_n=0.552)
+biomassa real: total=0.2396 bracos=0.0510 | n_pinned(rho_b>=0.8)=43
+empacotamento: clump(<0.5dx)=16.7% nn_mediana=0.749dx | shift processa 255 part.
+junção (so vivas): c_n=0.954 rho_b_p90=0.317 n_bio=72 | vale ao longo do braço=0.000 em r=0.34   (alvo: > 0.5)
+Acelerações:
+  > Marangoni (líq): 4.75
+  > Drag:            6.19 (Freio)
+  > Pressão (est):   2.70
+  > Total |a|:       1.48
+C3 inserção t=8.2s: 4 partículas inseridas
+wake inserção t=8.2s: 32 inseridas
+wake inserção t=10.6s: 22 inseridas
+--------------------------------------------------
+Tempo: 12.73s | Iteração: 600
+Velocidade Máx: 0.0910
+Contraste CS: 39.6954
+c_n: mean=0.9972 max=1.0000 contrast=0.63 | massa: 198.61
+sigma_a braços biomassa (n=69): min=0.692 mean=1.017 frac<0.85=5.80% | c/ inseridas (n=236): mean=0.976 frac<0.85=5.57%
+vazio areal: >0.7dx=10.39% >1.0dx=2.16% >1.5dx=0.05%  (alvo: >1.5dx -> 0)
+motor na biomassa: a_mar med=0.230 p95=2.94 | bracos: cs=0.3244 c_n=0.929   (S0: med=3.38 p95=9.46 cs=0.353 c_n=0.552)
+biomassa real: total=0.2547 bracos=0.0474 | n_pinned(rho_b>=0.8)=43
+empacotamento: clump(<0.5dx)=16.2% nn_mediana=0.742dx | shift processa 297 part.
+junção (so vivas): c_n=0.938 rho_b_p90=0.240 n_bio=71 | vale ao longo do braço=0.000 em r=0.48   (alvo: > 0.5)
+Acelerações:
+  > Marangoni (líq): 5.95
+  > Drag:            7.31 (Freio)
+  > Pressão (est):   2.60
+  > Total |a|:       1.20
+C3 inserção t=12.7s: 6 partículas inseridas
+wake inserção t=12.7s: 21 inseridas
+Run took: 316.16450 secs

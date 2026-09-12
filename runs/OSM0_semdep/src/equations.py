@@ -2,16 +2,10 @@ from pysph.sph.equation import Equation
 
 
 class BiomassGrowth(Equation):
-    def __init__(self, dest, sources, r_growth, rho_max, density_limit=1.1,
-                 motile_boost=0.0, v_sat=0.01, mass_gain=1.0,
-                 gain_rho_b_min=0.0):
+    def __init__(self, dest, sources, r_growth, rho_max, density_limit=1.1):
         self.r_growth = r_growth
         self.rho_max = rho_max
         self.density_limit = density_limit
-        self.motile_boost = motile_boost
-        self.v_sat = v_sat
-        self.mass_gain = mass_gain
-        self.gain_rho_b_min = gain_rho_b_min
 
         super(BiomassGrowth, self).__init__(dest, sources)
 
@@ -25,8 +19,6 @@ class BiomassGrowth(Equation):
         d_c_n,
         d_is_filler,
         d_is_env,
-        d_u,
-        d_v,
     ):
         d_a_rho_b_grown[d_idx] = 0.0
         d_am[d_idx] = 0.0
@@ -48,41 +40,14 @@ class BiomassGrowth(Equation):
                 t = (c_n - 0.4) / 0.4
                 c_n_factor = t * t * (3.0 - 2.0 * t)
 
-            boost = 1.0
-            if self.motile_boost > 0.0:
-                vmag = (d_u[d_idx] * d_u[d_idx] + d_v[d_idx] * d_v[d_idx]) ** 0.5
-                f = vmag / self.v_sat
-                if f > 1.0:
-                    f = 1.0
-                boost = 1.0 + self.motile_boost * f
-
             rate = (
-                self.r_growth
-                * (1.0 - d_rho_b_grown[d_idx] / self.rho_max)
-                * c_n_factor
-                * boost
+                self.r_growth * (1.0 - d_rho_b_grown[d_idx] / self.rho_max) * c_n_factor
             )
             d_a_rho_b_grown[d_idx] = rate * d_rho_b_grown[d_idx]
             # licao #50: `rate*m` nao e proporcional a rho_b, entao particula de traco
             # ganha massa a taxa cheia. Inofensivo em r_growth=0.02 (por isso o C4
             # funciona), runaway assim que a taxa sobe: D3b mediu +154%.
-            # `mass_gain` multiplica SO a massa. `d_a_rho_b_grown` fica intocado, entao
-            # `rho_b` (que e DENSIDADE) nao muda e a producao de `cs` — que depende de
-            # `qs(rho_b)`, intensivo — nao muda tampouco. O que cresce e o VOLUME, que a
-            # mitose converte em particula nova. Fisica: influxo de van't Hoff ([T2]) —
-            # osmolitos puxam agua do agar, a colonia ganha volume sem ganhar celulas.
-            # P18: o ganho so vale acima de `gain_rho_b_min`. Medido no P16 em t=100, a
-            # compressao esta TODA no limbo — 42% dele acima de `rho/rho0`=4, p99 = 8.22,
-            # contra p99 = 3.96 da viva e **0%** das maduras acima de 4. O limbo engorda
-            # porque o ganho valia para tudo com `rho_b>0`, e nao tem como se expandir
-            # (`fade_rep`=0 abaixo do quorum — o bloqueio do P13). Restringir o ganho a
-            # quem pode DIVIDIR ataca a fonte; o gate de densidade nao atacava (as
-            # maduras estao em `rho` mediano 1.69, o corpo tipico).
-            ganho = 1.0
-            if d_rho_b_grown[d_idx] > self.gain_rho_b_min:
-                ganho = self.mass_gain
-
-            d_am[d_idx] = ganho * d_m[d_idx] * d_a_rho_b_grown[d_idx] / self.rho_max
+            d_am[d_idx] = d_m[d_idx] * d_a_rho_b_grown[d_idx] / self.rho_max
 
 
 class BiomassColonization(Equation):
@@ -114,20 +79,12 @@ class BiomassColonization(Equation):
        acrescenta. Sem ele, 45% do recrutamento cai na frente e afoga o gradiente
        de Marangoni (licao #48).
     4. AUTO-GATEADA pela vizinhanca — numa baia as duas somas vao a zero.
-
-    `target_frac` escala o alvo. Com alvo = doador cheio e `k_col` alto, o equilibrio
-    custa +432% de producao efetiva de `cs` sobre o gate 0.30 — foi esse equilibrio que
-    a licao #49 mediu matando o motor em `k_col`=0.1/0.3. A fracao e o que poe o
-    mecanismo dentro do orcamento sem desacelerar a rampa.
     """
 
-    def __init__(self, dest, sources, k_col, rho_max, cs_min, filler_donor=0.0,
-                 target_frac=1.0):
+    def __init__(self, dest, sources, k_col, rho_max, cs_min):
         self.k_col = k_col
         self.rho_max = rho_max
         self.cs_min = cs_min
-        self.filler_donor = filler_donor
-        self.target_frac = target_frac
         super(BiomassColonization, self).__init__(dest, sources)
 
     def initialize(self, d_idx, d_rho_b_smooth, d_rho_b_w2):
@@ -147,12 +104,7 @@ class BiomassColonization(Equation):
         d_rho_b_w2,
         d_rho_b_smooth,
     ):
-        ok = 1.0
-        if s_is_env[s_idx] > 0.5:
-            ok = 0.0
-        if s_is_filler[s_idx] > 0.5 and self.filler_donor < 0.5:
-            ok = 0.0
-        if ok > 0.5:
+        if s_is_filler[s_idx] < 0.5 and s_is_env[s_idx] < 0.5:
             vw = (s_m[s_idx] / s_rho[s_idx]) * s_rho_b_grown[s_idx] * WIJ
             d_rho_b_smooth[d_idx] += vw
             d_rho_b_w2[d_idx] += vw * s_rho_b_grown[s_idx]
@@ -177,7 +129,7 @@ class BiomassColonization(Equation):
         ):
             den = d_rho_b_smooth[d_idx]
             if den > 1e-9:  # sem doador vivo na vizinhanca: evita 0/0
-                local = self.target_frac * (d_rho_b_w2[d_idx] / den)
+                local = d_rho_b_w2[d_idx] / den
                 deficit = local - d_rho_b_grown[d_idx]
                 if deficit > 0.0:
                     c_n = d_c_n[d_idx]
@@ -500,8 +452,6 @@ class SurfactantEquation(Equation):
         lambda_ext_ratio=5.0,
         k_consume=0.0,
         cs_max=0.5,
-        cs_sink_k=0.0,
-        prod_cn=1.0,
         hill_k=0.1,
         lambda_bio_ratio=2.0,
     ):
@@ -514,8 +464,6 @@ class SurfactantEquation(Equation):
         self.lambda_ext = lambda_ * lambda_ext_ratio
         self.k_consume = k_consume
         self.cs_max = cs_max
-        self.cs_sink_k = cs_sink_k
-        self.prod_cn = prod_cn
         super(SurfactantEquation, self).__init__(dest, sources)
 
     def initialize(self, d_idx, d_a_c_s):
@@ -584,15 +532,11 @@ class SurfactantEquation(Equation):
             rho_b = d_rho_b_grown[d_idx]
             qs = rho_b * rho_b / (rho_b * rho_b + self.hill_k2)
 
-            saturation = 1.0
-            if self.cs_max > 0.0:
-                saturation = 1.0 - d_cs[d_idx] / self.cs_max
-                if saturation < 0.0:
-                    saturation = 0.0
+            saturation = 1.0 - d_cs[d_idx] / self.cs_max
+            if saturation < 0.0:
+                saturation = 0.0
 
-            c_n_factor = 1.0
-            if self.prod_cn > 0.5:
-                c_n_factor = d_c_n[d_idx] / (d_c_n[d_idx] + 0.1)
+            c_n_factor = d_c_n[d_idx] / (d_c_n[d_idx] + 0.1)
 
             production = self.sigma * qs * saturation * d_noise[d_idx] * c_n_factor
 
@@ -603,19 +547,7 @@ class SurfactantEquation(Equation):
             else:
                 lambda_eff = self.lambda_bio
 
-            # CS_SINK_K: sumidouro de 2a ordem, alternativa ao teto `(1-cs/cs_max)`.
-            # Sob o teto `cs_inf` e cego a quantidade de biomassa (razao interior/limbo
-            # 1.05x) e biomassa nova nao gera gradiente — raiz das refutacoes B2/D5/P8/P9
-            # (licao #77). Com `-k*cs^2` a razao vai a 2.98x e `k` fixa a AMPLITUDE sem
-            # tocar a estrutura, porque `cs ~ sqrt(P/k)`. Nao inverte o perfil como o
-            # sumidouro proporcional a `rho_b` (licao #73) porque nao depende de `rho_b`.
-            # Fisica: acima da CMC o ramnolipideo se auto-associa em micelas, que saem do
-            # pool de monomero interfacialmente ativo — taxa superlinear na concentracao.
-            sink = lambda_eff * d_cs[d_idx]
-            if self.cs_sink_k > 0.0:
-                sink += self.cs_sink_k * d_cs[d_idx] * d_cs[d_idx]
-
-            d_a_c_s[d_idx] += production - sink
+            d_a_c_s[d_idx] += production - lambda_eff * d_cs[d_idx]
 
 
 class MarangoniForce(Equation):
@@ -808,9 +740,11 @@ class BiomassEOS(Equation):
         self.agar_fade = agar_fade
         super(BiomassEOS, self).__init__(dest, sources)
 
-    def loop(self, d_idx, d_rho, d_p, d_rho_b_grown):
+    def loop(self, d_idx, d_rho, d_p, d_rho_b_grown, d_phi_osm):
         ratio = d_rho[d_idx] / self.rho0
         rho_b = d_rho_b_grown[d_idx]
+        if d_phi_osm[d_idx] > rho_b:
+            rho_b = d_phi_osm[d_idx]
 
         # `agar_fade` da REPULSAO ao meio sem biomassa (atracao continua zero: agar nao
         # e coeso). Com agar_fade=0 o agar tem `|p| = 0` EXATO mesmo comprimido a
@@ -960,11 +894,8 @@ class OsmolyteProduction(Equation):
 
 
 class FlagellarForce(Equation):
-    def __init__(self, dest, sources, f0, gate_lo=0.2, gate_hi=0.6):
+    def __init__(self, dest, sources, f0):
         self.f0 = f0
-        self.gate_lo = gate_lo
-        self.gate_hi = gate_hi
-        self.gate_mid = 0.5 * (gate_lo + gate_hi)
         super().__init__(dest, sources)
 
     def initialize(self, d_idx, d_au_flag, d_grad_cs_x, d_grad_cs_y):
@@ -1004,12 +935,12 @@ class FlagellarForce(Equation):
         d_is_filler,
     ):
         rho_b = d_rho_b_grown[d_idx]
-        # Gate: swarmers, pico no meio da banda [gate_lo, gate_hi]
-        if rho_b >= self.gate_lo and rho_b <= self.gate_hi and d_is_filler[d_idx] < 0.5:
-            if rho_b < self.gate_mid:
-                t = (rho_b - self.gate_lo) / (self.gate_mid - self.gate_lo)
+        # Gate: swarmers na borda apenas, pico em rho_b=0.35
+        if rho_b >= 0.2 and rho_b <= 0.6 and d_is_filler[d_idx] < 0.5:
+            if rho_b < 0.4:
+                t = (rho_b - 0.2) / 0.2
             else:
-                t = (self.gate_hi - rho_b) / (self.gate_mid - self.gate_lo)
+                t = (0.6 - rho_b) / 0.2
             gate = t * t * (3.0 - 2.0 * t)
 
             gx = d_grad_cs_x[d_idx]

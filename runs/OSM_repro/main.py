@@ -122,11 +122,7 @@ gamma = 60.0
 # NAO compensou a amplitude: `a_mar = beta*|grad cs|` caiu de 11.50 para 3.71, a frente
 # parou e `R99` foi de 4.58 para 1.85. Como a FORCA e o que se preserva, a razao
 # `|F_mar|/B_tension` da licao #24 nao muda — o risco de fratura e o mesmo do E3.
-# MOTOR_SCALE (B1-motor, licao #86): a frente corre 3.6x a frente da proliferacao. Regime
-# superamortecido (u = F/gamma): escalar beta E f0 pelo MESMO fator equivale a gamma*1/s
-# (Liu §4.1) sem o custo de dt. 1.0 restaura o I3 bit-a-bit.
-MOTOR_SCALE = 1.0  # 0.5 REPROVADO (licao #86-G): relevo 0.62x o I3 em R99=1.2
-beta = 5.0 * MOTOR_SCALE
+beta = 5.0
 # HILL_K — limiar do quorum sensing em `qs = rho_b^2/(rho_b^2 + K^2)`. Ficou em 0.1 desde
 # o inicio do projeto: o joelho da curva cai em 10% da densidade de saturacao, ou seja
 # `qs(0.1) = 0.5` — MEIA producao com um decimo da biomassa. E o que torna a banda
@@ -154,182 +150,7 @@ LAMBDA_BIO_RATIO = 2.0
 # amplitude que colapsou o E4.
 # Historico: H1 (K=0.3 sobre o C4) deu contraste +15% mas AR 4.97; E2 (K=0.15 sobre o
 # N1) deu AR 6.31 — o K MELHORA o AR quando ha nutriente sustentado.
-# PROPOSTA 1 do docs/PLANO_C5_CONTINUIDADE.md — PERFIL MONOTONO DE `cs`.
-#
-# O problema: `cs` e PLANO dentro da colonia (nucleo 0.486, juncao 0.490, mid-arm 0.490,
-# rim 0.481). Como a forca e `-beta*grad(cs)`, campo plano da forca ZERO no interior — so
-# o rim, onde `cs` cai para o agar, e empurrado. Por isso a expansao e uma vanguarda de 35
-# particulas cavalgando 50-77 dx enquanto o corpo anda 7 (razao p90/p50 = 5.0).
-#
-# Duas causas, ambas necessarias de remover (§3.3.6, quatro configuracoes avaliadas):
-#   TETO   — `P/cs_max ~ 14` contra `lambda_eff` = 0.30: o teto E o sumidouro dominante e
-#            satura tudo. Sozinho removido, o perfil ainda nao serve (ver c_n abaixo).
-#   c_n    — vale 0.1 no nucleo e 0.8 nos bracos, entao suprime a producao justo onde ela
-#            deveria ser maxima; cria um bump na juncao (nucleo 17.4 < juncao 24.6).
-#            Remover tambem APROXIMA o modelo do Xavier/CCR — ver a tensao ja documentada
-#            em §3.2 Frente 2.
-#
-# Perfil previsto SEM os dois: nucleo 8.3 -> juncao 7.8 -> mid-arm 7.0 -> rim 3.4 ->
-# agar 0.23. Unico MONOTONO decrescente: push outward em TODA a colonia (§3.3.4).
-#
-# `sigma` cai 4.2x porque sem teto o sistema e LINEAR em sigma e `a_mar = beta*|grad cs|`
-# so depende do produto `beta*sigma`. Alvo: `a_mar` do corpo no orcamento §8 (~6).
-# SUMIDOURO QUADRATICO (P10) — alternativa ao teto. `CS_SINK_K = 0` mantem o teto puro,
-# que e o comportamento de toda a serie ate aqui. Ao ligar, poe-se `CS_CEILING = 0`.
-#
-#   producao = sigma*qs(rho_b)*(1-cs/CS_CEILING)*c_n_f      sumidouro = lambda*cs + K*cs^2
-#
-# `cs_inf` por zona, medido (licao #77): sob o TETO a razao interior/limbo e **1.05x** —
-# uma particula com 20x mais biomassa produz o mesmo `cs` de equilibrio, entao biomassa
-# nova nao gera gradiente, so preenche area. Com o sumidouro quadratico a razao vai a
-# **2.98x** e o pico cai no MID-ARM (0.83 contra 0.58 do interior e 0.19 do limbo) — a
-# linha da §3.3.4 marcada como "dendritica seletiva", o perfil do M-B.10.
-#
-# `K` fixa a AMPLITUDE sem tocar a ESTRUTURA (medido com K=3/10/30: razao 2.97/2.98/2.99),
-# porque `cs ~ sqrt(P/K)`. Com K=10 o maximo e 0.83, contra os 14.3 da remocao pura do teto
-# no Y3 (licao #56) — a faixa dinamica cresce como raiz, nao linear.
-# P10 (K=10) REPROVADO na morfologia (2026-09-03): a fisica funcionou — mesma biomassa
-# (1.1 nos dois em t=45) e `R99` 5.85 contra 3.33 do P5, `contrast_cs` 30 contra 5,
-# `max_cs` destravado em 1.13 e ESTAVEL (contra 14.3 da remocao pura do teto no Y3).
-# Mas o motor ficou 4x acima do orcamento do §8: `a_mar` mediana **24.34** (P5: 7.68),
-# maximo 36.08, razao |F_mar|/B_tension = **887** (P5: 280). E o brittle neck da licao #24
-# reproduzido — bracos viram filamentos. Reprovado na leitura visual (§11) antes da medicao.
-#
-# P11: K = 90. Como `cs ~ sqrt(P/K)`, K escala a AMPLITUDE sem tocar a ESTRUTURA (razao
-# interior/limbo fica 2.98x para K=3/10/30). `a_mar` previsto = 24.34/sqrt(9) = **8.1**,
-# o nivel do P5 (7.68), com o campo estruturado. Efeito colateral desejado: com o motor no
-# ritmo do P5, o `R99` termina perto de 5.5 em t=100 e nao bate na parede util de 6.8 —
-# o P10 cruzaria em t~55.
-# P14 (2026-09-04) — CALIBRACAO PELO FOCO MORFOLOGICO, nao pela expansao. O P12 (K=90)
-# tinha `a_mar` mediana **9.06** contra 4.23 do P5: motor 2x mais forte, e foi isso que
-# rarefez (6 dedos em t=100 contra 18, disco 96% agar). O alvo aqui e IGUALAR a amplitude
-# do P5 e ficar com o ganho estrutural, que nao depende de K (`cs ~ sqrt(P/K)` escala a
-# amplitude; a razao `cs_inf` interior/limbo fica 2.98x para qualquer K).
-#
-#   K=200 -> max_cs 0.253, a_mar previsto 5.4, razao |F_mar|/B_tension 159 (P5: 154)
-#
-# HIPOTESE: sob o teto `cs_inf` e PLANO dentro da colonia (razao 1.05x), entao o gradiente
-# so existe na fronteira colonia-agar — a forca atua na ponta e o corpo nao e puxado, dai o
-# buraco no rastro. Com o sumidouro `cs_inf` varia DENTRO do braco (0.575 interior, **0.828
-# mid-arm**, 0.193 limbo): o gradiente ao longo do dedo puxa material do nucleo para o
-# mid-arm e empurra o mid-arm para fora. Esteira ao longo do braco, em vez de so a ponta.
-CS_SINK_K = 0.0  # BASELINE E11 (2026-09-11). 200 = P20/P21, REPROVADOS (licoes #80/#84).
-# O sumidouro e o unico mecanismo medido que cria contraste AZIMUTAL: cs(baia)/cs(dedo)
-# 1.00 (teto) -> 0.34 (K=90) / 0.52 (K=200). Licao #80: rota fechada SEM mitose
-# em toda a faixa. Preservado parametrizado (§10) — o mecanismo esta certo, o custo e a forma.
-
-CS_CEILING = 0.5   # BASELINE E11: teto `(1-cs/cs_max)`. 0 so com CS_SINK_K>0.
-# 0.5 = base P5 restaurada.
-# 0.5 era o valor de toda a serie ate aqui (P1 reprovou remover o teto SEM substituto).
-CS_PROD_CN = 1.0   # P1 REPROVADA: c_n de volta. 0 = producao nao depende de c_n
-# `cs_max` tinha DOIS papeis: teto da producao e escala do gate da colonizacao
-# (`0.6*cs_max`). Sem o teto isso quebra — no P1 pus o gate em `cs > 5.0` e os bracos tem
-# `cs` = 0.28, entao DESLIGUEI o recrutamento nos bracos sem querer (VIVAS 178 vs 276).
-# Agora e limiar ABSOLUTO: 0.1 fica acima do agar (0.031) e abaixo dos bracos (0.28).
-# BASE DE TRABALHO = P5 (decisao da usuaria, 2026-09-03). Sob a definicao de continuidade
-# revisada na §2.2 — em que o limbo (`0 < rho_b < 0.1`) conta como tecido conectivo — o P5
-# entrega **93.0%** de colonia ligada ao centro contra 59.8% do P4, alem de ocupacao dentro
-# do dedo 0.60 contra 0.44 e 67% mais biomassa viva. Custo aceito: `contrast_cs` 10.0 -> 5.7
-# e, sob a definicao ESTRITA (so quorum ou filler), continuidade 41.3% -> 19.4%.
-#
-# P6 (0.40) esta REPROVADO e fecha a direcao oposta: estrangula a colonizacao, que e o UNICO
-# termo aditivo do modelo e portanto a fonte de todos os portadores — e sem portadores o
-# wake fica sem mae (maes 4904 -> 2348, colonia r>1 2743 -> 1330). Licao #74.
-# P12 (2026-09-03): 0.10 -> 0.034. NAO e alavanca nova — e a MESMA alavanca do sumidouro
-# aplicada de forma consistente. `COL_CS_MIN` e ABSOLUTO e foi calibrado contra um campo com
-# `cs_max`=0.5. Ao trocar o teto pelo sumidouro `K*cs^2`, o campo inteiro reescala por
-# `sqrt(K)`: max_cs deu 1.130 (K=10) e 0.381 (K=90). No P11 eu mudei K e esqueci o gate —
-# a colonizacao praticamente parou (biomassa cravada em 0.30 de t=10 a t=35, contra 0.78 do
-# P5; 179 vivas contra 547) e a rodada testou uma colonia sem recrutamento, nao o sumidouro.
-# Mesmo laco de realimentacao para baixo do P6 (licao #74): menos colonia -> menos `cs` ->
-# menos elegiveis. 0.10 * (0.381/1.130) = 0.034 preserva a FRACAO do campo que e elegivel.
-COL_CS_MIN = 0.3  # BASELINE E11 (= 0.6*cs_max, a forma antiga). 0.030 = P22, sob sumidouro.
-# O P20 usou 0.052 (razao dos max) e cortou a colonizacao a 1.7% das candidatas —
-# sob o teto o campo e PLANO (cs p50=0.295 vs max 0.494) e o gate 0.10 era no-op a
-# 100%; sob o sumidouro e ESTRUTURADO (p50=0.0184 vs max 0.256). 0.005 = 96% elegiveis
-# (P21, no-op nos dois lados). 0.030 e o unico ponto que separa: a distribuicao de `cs`
-# das candidatas do DEDO (p50 ~0.060) e da BAIA (p50 0.031 -> 0.021 entre t=11 e t=30)
-# divergem sob o sumidouro, e a razao baia/dedo cai 0.63 -> 0.34 ao longo do run.
-# 0.10 = base P5. Limiar ABSOLUTO na escala de `cs`: se `CS_SINK_K` mudar,
-# ESTE valor tem de ser reescalado junto (licao #78-b, erro do P11).
-# Alvo da relaxacao = COL_TARGET_FRAC * doador. Preservado desligado em 1.0 (§10): o
-# mecanismo esta certo — separa "nasce colonia" de "nasce limbo" — mas so cabe no orcamento
-# de `cs` sob gate alto, e gate alto mata o wake.
-COL_TARGET_FRAC = 1.0
-
-# P9 (2026-09-03) — CRESCIMENTO SELETIVO POR MOTILIDADE. O meio-termo entre crescer e
-# formar bracos NAO e um escalar entre r_growth 0.02 e 0.06: o P8 terminou com
-# `frac(cs>0.45)` em 34% — SEM saturacao — e virou disco assim mesmo, porque o crescimento
-# uniforme engorda o corpo inteiro e homogeneiza a fonte de `cs` (licao #76, mesma classe
-# da #48/J5). O reforco tem de ser LOCALIZADO.
-#
-#     r_eff = r_growth * (1 + GROWTH_MOTILE_BOOST * min(|v|/GROWTH_V_SAT, 1))
-#
-# Discriminador: |v|, o invariante #3 do §9 ("swarmers ativos estao so nas pontas
-# avancando"). Medido no P5, `|v|` mediano da biomassa VIVA por zona: nucleo 1.04e-3,
-# meio 3.57e-3, 0.7-0.85 1.72e-2, ponta **2.87e-2 — 27.5x o nucleo**; as 10% mais rapidas
-# estao em r/R99=0.73, dentro dos bracos. No P8 (blob) a mesma razao e **0.8x**: o
-# discriminador some justamente no regime que queremos evitar, o que o torna autoverificavel.
-#
-# Com boost=3 e v_sat=0.01: nucleo cresce a 0.026 (~base), pontas a 0.08.
-#
-# NOVO em relacao ao K.7/T1: la o `motile_boost` multiplicava a producao de `cs` (removido
-# no T1, e em tensao com Xavier/rhlAB via CCR). Aqui multiplica o CRESCIMENTO, o que e
-# biologicamente mais defensavel — swarmers da borda ativa sao os que se dividem.
-#
-# RISCO declarado: crescer na ponta tem dois efeitos opostos — cria portadores densos (abre
-# o gate `|grad rho_b|`, hoje 0.22-0.25 la) mas tambem produz `cs` na ponta, e como o `cs`
-# medido la e 0.214 contra 0.459 no interior, isso ACHATA o perfil radial, que foi o que
-# matou o P8. A diferenca de mecanismo: o P8 achatou em toda parte; aqui o acrescimo e uma
-# casca fina e o corpo continua em 0.02.
-# P9 REPROVADO (2026-09-03) com boost=3.0: 1 dedo (era 8), `R99` 3.84 -> 3.03, `dR/dt`
-# 0.0742 -> 0.0495, e produziu MAIS biomassa que o P8 uniforme (3.44 vs 3.05) rodando a
-# `r_growth` 3x menor no corpo. Realimentacao positiva: rapida cresce -> densa -> abre o
-# gate da Marangoni -> acelera -> cresce mais. O discriminador denunciou a si mesmo — a
-# razao |v| ponta/nucleo caiu de 27.5x para 7.2x. Licao #77. Preservado desligado (§10).
-# P16 (2026-09-09) — DESACOPLAR VOLUME DE BIOMASSA. `d_am` ganha um multiplicador que
-# NAO entra em `d_a_rho_b_grown`. Como `rho_b` e DENSIDADE e a producao de `cs` depende de
-# `qs(rho_b)` — INTENSIVO —, ganhar massa nao custa `cs`. E a decupagem que as quatro
-# refutacoes do crescimento (B2, D5, P8, P9) nunca tiveram: elas subiam `r_growth`, que
-# move os dois juntos, e a biomassa extra achatava o campo.
-#
-# MOTIVO: no P15 a mitose so disparou em t=34 e rendeu 63 divisoes — os bracos se formam
-# entre t=15 e t=35, entao ela nao participou da formacao. A massa cresce como
-# `dm/dt ~ m*0.0045` (medido: 1.69x em 100 s) e dividir exige 1.3x. Com ganho 3 a massa
-# dobra em 51 s e a mitose comeca em **t~19**, dentro da janela de formacao.
-#
-# Fisica: influxo de van't Hoff ([T2] Srinivasan) — osmolitos secretados puxam agua do
-# agar e a colonia ganha VOLUME sem ganhar celulas. A licao #54 rejeitou o influxo porque
-# ele "traz solvente, nao celulas" e diluiria; ali faltava o mecanismo que converte massa
-# em particula nova, que e exatamente a mitose (P15).
-# P17: 3.0 -> 5.0. A massa dobra em 31 s em vez de 51 s. Marcos previstos pela escala
-# medida (mitose e dirigida por massa acumulada; `dm/dt` ~ ganho, entao o tempo escala por
-# 3/5 = 0.60): 1a divisao t~11.7 (main_00600), ocupacao 0.65 t~21 (main_01200), regime
-# preenchido t~39 (main_02400), **tip-splitting t~53 (main_03400)**.
-GROWTH_MASS_GAIN = 1.0  # BASELINE E11. 3/5 = P16/P17/I-series.
-# P18: o ganho so vale acima deste limiar — mesmo valor de `MITOSE_RHO_B_MIN`, para que
-# ganhe massa exatamente quem pode converte-la em particula nova. Abaixo dele o ganho e 1
-# (comportamento do baseline), o que impede o limbo de engordar sem poder se expandir.
-GROWTH_GAIN_RHO_B_MIN = 0.0  # BASELINE E11 (inerte com ganho 1).
-
-GROWTH_MOTILE_BOOST = 0.0
-GROWTH_V_SAT = 0.01
-# Filler como DOADOR (licao #59 revisitada). A recruta nasce na densidade do doador, e nos
-# bracos o filler E o material (`rho_b` ~0.3) — sem ele sobram poucas vivas esparsas e a
-# recruta nasce em ~0.1, abaixo do quorum. Medido: recruta leva 29 s para cruzar 0.1
-# enquanto a frente passa por um ponto em 0.73 s (40x), e 96% nunca cruzam. O requisito e
-# NASCER no quorum, nao crescer ate ele.
-COL_FILLER_DONOR = 1.0  # BASELINE P2 (2026-09-11): liga os bracos ao nucleo. 0.0 = E11.
-
 HILL_K = 0.25
-# PROPOSTA 3 do docs/PLANO_C5_CONTINUIDADE.md — distribuir a forca em vez de concentra-la
-# numa vanguarda. A `FlagellarForce` tem magnitude CONSTANTE (`f0*gate*n`), entao e imune a
-# saturacao de `cs` — precisa so da direcao. O gate `[0.2, 0.6]` seleciona 72 particulas de
-# 276 vivas: sao elas que cavalgam 50-77 dx enquanto o corpo anda 7. Alargar distribui a
-# forca por ~230. O K.2 so testou ESTREITAR; alargar nunca foi testado.
-FLAG_GATE_LO = 0.2  # P3 REPROVADA: alargar p/ [0.1,0.8] levou a razao p90/p50 de 5.0 a 6.8
-FLAG_GATE_HI = 0.6  # (forca constante nao move corpo, cria cavaleiros). Preservado parametrizado.
-FLAG_F0 = 3.0 * MOTOR_SCALE
 sigma = 11.1  # E5: recalibrado p/ producao da biomassa MADURA constante sob K=0.25
 D = 1.5e-3
 D_ext = 0.08
@@ -348,17 +169,6 @@ lambda_ = 0.15
 # E4: 0.02 -> 0.05. Com r_growth=0.02 nada amadurece na janela — de rho_b=0.03 ate 0.50
 # leva 193 s. Em 0.05 leva 77 s a partir de 0.03 e 49 s a partir de 0.10. Refutado antes
 # (D3b/D5) sob lambda_bio=2 e K=0.1, quando a biomassa madura saturava o cs.
-# P8 (2026-09-03) testou 0.06 sobre o P5 e REPROVOU — TERCEIRA refutacao da mesma
-# alavanca, depois de B2 (licao #43) e D5 (licao #64). Ela entregou tudo que prometia:
-# `rho_b` p90 dos portadores no braco 0.19 -> **0.44** (alvo era 0.45), razao max/min da
-# largura 2.01 -> **1.46** (cintura/barriga resolvida), continuidade a 1.05 dx 19.4% ->
-# **82.9%**, `frac(cs>0.45)` 21% -> 34%, `contrast_cs` 5.67 -> 6.33.
-#
-# E a colonia deixou de ser dendritica: `R99` 3.84 -> **2.79**, `dR/dt` 0.0742 -> **0.0332**,
-# dedos 8 -> **1**. Disco compacto com lobulos — (a) Modulated de Trinschek, criterio de
-# falha da §2.2. As tres condicoes que eu julguei terem mudado desde B2/D5 (`k_src`
-# sustentando `c_n`, headroom de `cs` nos bracos, `contrast_cs` invalidado como guardrail)
-# NAO alteram o mecanismo: mais biomassa achata `grad cs` e a colonia compacta. Licao #76.
 r_growth = 0.02
 rho_max = 1.0
 alpha_mon = 0.12
@@ -392,81 +202,21 @@ k_src = 0.3  # E1 APROVADO (=N1): min_c_n 0.000 -> 0.376, a_mar +29%, biomassa +
 chi = 0.0  # X1/X1b REPROVADOS: transporte com orcamento fixo dilui (licao #54)
 
 dt_global = 0.001
-total_sim_time = 100.0   # BASELINE P2 (E11 + COL_FILLER_DONOR=1).
-# banda (fade=0 35%->16%, corpo com p!=0 80.9%->87.4%, R99 +12%) mas a adveccao normalizada
-# ficou IGUAL (12% nos dois) — e nao poderia mudar, porque a mitose so arranca em t~12-22.
-# 40 s e a menor janela que cobre a mitose. Controle = P22, mesma config com
-# INOC_MODE="quartica". Vigiar a_pressure: o pico transiente foi 5.02 contra 2.6 do controle.
-# mostrou o motor do E5 ainda CRESCENDO em t=100. Checagem antes do sumidouro quadratico.
+total_sim_time = 8.5
 print_freq = 200
 
 # None = cada rodada tem condicao inicial propria (producao).
 # Fixar um inteiro torna a rodada bit-reproduzivel — OBRIGATORIO ao comparar rotas
 # (§2.5): sem semente, diferencas de ate ~9 pontos percentuais em metricas de
 # amostra pequena (n_bio ~70-90) nao sao atribuiveis ao mecanismo.
-NOISE_AMP = 0.6  # P19 testou 0.0 e REPROVOU — ver licao #83
 SEED = 20260806  # serie K: comparacao com C4 exige mesma semente (§2.5)
 
 trajectory_store_interval = 20
 
+prob_of_splitting = 0.03
 c0 = 0.35
 
-# ============================ MITOSE (P15) ============================
-# A FONTE DE VOLUME QUE FALTA. Em [T1] Trinschek `dh/dt = -div(J) + crescimento`: o
-# crescimento e termo-fonte de VOLUME e a Marangoni e UM DOS FLUXOS — orienta, nao origina.
-# No nosso modelo a Marangoni faz os dois trabalhos e o crescimento nenhum: ele engorda a
-# particula (massa sobe -> densidade sobe -> pressao sobe), e o P13 mediu que isso gera
-# RESISTENCIA, nao escoamento. Dividir cria volume no espacamento local — a filha ocupa
-# espaco vizinho, como uma bacteria que se divide.
-#
-# CONSERVA BIOMASSA, ao contrario de tudo que reprovou antes: as filhas herdam `rho_b` da
-# mae (que e DENSIDADE) e dividem a MASSA, entao `sum(m*rho_b)` nao muda. Nao ha a inflacao
-# de biomassa que achatou o `cs` no P8/P9.
-#
-# O bloco anterior (`use_splitting`) tinha quatro defeitos e nunca rodou de fato:
-#   1. `daughter_data = parent_props.copy()` chamado DUAS vezes — a segunda apagava o
-#      `m/2`, entao cada uma das 2 filhas levava a massa INTEIRA: a massa DOBRAVA.
-#   2. limiar `m > 1.99*m0` nunca dispara — a massa maxima medida em t=100 e **1.695*m0**.
-#      (o `m0=0` do HDF5 e artefato: `m0` nao esta em `add_output_arrays`.)
-#   3. copiava 14 de 70 propriedades — filhas herdariam LIXO em `is_filler`, `c_n`, `noise`,
-#      `x_dep`... e uma filha com `is_filler=1` nasceria congelada.
-#   4. offsets aleatorios INDEPENDENTES: as duas filhas podiam nascer coincidentes.
-#
-# Sizing (P5_t100, t=100, so biomassa viva): com limiar 1.3 ha 2820 maduras, **96% NAO
-# pinadas** (o pin por `rho_b>=0.8` pega ZERO). Distribuicao radial: 276 em r/R99<0.2,
-# **1297 em 0.2-0.4**, 60 em 0.8-1.0 — a divisao ocorre no CORPO, nao na frente, porque a
-# massa cresce como `m*rho_b*(1-rho_b)` e e CUMULATIVA.
-# P17: mantido em 1.3 (nao 1.1). Medido: com limiar 1.1 a filha nasce em 0.55*m0 e leva
-# ~125 s para voltar a ser elegivel — cada particula dividiria UMA vez na janela. Com 1.3 a
-# filha nasce em 0.65*m0 e volta em ~62 s: DUAS divisoes por particula em 60 s. Antecipa o
-# inicio em so 3 s a menos e dobra a cadencia, que e o que de fato preenche.
-MITOSE_M_RATIO = 1.3      # divide quando m > MITOSE_M_RATIO * m0
-MITOSE_FREQ = 200         # iteracoes entre chamadas
-MITOSE_MAX = 150          # cap por chamada
-MITOSE_EPS = 0.35         # separacao das filhas: +-MITOSE_EPS*h, direcoes OPOSTAS
-MITOSE_RHO_B_MIN = 0.05   # nao divide traco
-# P17: gate de DENSIDADE — nao divide onde `rho/rho0` ja esta alto, porque ali nao falta
-# volume, SOBRA. Sem ele o P16 (ganho 3) levou `rho/rho0` p99 a 5.93 e o `dt` a 1/4 do
-# inicial em t=58.8; escalado para ganho 5 isso cairia em **t~35**, quatro segundos ANTES
-# do primeiro marco que queremos observar (regime preenchido, t~39) e dezoito antes do
-# tip-splitting (t~53). Sem o gate a rodada empaca antes de responder a pergunta.
-#
-# Limiar 2.0: o baseline P5 (sem mitose) opera a `rho/rho0` p99 = 4.98 no fim e funciona,
-# entao o gate nao pode ser agressivo. Em t=50 o P16 esta em p99 = 3.12 — o corpo tipico
-# fica bem abaixo de 2 e a mitose segue livre onde ha espaco; o gate so morde nos
-# aglomerados que puxam o p99 e estrangulam o `dt`.
-# GATE DE DENSIDADE — DESLIGADO (P18). Medido no P16: as 118 particulas maduras tem `rho`
-# mediano **1.69** e **ZERO** acima de 4, enquanto o limbo tem p99 = 8.22 com 42% acima de
-# 4. **Quem divide nao e quem esta comprimido**, entao o gate nao toca a fonte da
-# compressao: em 4.0 e no-op (passa 100%), em 2.0 barra 25% arbitrariamente (foi o P17,
-# que cortou a mitose em 83% e nao testou o desenho). Substituido pelo limiar no GANHO
-# (`GROWTH_GAIN_RHO_B_MIN`), que ataca o mecanismo medido. Preservado parametrizado (§10).
-MITOSE_RHO_MAX = 99.0     # em unidades de rho0; 99 = desligado
-RHO0_NOMINAL = 1.0        # = o `rho0` da BiomassEOS em src/scheme.py
-
-prob_of_splitting = 0.03  # usado so pelo bloco antigo, preservado desligado
-use_splitting = False     # bloco antigo (bugado) — mantido desligado, ver §10
-use_mitose = False  # BASELINE E11. True = P15-P22 / serie I (licoes #81, #85, #86).
+use_splitting = False
 
 use_shift = True
 SHIFT_COEFF = 0.5
@@ -494,9 +244,6 @@ D_b = 0.0  # D1 REPROVADO: destruiu o nucleo (rho_b 1.0->0.48, n_pinned 43->0)
 # estava FECHADO no C4 — so 36 particulas elegiveis em t=50, porque `c_n` colapsa. Com
 # `k_src=0.3` sao 712. E o alvo-doador mediano e 0.233, ACIMA do quorum, com 100% dos
 # alvos >=0.1: sob k_col=0.03 (tau=33s) a recruta chega a ~0.18 em 50 s.
-# P6 testou 0.20 (tau 33s -> 5s, para a recruta cruzar o quorum antes da frente passar) e
-# REPROVOU junto com o gate 0.40 — mas `k_col` nao e alavanca independente do gate: ele so
-# acelera a chegada ao mesmo equilibrio, fixado pelo gate. Licao #74.
 k_col = 0.03
 
 # P1 (2026-08-14) — promocao do limbo sub-quorum ao quorum. Ver bloco em post_step.
@@ -510,72 +257,17 @@ k_col = 0.03
 # ser empurrado NEM arrastado — so engolido. `gamma` e friccao flagelo-substrato,
 # propriedade da bacteria; aplica-la ao meio e o que o torna fundo rigido.
 # 0.1 -> gamma=6 no agar; velocidade terminal ~10x maior.
-# ROTA B, segunda metade — o arrasto do agar. Fisicamente `gamma` e friccao
-# flagelo-substrato, propriedade da BACTERIA; aplica-la ao meio e o que o transforma em
-# fundo rigido (ver docstring da `LinearDrag`).
-#
-# As duas metades NAO sao independentes, e cada uma sozinha ja falhou:
-#   A1  — baixou para 0.1 SEM pressao no agar: o arrasto era o unico resistente a
-#         compressao, entao `rho/rho0` do agar engolido foi de 4.8 para 16.7 e `R99` de
-#         4.62 para 3.06.
-#   B1  — pressao (AGAR_FADE=1) COM arrasto cheio: o agar passou a resistir (`|p|` 0 ->
-#         0.12 em 21268 particulas, `rho/rho0` max 5.86 -> 3.63) mas NAO passou a ser
-#         empurrado — adveccao em `r>2` ficou em 31 particulas, identica ao E5, e
-#         `C5b` = 9.4% contra 11.3% do baseline.
-# B2 testa a combinacao, que e a celula que sobrou: pressao resiste a compressao, arrasto
-# baixo deixa o meio acompanhar a frente.
-AGAR_DRAG_RATIO = 1.0  # B2 REPROVADO (ver acima): preservado desligado
+AGAR_DRAG_RATIO = 1.0  # A1 REPROVADO: sem pressao, o arrasto era o UNICO resistente
+# a compressao. Baixa-lo para 0.1 levou `rho/rho0` do agar engolido de 4.8 para 16.7 e
+# `R99` de 4.62 para 3.06, com o agar ainda engolido na mesma proporcao por area (1.00
+# vs 0.99). Os dois mecanismos nao sao independentes — ver runs/A1.
 
-# ROTA B do docs/PLANO_C5_CONTINUIDADE.md — ramo SO repulsivo no meio sem biomassa
-# (`fade_rep = AGAR_FADE`, `fade_att = 0` para `rho_b < 0.1`).
-#
-# Licao #73: o agar NAO e empurrado — deslocamento mediano 0.005 dx, so 26% se move mais
-# de 1 dx — porque tem `|p| = 0` EXATO mesmo esmagado a `rho/rho0 = 4.8`. Um meio sem
-# pressao nao transmite empurrao, entao a colonia o ATRAVESSA em vez de desloca-lo, e a
-# adveccao transporta apenas 31 das 1343 particulas dos bracos (98% chegam la por
-# deposicao do wake). E o mecanismo por tras da violacao do C5.
-#
-# O ramo ATRATIVO fica em zero de proposito: dar coesao a regiao sub-densa CONTRAI a
-# colonia (licao #66-C, P3: `R99` 4.62 -> 1.93), porque abaixo de `rho/rho0 = 1` a EOS so
-# tem esse ramo. O que falta e resistencia a COMPRESSAO, nao coesao.
-#
-# Historico dos testes anteriores, ambos invalidos para esta pergunta:
-#   A2  — rodou com o bug de Group da `BiomassEOS` (o ramo repulsivo NUNCA executava,
-#         `p>0` em 0 de 70982 particulas), entao AGAR_FADE multiplicava algo que nao
-#         rodava e o run saiu bit-identico ao C4. Nao foi refutado, nao foi testado.
-#   A2b — ja sobre a EOS corrigida, mediu "zero efeito na desjuncao" — mas por OCUPACAO
-#         em t~29, antes do C5 existir, e sobre config anterior ao HILL_K/k_col.
-# P13 (2026-09-04) — O CRESCIMENTO COMO FONTE DE VOLUME. Em [T1] Trinschek a governante e
-# `dh/dt = -div(J_conv + J_Mar) + crescimento`: o crescimento e termo-fonte de VOLUME, gera
-# pressao, a pressao gera fluxo, e a Marangoni e UM DOS FLUXOS — ela orienta, nao origina.
-# [T2] Srinivasan idem. No nosso modelo a Marangoni faz os DOIS trabalhos e o crescimento
-# nenhum: `m -> rho -> p -> forca` existe, mas a `BiomassEOS` zera `fade_rep` abaixo de
-# `rho_b=0.1`. Medido em t=50: **83.4% do corpo tem pressao EXATAMENTE zero**, e a fracao
-# cai com o raio (62% no nucleo, **4.1% na ponta**). Crescer no limbo — 90% do braco — nao
-# empurra nada.
-#
-# Isso explica as duas observacoes da usuaria de uma vez: sem fonte de volume a Marangoni
-# move PARTICULA A PARTICULA (so as que passam no gate), e num continuo com fonte a
-# conservacao OBRIGA o meio a acompanhar — dai os buracos no rastro; e com crescimento alto
-# a biomassa achata `cs`, o motor morre e sobra so o inchaco (P8/P9).
-#
-# `agar_fade` liga o ramo REPULSIVO abaixo do quorum mantendo `fade_att = 0`. Distincao do
-# que ja reprovou: a licao #66-C (P2/P3) deu COESAO (ramo ATRATIVO) a regiao sub-densa e a
-# colonia contraiu (`R99` 4.62 -> 1.93); a rota B testou repulsao-apenas mas no AGAR
-# (`rho_b=0`, que nao cresce) e julgada por C5, nunca por expansao.
-#
-# PRE-REQUISITO VERIFICADO: `p = B*excess^2` so age onde `rho/rho0 > 1`. Medido, o limbo
-# esta a **1.506 de mediana com 98.4% acima de 1** — mola carregada. Tem de estar ligado
-# desde t=0: num run formado liberaria de uma vez a energia de 14 000 particulas.
-# P13 REPROVADO (2026-09-04): o meio pressurizado RESISTE em vez de escoar. Expoente em
-# `dR/dt ~ R^p` foi de -2.15 para **-2.64** (criterio era subir acima de -1.6), e em
-# t[75,100] a expansao caiu a METADE (0.0100 contra 0.0195). Ajuda enquanto a colonia e
-# pequena (1.25x em t[50,75]) e cobra caro quando a frente fica longa — cruzamento em t~75.
-# Morfologia praticamente identica ao P5. Ganhos que ficam: 21 dedos contra 18, e agar
-# engolido 437 contra 740 (-41%) — o deslocamento acontece, so custa mais do que rende.
-# `a_pressure` 3.07 vs 3.05, picos>4 em 2% nos dois: o risco de enrijecer NAO se
-# materializou. Licao #79. Preservado desligado (§10).
+# A2 (2026-08-25) — REPULSAO no agar. Ataca o mecanismo que sobrou: `|p| = 0` EXATO
+# abaixo de `rho_b=0.1`, medido mesmo com o agar esmagado a `rho/rho0 = 4.8`. Um meio
+# sem pressao nao transmite empurrao, entao a colonia o atravessa. Ver licao #58.
 AGAR_FADE = 0.0
+# ramo repulsivo DESLIGADO por bug de Group, entao AGAR_FADE multiplicava algo que nunca
+# executava e o run saiu bit-identico ao C4 — nao foi refutado, nao foi testado.
 
 # Conversao do agar ENGOLIDO em MATRIZ PASSIVA (licao #66-A/E). O agar dentro do
 # envelope da colonia nunca vira colonia: 97% da area em t=50. Converter para filler
@@ -645,11 +337,7 @@ PROMO_VALUE = 0.12
 PROMO_RHO_B_MAX = 0.1  # alvo: 0 < rho_b <= este valor (o limbo)
 PROMO_R_MAX = 1.8  # coroa uniforme; alem disso o limbo vira spokes nos braços
 
-use_insert = True  # I4 (use_insert=False) REPROVADO — ver licao #85. Cortar o segundo
-# caminho de deposicao NAO liberou transporte: o excedente de R99 sobre a linha nula CAIU
-# de +6.4% (I3) para +2.9% (I4), e o ganho radial por particula viva ficou identico
-# (0.2456 vs 0.2448) com 57% menos filler. A deposicao nao suprimia o transporte; ela E o
-# mecanismo de construcao. Config restaurada ao I3.
+use_insert = True
 INSERT_FREQ = 200
 INSERT_SIGMA_TRIG = 0.85
 INSERT_RHO_B_MIN = (
@@ -659,7 +347,7 @@ INSERT_PROX = 0.7
 INSERT_MAX = 100
 
 use_wake = True
-WAKE_FREQ = 100  # baseline E5; a serie C1-C3 nao achou efeito atribuivel entre 25 e 100
+WAKE_FREQ = 100
 WAKE_DISP = 1.0
 WAKE_PROX = 0.7
 WAKE_RHO_B_MIN = 0.05
@@ -671,81 +359,7 @@ WAKE_MAX = 150
 WAKE_MODE = 2
 WAKE_CLUSTER_MAX = 7
 WAKE_RING_RATIO = 0.75
-WAKE_MASS_BUDGET = 0.12  # BASELINE E11. 0.009 = I3 (estrangulamento, licao #85).
-# I3: o I2 depositou 7.217 de massa = 30% do teto de 0.12 — o wake nunca foi limitado
-# por orcamento (licao #74), so por mae e
-# deslocamento. 0.009 poe o teto em 1.78, e o wake opera normal ate travar: antes/depois
-# dentro da mesma rodada, com os bracos ja formados.
-#
-# A PRIMEIRA calibracao (0.018) FALHOU e o run foi morto em t=15: eu supus deposicao
-# LINEAR no tempo, e ela ACELERA (mais maes conforme a colonia cresce). Medido no parcial,
-# 0.018 so travaria em t~35 — restariam 5 s de operacao estrangulada e 10% do raio por
-# construir, sem poder de discriminar. Com 0.009 trava em t~15-16, deixando 45%.
-# Regra: calibrar teto acumulado exige a CURVA de consumo, nao a media sobre o run.
-#
-# HIPOTESE: existem dois caminhos para acomodar a expansao volumetrica (massa e area
-# crescem juntas 21x, densidade areal constante 0.00217 -> 0.00214). O barato e a
-# deposicao criar particula no espaco novo (86% da frente NASCEU ali); o caro e a pressao
-# empurrar material (219x abaixo da Marangoni). Enquanto o barato estiver aberto, o caro
-# nunca e exercitado — foi isso que a licao #73 mediu como invariante em tres regimes de
-# meio e a Etapa 2 mediu como invariante ao dobrar a mitose.
-#
-# Contabilidade do resultado NULO: cortando em t~16 removem-se ~75% da deposicao que o I2
-# faria, ou seja ~37% da massa do corpo; com densidade areal constante isso da
-# R99 = 2.556*sqrt(0.63) ~ 2.03. Acima de 2.25 o transporte compensou; abaixo de 1.85 o
-# wake era estrutural. Barras adicionais: ganho radial medio das VIVAS >= 0.278 (I2:
-# 0.2219) e desloc. p50 do coorte original >= 6.5 dx (I2: 5.00).
-# ROTA C do docs/PLANO_C5_CONTINUIDADE.md — fecha o RASTRO entre a posicao antiga e a
-# atual da ponta, nao so a antiga. O wake deposita 1 ponto (mais anel) enquanto a ponta
-# percorre 2-7 dx, entao o braco nasce como colar de grumos: medido no E5, 2410 particulas
-# de wake em 612 componentes de mediana 2 na escala de contato. Isso e o mecanismo por tras
-# do C5 (§2.2) — a colonia nao expande, ela e construida em pulsos (licao #73).
-#
-# Diferenca para o B1 (licao #65, REPROVADO por AR -25%): o B1 depositava round(d/dx)
-# pontos ao longo do segmento SEMPRE. Aqui cada ponto passa pelo mesmo teste de
-# proximidade do resto do wake, entao so entra onde ha vao de fato, e o anel de
-# adensamento (n_extra) fica so no ponto de origem.
-# ANCORAGEM (proposta 2026-09-02). O `WAKE_PROX` rejeita deposito PERTO demais (evita
-# empilhar) e nao havia limite SUPERIOR: se a ponta correu e deixou um vazio de 3 dx, o
-# wake depositava no meio dele e nascia uma ilha. Medido no E5: **69% das particulas do
-# wake nascem a mais de 1.05 dx de qualquer material** (mediana 1.44, cauda ate 3.7).
-#
-# E de la que vem a descontinuidade: entre t=3.7 e t=8.3 a conectividade cai de 76% para
-# 44% e 185 particulas de wake aparecem desconectadas; dai em diante o wake e 71-76% de
-# todo o material fora do corpo conexo.
-#
-# A leitura fisica: a celula-filha nasce ADJACENTE a mae, nao no meio do espaco vazio.
-# Como `added_pts` tambem conta como ancora, o deposito ao longo do rastro (WAKE_SEG)
-# constroi CADEIA: o primeiro ponto ancora no corpo, o segundo no primeiro.
-WAKE_ATTACH = 0.0  # BASELINE E11 (desligado). 1.05 = P4-P22 (licao #74).
-
-# P7 — REDISTRIBUIR o rastro (nao adicionar). Medido no P5: a barriga do braco fica
-# cravada em r/R99 = 0.80-0.90 do t=12 ao t=50 enquanto o raio absoluto vai de 1.11 a
-# 3.07 — ela ACOMPANHA a frente, a ~15% de R99 atras dela. Nao e evento historico num
-# raio fixo: e a zona de deposicao viajando colada a ponta. Largura em r/R99=0.8 e
-# 5.0 dx contra 2.2 dx em 0.6 (razao max/min 2.1x, igual nos 8 bracos).
-#
-# Hoje o wake poe 1 + n_extra particulas TODAS na posicao vagada (`x_dep`), em anel —
-# um grumo. Com WAKE_SPREAD as MESMAS maes depositam a MESMA contagem, distribuida ao
-# longo do segmento `x_dep -> x`. Mesma massa, mesmo gate, posicoes diferentes.
-#
-# NAO confundir com `WAKE_SEG` (licao #65, REPROVADO, AR 10.48 -> 7.83): aquele
-# ADICIONAVA particulas ao longo do segmento alem do grumo. Este REALOCA. A diferenca
-# entre adicionar e realocar e o que separa engrossar de uniformizar.
-#
-# P7 REPROVADO (2026-09-03): o mecanismo funcionou — as deposicoes ficaram visivelmente
-# espalhadas — mas a razao max/min da largura PIOROU, 2.14x -> 2.47x (barriga 4.8 -> 5.5,
-# cintura igual em 2.2). Causa: o wake e ~3200 particulas contra ~14000 de limbo no braco,
-# e e o limbo que forma o manto cuja espessura varia. Redistribuir 3200 nao muda a
-# distribuicao dos 14000. A barriga e engarrafamento do limbo (|v| 4.5e-3 empilhando
-# contra 8.2e-4), problema de FORCA, nao de granularidade da deposicao. Licao #75.
-# Preservado desligado (§10): ele foi o unico lever a subir a continuidade a 1.05 dx
-# (19.4% -> 24.2%), porque depositar espalhado adiciona por ADJACENCIA em vez de criar ilhas.
-WAKE_SPREAD = False
-
-WAKE_SEG = False  # rota C REPROVADA (C5b 12->19 contra alvo 70). Preservado desligado:
-# a deposicao dirigida e barata (AR -8% contra -25% do B1), mas nao resolve C5
-WAKE_SEG_MAX = 6
+WAKE_MASS_BUDGET = 0.12
 # Rota C (ABORTADA 2026-08-06) — realocar agar ocioso conservaria massa, MAS o agar
 # tem pressao ZERO (BiomassEOS: fade_rep=fade_att=0 para rho_b<0.1), entao o buraco
 # deixado pelo doador NAO cicatriza: cada doacao e uma puncao permanente no campo.
@@ -798,7 +412,7 @@ class SwarmApp(Application):
                 pa.add_property("noise")
                 pa.noise[:] = (
                     1.0
-                    + NOISE_AMP * np.sin(SEED_MODE * np.arctan2(pa.y, pa.x))
+                    + 0.6 * np.sin(SEED_MODE * np.arctan2(pa.y, pa.x))
                     + 0.01 * np.random.rand(len(pa.x))
                 )
                 pa.add_property("dt_force")
@@ -913,16 +527,6 @@ class SwarmApp(Application):
             D_n_int=D_n_int,
             k_n=k_n,
             k_src=k_src,
-            cs_max=CS_CEILING,
-            cs_sink_k=CS_SINK_K,
-            col_cs_min=COL_CS_MIN,
-            col_filler_donor=COL_FILLER_DONOR,
-            col_target_frac=COL_TARGET_FRAC,
-            growth_motile_boost=GROWTH_MOTILE_BOOST,
-            growth_mass_gain=GROWTH_MASS_GAIN,
-            growth_gain_rho_b_min=GROWTH_GAIN_RHO_B_MIN,
-            growth_v_sat=GROWTH_V_SAT,
-            prod_cn=CS_PROD_CN,
             chi=chi,
             use_shift=use_shift,
             shift_coeff=SHIFT_COEFF,
@@ -934,9 +538,6 @@ class SwarmApp(Application):
             D_b=D_b,
             k_col=k_col,
             hill_k=HILL_K,
-            flag_gate_lo=FLAG_GATE_LO,
-            flag_gate_hi=FLAG_GATE_HI,
-            flag_f0=FLAG_F0,
             lambda_bio_ratio=LAMBDA_BIO_RATIO,
             agar_drag_ratio=AGAR_DRAG_RATIO,
             agar_fade=AGAR_FADE,
@@ -1395,65 +996,6 @@ class SwarmApp(Application):
                 )
                 self._pass_n_spawned_since_log = 0  # reseta após registrar
 
-        if use_mitose and solver.count > 0 and solver.count % MITOSE_FREQ == 0:
-            fluid = self.particles[0]
-            m_nom = dx * dx
-
-            madura = (
-                (fluid.m > MITOSE_M_RATIO * m_nom)
-                & (fluid.rho_b_grown > MITOSE_RHO_B_MIN)
-                & (fluid.is_filler < 0.5)
-                & (fluid.is_env < 0.5)
-                & (fluid.rho < MITOSE_RHO_MAX * RHO0_NOMINAL)
-            )
-            idx = np.where(madura)[0]
-
-            if len(idx) > MITOSE_MAX:
-                # as mais maduras primeiro — divide quem ja dobrou mais
-                idx = idx[np.argsort(-fluid.m[idx])][:MITOSE_MAX]
-
-            if len(idx) > 0:
-                # TODAS as propriedades persistentes. Copiar so um subconjunto foi o
-                # defeito 3 do bloco antigo: a filha herdava lixo do realloc em
-                # `is_filler`, `c_n`, `noise`, `x_dep`. Acumuladores (a_*, au, av, grad_*,
-                # L*, M*, shift_*) sao recomputados a cada passo e vao a zero.
-                herda = [
-                    "rho_b_grown", "cs", "c_n", "c_o", "noise", "h", "rho", "m0",
-                    "u", "v", "phi_m" if "phi_m" in fluid.properties else "rho_b_grown",
-                    "is_filler", "is_wake", "is_matrix", "is_conv", "is_env", "gen",
-                ]
-                herda = list(dict.fromkeys(p for p in herda if p in fluid.properties))
-
-                ang = np.random.rand(len(idx)) * 2.0 * np.pi
-                off = MITOSE_EPS * fluid.h[idx]
-                # filhas em direcoes OPOSTAS: centro de massa preservado
-                nx = np.concatenate([fluid.x[idx] + off * np.cos(ang),
-                                     fluid.x[idx] - off * np.cos(ang)])
-                ny = np.concatenate([fluid.y[idx] + off * np.sin(ang),
-                                     fluid.y[idx] - off * np.sin(ang)])
-
-                data = {"x": nx, "y": ny}
-                for p in herda:
-                    data[p] = np.concatenate([fluid.get(p)[idx], fluid.get(p)[idx]])
-                # MASSA CONSERVADA: cada filha leva metade. Era o defeito 1.
-                data["m"] = np.concatenate([fluid.m[idx] * 0.5, fluid.m[idx] * 0.5])
-                # o rastro do wake recomeca na posicao da filha
-                for p in ("x_dep", "y_dep"):
-                    if p in fluid.properties:
-                        data[p] = nx.copy() if p == "x_dep" else ny.copy()
-                # nasce viva por construcao
-                if "is_filler" in data:
-                    data["is_filler"] = np.zeros(2 * len(idx))
-
-                filhas = fluid.empty_clone()
-                filhas.add_particles(**{k: np.asarray(v) for k, v in data.items()})
-                fluid.append_parray(filhas)
-                fluid.remove_particles(idx)
-                solver.nnps.update()
-
-                self._mitose_since_log = getattr(self, "_mitose_since_log", 0) + len(idx)
-                print(f"mitose t={solver.t:.1f}s: {len(idx)} divisoes")
-
         if use_splitting:
             if solver.count > 0 and solver.count % 500 == 0:
                 fluid = self.particles[0]
@@ -1774,44 +1316,21 @@ class SwarmApp(Application):
                 parent_idx = []
                 added_pts = []
 
-                def _livre(px, py):
-                    d_ex, _ = tree.query([px, py])
-                    if d_ex < prox:
-                        return False
-                    d_min = d_ex
-                    for ax_, ay_ in added_pts:
-                        dd = (px - ax_) ** 2 + (py - ay_) ** 2
-                        if dd < prox_sq:
-                            return False
-                        if dd < d_min * d_min:
-                            d_min = dd ** 0.5
-                    if WAKE_ATTACH > 0.0 and d_min > WAKE_ATTACH * dx:
-                        return False
-                    return True
-
                 for k in wake_idx:
                     sx = float(fluid.x_dep[k])
                     sy = float(fluid.y_dep[k])
-                    ex = float(fluid.x[k])
-                    ey = float(fluid.y[k])
-                    fluid.x_dep[k] = ex  # reset: deslocamento ja consumido
-                    fluid.y_dep[k] = ey
+                    fluid.x_dep[k] = fluid.x[k]  # reset: deslocamento ja consumido
+                    fluid.y_dep[k] = fluid.y[k]
 
-                    if WAKE_SEG:
-                        seg = np.hypot(ex - sx, ey - sy)
-                        n_seg = min(int(seg / dx), WAKE_SEG_MAX)
-                        for j in range(1, n_seg + 1):
-                            f_ = j / (n_seg + 1.0)
-                            px = sx + f_ * (ex - sx)
-                            py = sy + f_ * (ey - sy)
-                            if not _livre(px, py):
-                                continue
-                            new_x.append(px)
-                            new_y.append(py)
-                            parent_idx.append(int(k))
-                            added_pts.append((px, py))
-
-                    if not _livre(sx, sy):  # rastro ja refluido: nao ha vazio
+                    d_existing, _ = tree.query([sx, sy])
+                    if d_existing < prox:  # rastro ja refluido: nao ha vazio
+                        continue
+                    too_close = False
+                    for ax_, ay_ in added_pts:
+                        if (sx - ax_) ** 2 + (sy - ay_) ** 2 < prox_sq:
+                            too_close = True
+                            break
+                    if too_close:
                         continue
 
                     n_extra = 0
@@ -1829,42 +1348,29 @@ class SwarmApp(Application):
                                 n_extra = int(round(deficit / (m_target * w_ring)))
                             n_extra = max(0, min(n_extra, WAKE_CLUSTER_MAX - 1))
 
-                    if WAKE_SPREAD:
-                        n_tot = 1 + n_extra
-                        for j in range(n_tot):
-                            f_ = j / float(n_tot)
-                            px = sx + f_ * (ex - sx)
-                            py = sy + f_ * (ey - sy)
-                            if not _livre(px, py):
-                                continue
-                            new_x.append(px)
-                            new_y.append(py)
-                            parent_idx.append(int(k))
-                            added_pts.append((px, py))
-                    else:
-                        new_x.append(sx)
-                        new_y.append(sy)
-                        parent_idx.append(int(k))
-                        added_pts.append((sx, sy))
+                    new_x.append(sx)
+                    new_y.append(sy)
+                    parent_idx.append(int(k))
+                    added_pts.append((sx, sy))
 
-                        for j in range(n_extra):
-                            ang = 2.0 * np.pi * j / max(n_extra, 1)
-                            vx = sx + r_ring * np.cos(ang)
-                            vy = sy + r_ring * np.sin(ang)
-                            d_ex, _ = tree.query([vx, vy])
-                            if d_ex < prox:
-                                continue
-                            bad = False
-                            for ax_, ay_ in added_pts:
-                                if (vx - ax_) ** 2 + (vy - ay_) ** 2 < prox_sq:
-                                    bad = True
-                                    break
-                            if bad:
-                                continue
-                            new_x.append(vx)
-                            new_y.append(vy)
-                            parent_idx.append(int(k))
-                            added_pts.append((vx, vy))
+                    for j in range(n_extra):
+                        ang = 2.0 * np.pi * j / max(n_extra, 1)
+                        vx = sx + r_ring * np.cos(ang)
+                        vy = sy + r_ring * np.sin(ang)
+                        d_ex, _ = tree.query([vx, vy])
+                        if d_ex < prox:
+                            continue
+                        bad = False
+                        for ax_, ay_ in added_pts:
+                            if (vx - ax_) ** 2 + (vy - ay_) ** 2 < prox_sq:
+                                bad = True
+                                break
+                        if bad:
+                            continue
+                        new_x.append(vx)
+                        new_y.append(vy)
+                        parent_idx.append(int(k))
+                        added_pts.append((vx, vy))
 
                     if len(new_x) >= WAKE_MAX:
                         break

@@ -1,0 +1,229 @@
+Generating output in /Users/isa/Developer/sph/runs/OSM1_osmotico/main_output
+----------------------------------------------------------------------
+No of particles:
+  fluid: 68121
+  solid: 2108
+  Total: 70229
+----------------------------------------------------------------------
+Setup took: 5.14929 secs
+osmotico t=0.0s: absorvidas total=0 (phi_osm>0: 0, vivas=152)
+--------------------------------------------------
+Tempo: 0.00s | Iteração: 0
+Velocidade Máx: 0.4292
+Contraste CS: 828.2406
+c_n: mean=0.9990 max=1.0000 contrast=0.79 | massa: 197.51
+sigma_a braços biomassa (n=67): min=1.000 mean=1.000 frac<0.85=0.00% | c/ inseridas (n=0): mean=1.000 frac<0.85=0.00%
+vazio areal: >0.7dx=2.55% >1.0dx=0.00% >1.5dx=0.00%  (alvo: >1.5dx -> 0)
+motor na biomassa: a_mar med=1.530 p95=2.10 | bracos: cs=0.4909 c_n=0.642   (S0: med=3.38 p95=9.46 cs=0.353 c_n=0.552)
+biomassa real: total=0.2543 bracos=0.1886 | n_pinned(rho_b>=0.8)=43
+empacotamento: clump(<0.5dx)=0.0% nn_mediana=0.919dx | shift processa 68 part.
+junção (so vivas): c_n=0.997 rho_b_p90=0.062 n_bio=11 | vale ao longo do braço=0.748 em r=0.27   (alvo: > 0.5)
+Acelerações:
+  > Marangoni (líq): 2.24
+  > Drag:            0.00 (Freio)
+  > Pressão (est):   2.99
+  > Total |a|:       5.17
+osmotico t=4.3s: absorvidas total=432 (phi_osm>0: 432, vivas=155)
+--------------------------------------------------
+Tempo: 4.33s | Iteração: 200
+Velocidade Máx: 0.0945
+Contraste CS: 83.4635
+c_n: mean=0.9989 max=1.0000 contrast=0.63 | massa: 197.52
+sigma_a braços biomassa (n=70): min=0.586 mean=0.952 frac<0.85=32.86% | c/ inseridas (n=0): mean=0.952 frac<0.85=32.86%
+vazio areal: >0.7dx=46.21% >1.0dx=36.13% >1.5dx=22.32%  (alvo: >1.5dx -> 0)
+motor na biomassa: a_mar med=0.309 p95=4.36 | bracos: cs=0.3721 c_n=0.790   (S0: med=3.38 p95=9.46 cs=0.353 c_n=0.552)
+biomassa real: total=0.3691 bracos=0.2024 | n_pinned(rho_b>=0.8)=43
+empacotamento: clump(<0.5dx)=48.0% nn_mediana=0.569dx | shift processa 68 part.
+junção (so vivas): c_n=0.984 rho_b_p90=0.301 n_bio=69 | vale ao longo do braço=1.000 em r=0.00   (alvo: > 0.5)
+Acelerações:
+  > Marangoni (líq): 7.66
+  > Drag:            8.08 (Freio)
+  > Pressão (est):   3.05
+  > Total |a|:       2.41
+osmotico t=8.4s: absorvidas total=749 (phi_osm>0: 749, vivas=157)
+--------------------------------------------------
+Tempo: 8.42s | Iteração: 400
+Velocidade Máx: 0.0966
+Contraste CS: 54.8123
+c_n: mean=0.9988 max=1.0000 contrast=0.63 | massa: 197.52
+sigma_a braços biomassa (n=68): min=0.460 mean=1.009 frac<0.85=7.35% | c/ inseridas (n=0): mean=1.009 frac<0.85=7.35%
+vazio areal: >0.7dx=36.31% >1.0dx=28.19% >1.5dx=18.55%  (alvo: >1.5dx -> 0)
+motor na biomassa: a_mar med=0.211 p95=2.54 | bracos: cs=0.3462 c_n=0.872   (S0: med=3.38 p95=9.46 cs=0.353 c_n=0.552)
+biomassa real: total=0.3885 bracos=0.1412 | n_pinned(rho_b>=0.8)=43
+empacotamento: clump(<0.5dx)=64.3% nn_mediana=0.389dx | shift processa 67 part.
+junção (so vivas): c_n=0.983 rho_b_p90=0.317 n_bio=71 | vale ao longo do braço=0.022 em r=0.55   (alvo: > 0.5)
+Acelerações:
+  > Marangoni (líq): 6.23
+  > Drag:            7.86 (Freio)
+  > Pressão (est):   2.86
+  > Total |a|:       3.02
+osmotico t=10.9s: absorvidas total=964 (phi_osm>0: 964, vivas=158)
+--------------------------------------------------
+Tempo: 10.94s | Iteração: 600
+Velocidade Máx: 0.0773
+Contraste CS: 45.4349
+c_n: mean=0.9988 max=1.0000 contrast=0.63 | massa: 197.53
+sigma_a braços biomassa (n=69): min=0.482 mean=1.030 frac<0.85=2.90% | c/ inseridas (n=0): mean=1.030 frac<0.85=2.90%
+vazio areal: >0.7dx=29.69% >1.0dx=22.13% >1.5dx=14.81%  (alvo: >1.5dx -> 0)
+motor na biomassa: a_mar med=0.228 p95=2.33 | bracos: cs=0.3365 c_n=0.900   (S0: med=3.38 p95=9.46 cs=0.353 c_n=0.552)
+biomassa real: total=0.4100 bracos=0.1252 | n_pinned(rho_b>=0.8)=43
+empacotamento: clump(<0.5dx)=66.1% nn_mediana=0.348dx | shift processa 68 part.
+junção (so vivas): c_n=0.983 rho_b_p90=0.327 n_bio=72 | vale ao longo do braço=0.021 em r=0.57   (alvo: > 0.5)
+Acelerações:
+  > Marangoni (líq): 5.34
+  > Drag:            6.03 (Freio)
+  > Pressão (est):   2.64
+  > Total |a|:       2.91
+osmotico t=11.1s: absorvidas total=970 (phi_osm>0: 970, vivas=158)
+--------------------------------------------------
+Tempo: 11.13s | Iteração: 800
+Velocidade Máx: 0.0780
+Contraste CS: 44.8447
+c_n: mean=0.9988 max=1.0000 contrast=0.63 | massa: 197.53
+sigma_a braços biomassa (n=69): min=0.524 mean=1.013 frac<0.85=2.90% | c/ inseridas (n=0): mean=1.013 frac<0.85=2.90%
+vazio areal: >0.7dx=29.64% >1.0dx=21.60% >1.5dx=14.01%  (alvo: >1.5dx -> 0)
+motor na biomassa: a_mar med=0.219 p95=2.48 | bracos: cs=0.3383 c_n=0.900   (S0: med=3.38 p95=9.46 cs=0.353 c_n=0.552)
+biomassa real: total=0.4337 bracos=0.1323 | n_pinned(rho_b>=0.8)=43
+empacotamento: clump(<0.5dx)=67.0% nn_mediana=0.354dx | shift processa 68 part.
+junção (so vivas): c_n=0.983 rho_b_p90=0.328 n_bio=72 | vale ao longo do braço=0.021 em r=0.57   (alvo: > 0.5)
+Acelerações:
+  > Marangoni (líq): 5.26
+  > Drag:            6.09 (Freio)
+  > Pressão (est):   2.63
+  > Total |a|:       2.74
+osmotico t=11.3s: absorvidas total=983 (phi_osm>0: 983, vivas=158)
+--------------------------------------------------
+Tempo: 11.32s | Iteração: 1000
+Velocidade Máx: 0.0790
+Contraste CS: 44.2135
+c_n: mean=0.9988 max=1.0000 contrast=0.63 | massa: 197.53
+sigma_a braços biomassa (n=69): min=0.592 mean=0.995 frac<0.85=2.90% | c/ inseridas (n=0): mean=0.995 frac<0.85=2.90%
+vazio areal: >0.7dx=29.62% >1.0dx=21.10% >1.5dx=13.23%  (alvo: >1.5dx -> 0)
+motor na biomassa: a_mar med=0.227 p95=2.62 | bracos: cs=0.3406 c_n=0.899   (S0: med=3.38 p95=9.46 cs=0.353 c_n=0.552)
+biomassa real: total=0.4572 bracos=0.1394 | n_pinned(rho_b>=0.8)=43
+empacotamento: clump(<0.5dx)=67.0% nn_mediana=0.368dx | shift processa 68 part.
+junção (so vivas): c_n=0.983 rho_b_p90=0.328 n_bio=72 | vale ao longo do braço=0.054 em r=0.57   (alvo: > 0.5)
+Acelerações:
+  > Marangoni (líq): 5.21
+  > Drag:            6.17 (Freio)
+  > Pressão (est):   2.61
+  > Total |a|:       2.66
+osmotico t=15.6s: absorvidas total=1370 (phi_osm>0: 1370, vivas=160)
+--------------------------------------------------
+Tempo: 15.57s | Iteração: 1200
+Velocidade Máx: 0.0732
+Contraste CS: 34.4920
+c_n: mean=0.9987 max=1.0000 contrast=0.63 | massa: 197.54
+sigma_a braços biomassa (n=67): min=0.872 mean=1.042 frac<0.85=0.00% | c/ inseridas (n=0): mean=1.042 frac<0.85=0.00%
+vazio areal: >0.7dx=23.02% >1.0dx=14.37% >1.5dx=8.48%  (alvo: >1.5dx -> 0)
+motor na biomassa: a_mar med=0.204 p95=2.74 | bracos: cs=0.3264 c_n=0.940   (S0: med=3.38 p95=9.46 cs=0.353 c_n=0.552)
+biomassa real: total=0.4888 bracos=0.0854 | n_pinned(rho_b>=0.8)=43
+empacotamento: clump(<0.5dx)=68.2% nn_mediana=0.366dx | shift processa 70 part.
+junção (so vivas): c_n=0.982 rho_b_p90=0.195 n_bio=59 | vale ao longo do braço=1.000 em r=0.00   (alvo: > 0.5)
+Acelerações:
+  > Marangoni (líq): 4.53
+  > Drag:            5.82 (Freio)
+  > Pressão (est):   2.70
+  > Total |a|:       2.49
+osmotico t=16.4s: absorvidas total=1466 (phi_osm>0: 1466, vivas=160)
+--------------------------------------------------
+Tempo: 16.41s | Iteração: 1400
+Velocidade Máx: 0.0848
+Contraste CS: 33.0067
+c_n: mean=0.9987 max=1.0000 contrast=0.63 | massa: 197.54
+sigma_a braços biomassa (n=67): min=0.837 mean=1.023 frac<0.85=1.49% | c/ inseridas (n=0): mean=1.023 frac<0.85=1.49%
+vazio areal: >0.7dx=22.24% >1.0dx=13.49% >1.5dx=7.53%  (alvo: >1.5dx -> 0)
+motor na biomassa: a_mar med=0.214 p95=2.68 | bracos: cs=0.3291 c_n=0.938   (S0: med=3.38 p95=9.46 cs=0.353 c_n=0.552)
+biomassa real: total=0.5147 bracos=0.0885 | n_pinned(rho_b>=0.8)=43
+empacotamento: clump(<0.5dx)=61.8% nn_mediana=0.419dx | shift processa 70 part.
+junção (so vivas): c_n=0.981 rho_b_p90=0.182 n_bio=58 | vale ao longo do braço=1.000 em r=0.00   (alvo: > 0.5)
+Acelerações:
+  > Marangoni (líq): 5.15
+  > Drag:            6.44 (Freio)
+  > Pressão (est):   2.70
+  > Total |a|:       2.45
+osmotico t=20.3s: absorvidas total=1891 (phi_osm>0: 1891, vivas=161)
+--------------------------------------------------
+Tempo: 20.29s | Iteração: 1600
+Velocidade Máx: 0.0784
+Contraste CS: 27.6113
+c_n: mean=0.9986 max=1.0000 contrast=0.63 | massa: 197.56
+sigma_a braços biomassa (n=68): min=0.711 mean=1.009 frac<0.85=11.76% | c/ inseridas (n=0): mean=1.009 frac<0.85=11.76%
+vazio areal: >0.7dx=18.89% >1.0dx=10.36% >1.5dx=5.33%  (alvo: >1.5dx -> 0)
+motor na biomassa: a_mar med=0.203 p95=2.35 | bracos: cs=0.3283 c_n=0.943   (S0: med=3.38 p95=9.46 cs=0.353 c_n=0.552)
+biomassa real: total=0.5525 bracos=0.0753 | n_pinned(rho_b>=0.8)=43
+empacotamento: clump(<0.5dx)=63.4% nn_mediana=0.433dx | shift processa 70 part.
+junção (so vivas): c_n=0.979 rho_b_p90=0.093 n_bio=50 | vale ao longo do braço=1.000 em r=0.00   (alvo: > 0.5)
+Acelerações:
+  > Marangoni (líq): 5.26
+  > Drag:            6.39 (Freio)
+  > Pressão (est):   2.64
+  > Total |a|:       2.31
+osmotico t=24.2s: absorvidas total=2333 (phi_osm>0: 2333, vivas=164)
+--------------------------------------------------
+Tempo: 24.19s | Iteração: 1800
+Velocidade Máx: 0.1026
+Contraste CS: 23.4772
+c_n: mean=0.9985 max=1.0000 contrast=0.63 | massa: 197.58
+sigma_a braços biomassa (n=69): min=0.610 mean=0.981 frac<0.85=13.04% | c/ inseridas (n=0): mean=0.981 frac<0.85=13.04%
+vazio areal: >0.7dx=17.02% >1.0dx=8.87% >1.5dx=3.83%  (alvo: >1.5dx -> 0)
+motor na biomassa: a_mar med=0.204 p95=3.18 | bracos: cs=0.3328 c_n=0.943   (S0: med=3.38 p95=9.46 cs=0.353 c_n=0.552)
+biomassa real: total=0.6088 bracos=0.0757 | n_pinned(rho_b>=0.8)=43
+empacotamento: clump(<0.5dx)=63.9% nn_mediana=0.395dx | shift processa 73 part.
+junção (so vivas): c_n=0.973 rho_b_p90=0.072 n_bio=54 | vale ao longo do braço=1.000 em r=0.00   (alvo: > 0.5)
+Acelerações:
+  > Marangoni (líq): 8.78
+  > Drag:            8.51 (Freio)
+  > Pressão (est):   2.56
+  > Total |a|:       2.17
+osmotico t=26.3s: absorvidas total=2582 (phi_osm>0: 2582, vivas=169)
+--------------------------------------------------
+Tempo: 26.29s | Iteração: 2000
+Velocidade Máx: 0.1265
+Contraste CS: 21.7322
+c_n: mean=0.9984 max=1.0000 contrast=0.63 | massa: 197.59
+sigma_a braços biomassa (n=74): min=0.604 mean=0.973 frac<0.85=13.51% | c/ inseridas (n=0): mean=0.973 frac<0.85=13.51%
+vazio areal: >0.7dx=16.32% >1.0dx=8.32% >1.5dx=3.35%  (alvo: >1.5dx -> 0)
+motor na biomassa: a_mar med=0.204 p95=3.08 | bracos: cs=0.3352 c_n=0.937   (S0: med=3.38 p95=9.46 cs=0.353 c_n=0.552)
+biomassa real: total=0.6498 bracos=0.0876 | n_pinned(rho_b>=0.8)=43
+empacotamento: clump(<0.5dx)=58.6% nn_mediana=0.441dx | shift processa 77 part.
+junção (so vivas): c_n=0.971 rho_b_p90=0.063 n_bio=57 | vale ao longo do braço=1.000 em r=0.00   (alvo: > 0.5)
+Acelerações:
+  > Marangoni (líq): 10.53
+  > Drag:            10.71 (Freio)
+  > Pressão (est):   2.54
+  > Total |a|:       8.56
+osmotico t=26.4s: absorvidas total=2591 (phi_osm>0: 2591, vivas=169)
+--------------------------------------------------
+Tempo: 26.44s | Iteração: 2200
+Velocidade Máx: 0.1244
+Contraste CS: 21.6090
+c_n: mean=0.9984 max=1.0000 contrast=0.63 | massa: 197.59
+sigma_a braços biomassa (n=74): min=0.598 mean=0.952 frac<0.85=14.86% | c/ inseridas (n=0): mean=0.952 frac<0.85=14.86%
+vazio areal: >0.7dx=16.37% >1.0dx=8.35% >1.5dx=3.18%  (alvo: >1.5dx -> 0)
+motor na biomassa: a_mar med=0.200 p95=3.12 | bracos: cs=0.3370 c_n=0.936   (S0: med=3.38 p95=9.46 cs=0.353 c_n=0.552)
+biomassa real: total=0.6759 bracos=0.0922 | n_pinned(rho_b>=0.8)=43
+empacotamento: clump(<0.5dx)=55.1% nn_mediana=0.456dx | shift processa 77 part.
+junção (so vivas): c_n=0.970 rho_b_p90=0.064 n_bio=59 | vale ao longo do braço=1.000 em r=0.00   (alvo: > 0.5)
+Acelerações:
+  > Marangoni (líq): 10.33
+  > Drag:            10.54 (Freio)
+  > Pressão (est):   2.54
+  > Total |a|:       8.37
+osmotico t=26.6s: absorvidas total=2603 (phi_osm>0: 2603, vivas=169)
+--------------------------------------------------
+Tempo: 26.60s | Iteração: 2400
+Velocidade Máx: 0.1233
+Contraste CS: 21.4793
+c_n: mean=0.9983 max=1.0000 contrast=0.63 | massa: 197.59
+sigma_a braços biomassa (n=73): min=0.601 mean=0.932 frac<0.85=17.81% | c/ inseridas (n=0): mean=0.932 frac<0.85=17.81%
+vazio areal: >0.7dx=16.41% >1.0dx=8.33% >1.5dx=2.95%  (alvo: >1.5dx -> 0)
+motor na biomassa: a_mar med=0.197 p95=3.16 | bracos: cs=0.3400 c_n=0.934   (S0: med=3.38 p95=9.46 cs=0.353 c_n=0.552)
+biomassa real: total=0.7020 bracos=0.0974 | n_pinned(rho_b>=0.8)=43
+empacotamento: clump(<0.5dx)=58.6% nn_mediana=0.463dx | shift processa 76 part.
+junção (so vivas): c_n=0.966 rho_b_p90=0.074 n_bio=69 | vale ao longo do braço=1.000 em r=0.00   (alvo: > 0.5)
+Acelerações:
+  > Marangoni (líq): 10.21
+  > Drag:            10.45 (Freio)
+  > Pressão (est):   2.54
+  > Total |a|:       7.83

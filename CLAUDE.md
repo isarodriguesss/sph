@@ -72,6 +72,46 @@ A IA **nunca** deve sugerir mudancas cegas em parametros fisicos. Antes de calib
   | **C5a** | `R_conn / R99` — raio alcancado pela componente conexa que contem o centro do inoculo, sobre o raio da colonia | → 1.0 |
   | **C5b** | `frac_conn` — fracao do material nessa componente | → 100% |
 
+  **DEFINICAO DO CONJUNTO "COLONIA" (decisao da usuaria, 2026-09-02).** Colonia e
+  `rho_b >= 0.1` (quorum) **ou** `is_filler` (fase passiva, [T2]). Material com
+  `0 < rho_b < 0.1` **NAO e colonia — e AGAR ENGOLIDO** (licao #58), e conta como defeito.
+
+  **REVISAO (decisao da usuaria, 2026-09-03) — para CONTINUIDADE, o limbo CONTA.** Lendo o
+  P5 na trajetoria, a usuaria determinou que o material em `0 < rho_b < 0.1` forma tecido
+  conectivo entre nucleo e bracos e deve ser considerado ao julgar C5. As duas definicoes
+  seguem valendo, para fins diferentes, e **toda metrica de continuidade deve reportar as
+  duas** ([tools/plot_continuidade.py](tools/plot_continuidade.py) ja o faz lado a lado):
+
+  | | COLONIA (quorum ou filler) | + LIMBO |
+  |---|---:|---:|
+  | P4 (`COL_CS_MIN`=0.30) | 41.3% | 59.8% |
+  | P5 (`COL_CS_MIN`=0.10) | 19.4% | **93.0%** |
+
+  **A ressalva fisica permanece e nao e retorica** (licao #53): limbo tem `fade`=0 na
+  `BiomassEOS`, ou seja **pressao e coesao exatamente zero** — ele nao transmite forca, nao
+  e propelido (gate flagelar 0.2-0.6) nem regularizado pelo shifting (gate 0.1). Uma
+  colonia unida por limbo e continua na IMAGEM e no campo `rho_b`, nao na MECANICA. Ao
+  reportar C5 sob esta definicao, dizer sempre qual das duas colunas esta sendo citada.
+
+  A distincao muda os numeros por um fator ~2 e por isso tem de ser explicita. Medido no E5
+  em t=50, ligacao 1.15 dx: pelo quorum o maior componente e **30% / alcance 38% do raio**;
+  incluindo `rho_b > 0` seria 57% / 52%. As 2464 particulas de diferenca (1436 de traco com
+  `rho_b < 1e-6`, 1028 de limbo) formam uma **casca em volta do nucleo** — visivel em
+  [plots/agar_engolido.png](plots/agar_engolido.png) — e sao **mecanicamente inertes**
+  (licao #53: `fade` da EOS e zero abaixo de 0.1, sem pressao, fora do gate flagelar, nao
+  deslocadas pelo shifting). Contar isso como colonia infla toda metrica de continuidade.
+
+  **CUIDADO ao reler licoes antigas:** varias (a partir da #48) usam `frac(rho_b>0)` como se
+  fosse cobertura da colonia. Sob esta definicao aquilo mede **agar engolido**, nao colonia.
+
+  **MEDIR COMO MEDIA SOBRE JANELA, NUNCA NUM INSTANTE (corrigido 2026-09-02).** `C5b` varia
+  **±7 pontos DENTRO de um mesmo run** (medido em t=35,40,44,47,50: o E5 vai de 8.2 a 15.5;
+  a serie da rota C, de 7.6 a 30.3). Diferenca entre configuracoes so e atribuivel se
+  exceder isso. Reportar **media e desvio sobre t ∈ [35, 50]**. `SEED` fixo NAO resolve —
+  ele garante a condicao inicial, mas a morfologia diverge caoticamente assim que os
+  parametros mudam. Erro cometido na serie C1/C2/C3: li uma tendencia (99→215→467) e depois
+  uma inversao nas MESMAS tres amostras, e as duas leituras eram ruido.
+
   Medido em t=50, a escala de CONTATO (1.05 dx): **C4 da 0.12 / 4.6%** e **E5 da 0.20 / 8.2%** —
   ou seja **mais de 90% da colonia nao tem caminho de volta ao proprio centro**. Varrendo a escala
   (obrigatorio, licao #68): a 1.4 dx da 0.20/17.2% (C4) e 0.49/49.0% (E5); mesmo a 2.7 dx, metade
@@ -203,6 +243,18 @@ O alvo do projeto **nao e escolher** entre "ter buracos" e "ter particulas mal s
 
 **Todas as particulas dentro do swarm contam como colonia.** A distincao `is_filler` permanece valida como ferramenta de diagnostico (atribuir causa), mas **nao** como definicao de quem compoe a colonia para fins de metrica de sucesso.
 
+**Figura de tese:** [plots/fig_tese.py](plots/fig_tese.py) (`make fig RUN=runs/X T=50`) — 2x2 com
+a disposicao e as CORES do painel (b) de Trinschek (decisao da usuaria, 2026-09-14): (a) colonia
+como campo continuo oliva sobre azul-claro (Shepard, h=dx) com buracos FECHADOS de ate 3.5 dx
+preenchidos so na renderizacao (licao #72-K), (b) borda externa em 5 instantes, contornos pretos,
+(c) raios maximo (vermelho) e minimo (azul-petroleo) x t, com os instantes de (b) marcados,
+(d) `c_s` azul-branco-vermelho sem filler, com o contorno da colonia. Unica diferenca deliberada
+da referencia: `c_s` em escala LOG fixa [1e-3, 0.5] (Trinschek usa linear) — em linear o halo
+some. Testados e descartados para o painel (c): campo de `c_n` e quimografo da frente. Colonia =
+`rho_b>=0.1` ou filler (§2.2); `--limbo` inclui o limbo. Escalas fixas, entao figuras de runs
+diferentes sao comparaveis. A legenda na tese DEVE declarar o preenchimento e que os contornos de
+(b) correspondem aos simbolos de (c).
+
 **Ferramentas de diagnostico (`tools/`):** [plot_classes.py](tools/plot_classes.py) (classe da
 particula — agar, viva, limbo, filler, vazio — porque vazio e agar renderizam iguais em qualquer
 painel de campo, licao #66), [plot_coesao.py](tools/plot_coesao.py) (`rho_b` + `fade` da EOS lado a
@@ -217,6 +269,18 @@ da gaussiana inicial) e [verdict_topico2.py](tools/verdict_topico2.py) (criterio
 de agar engolido).
 
 **Instrumentacao:** `void_07`, `void_10`, `void_15` no `log.csv` (funcao `void_fraction` em [main.py](main.py)); ranking e guardrails automatizados em [tools/compare_runs.py](tools/compare_runs.py); comparativo visual com escalas fixas entre rodadas em [tools/compare_frames.py](tools/compare_frames.py).
+
+**A COLUNA `a_pressure` NAO E PRESSAO (corrigido 2026-09-14).** Ela e `max |au − a_mar − a_drag|`,
+um residuo que inclui a forca FLAGELAR (maximo `f0` = 3) e a viscosa. Em t=0 do P2 ela vale
+exatamente `a_flag` (2.9897): o "`a_pressure` ~3.0 estavel" de dezenas de licoes e o flagelo, e o
+criterio "mediana <= 3 / picos > 4" mediu o flagelo mais eventos de viscosidade/pressao. As
+colunas novas `a_press_max` e `a_press_med` (mediana na colonia, `rho_b>=0.1` ou filler)
+descontam flagelo e viscosa: sobram a pressao da EOS e a viscosidade artificial (desprezivel,
+licao #86-E). No P2 elas valem ~0.07-0.09 (max) e ~1-2e-3 (mediana) nos primeiros 8 s — 30-40x
+e ~1000x abaixo da coluna antiga, coerente com a pressao 219x abaixo da Marangoni (#85-B).
+Adicionadas sem mudar a dinamica: verificado bit-a-bit nas 58 arrays do HDF5 (passos 200 e
+400) e nas 45 colunas antigas do log (`runs/_verif_pressao_ctrl` x `_verif_pressao_novo`).
+**Criterios de pressao novos devem usar `a_press_med`/`a_press_max`, nunca `a_pressure`.**
 
 **Reprodutibilidade — `SEED` em [main.py](main.py), propagada a `create_initial_state` ([src/particles.py](src/particles.py)):**
 
@@ -522,38 +586,89 @@ conda install mpi4py -c conda-forge
 
 ## 6. Arquitetura
 
-**Entry point:** [main.py](main.py) — define `SwarmApp(Application)`, parametros fisicos como globais, cria particulas, scheme e solver. O hook `post_step` imprime diagnosticos por iteracao e opcionalmente trata divisao celular (`use_splitting = False`).
+**Entry point:** [main.py](main.py) — parametros fisicos como globais (baseline P2), `SwarmApp(Application)` cria particulas, scheme e solver. O `post_step` faz tres coisas, nesta ordem: registra o `log.csv` a cada `print_freq` ([main.py:350](main.py#L350) `_registra`), insere filler no vacuo estrutural (`_insere_vacuo`, C3.4) e deposita o rastro do wake (`_deposita_rastro`).
 
-**[src/particles.py](src/particles.py)** — `create_initial_state()` constroi a grade 2D: particulas fluidas com campo Gaussiano `rho_b_grown` (biomassa) + perturbacoes, e particulas-fantasma solidas (2 camadas) formando paredes.
+**[src/particles.py](src/particles.py)** — `create_initial_state()` constroi a grade 2D: inoculo quartico `rho_b = exp(-(r/R_θ)^4)` com `R_θ = 0.30 + 0.06 cos(8θ)` + ruido, e particulas solidas (2 camadas) formando paredes.
 
-**[src/scheme.py](src/scheme.py)** — `MyBiomassScheme(Scheme)` conecta todas as equacoes em dois `Group`s PySPH:
-1. Pre-step (non-real): `SummationDensity` -> `BiomassEOS`
-2. Main step: `MomentumEquation` (Monaghan `alpha`) -> `BiomassGrowth` -> `BiomassGradient` -> `MarangoniForce` -> `ViscousForce` -> `LinearDrag` -> `SurfactantEquation`
+**[src/scheme.py](src/scheme.py)** — `MyBiomassScheme(Scheme)` monta os `Group`s PySPH, nesta ordem:
+1. `SummationDensity` -> 2. `BiomassEOS` (Group proprio: precisa de `rho` finalizado) -> 3. `KernelSum` (`sigma_a`) -> 4. `KernelGradientCorrection` (se `use_kgc`)
+5. Principal: `MomentumEquation` (Monaghan `alpha`) -> `BiomassGrowth` -> `BiomassColonization` -> `BiomassGradient` -> `MarangoniForce` -> `ViscousForce` -> `LinearDrag` -> `SurfactantEquation` -> `OxigenConsumption` -> `NutrientSource` -> `FlagellarForce`
+6. `ParticleShift` (se `use_shift`)
 
 **Invariantes criticos:**
 - `BiomassGradient` **deve** executar antes de `MarangoniForce` — Marangoni usa `grad_rho_b_mag` como gate de interface.
 - `SurfactantEquation` **deve** executar antes de `FlagellarForce` — motilidade flagelar usa o campo `cs` atualizado via `grad_cs_x/y`.
+- `NutrientSource` depois de `OxigenConsumption`, que zera `a_c_n` no `initialize`.
 
-`CustomEulerStep` estende `EulerStep` para integrar `rho_b_grown` e `cs`, com clamping: `rho_b_grown` em [0, 1], `cs` >= 1e-9.
+`CustomEulerStep` integra `rho_b_grown`, `cs`, `c_n`, massa e o deslocamento do shifting, com clamping (`rho_b` em [0,1], `cs` >= 1e-9, `c_n` em [1e-9,1]) e o hard pin (`u=v=0` se `rho_b>=0.8`, `c_n<0.6` ou filler do insert; o filler do wake nunca e pinado).
 
 **[src/equations.py](src/equations.py)** — Equacoes SPH customizadas:
 
-| Equacao | Descricao | Referencia |
+| Equacao | Descricao | Linha |
 |---------|-----------|------------|
-| `BiomassGrowth` | Crescimento logistico gateado por `rho_b < 0.8` e `c_n` (M-B.3): `rate = r * (1 - rho_b/rho_max) * c_n/(c_n+0.1)` | [equations.py:4-22](src/equations.py#L4-L22) |
-| `BiomassGradient` | Gradiente SPH simetrico de biomassa; magnitude usada pelo gate Marangoni |[equations.py:21-49](src/equations.py#L21-L49) |
-| `SurfactantEquation` | Reacao-difusao: Hill QS + frente movel `(1 - rho_b)` + Brookshaw + decaimento | [equations.py:52-83](src/equations.py#L52-L83) |
-| `MarangoniForce` | `F = -beta * nabla_cs * gate(grad_rho_b)`, gradiente simetrico |[equations.py:86-150](src/equations.py#L86-L150) |
-| `LinearDrag` | `F = -gamma_eff * v`, com `gamma_eff = gamma_base + gamma_mature * rho_b^2` |[equations.py:153-198](src/equations.py#L153-L198) |
-| `ViscousForce` | Viscosidade SPH padrao com `mu_eff = mu * min(rho_avg, 1)` | [equations.py:215-259](src/equations.py#L215-L259) |
-| `BiomassEOS` | "Soft Interior, Cohesive Edge" — repulsao quadratica + atracao leve + edge_fade |[equations.py:262-315](src/equations.py#L262-L315) |
-| `OsmoticForce` | **Desabilitada.** Substituida pelo ramo atrativo da EOS. Mantida para referencia | [equations.py:318-363](src/equations.py#L318-L363) |
-| `FlagellarForce` | **Pass K.** Motilidade quimiotactica de magnitude constante: acumula `grad_cs_x/y` em `loop`, aplica `f0 * gate(rho_b) * n̂(∇cs)` em `post_loop` | [equations.py:408-483] (src/equations.py#L408-L483) |
+| `BiomassGrowth` | Logistico `r(1-rho_b)·f(c_n)·rho_b`, gate `rho_b<0.8`, filler nao cresce; massa `d_am = m·d_a_rho_b` | [:4](src/equations.py#L4) |
+| `BiomassColonization` | Unico termo aditivo em `rho_b`: relaxa ao alvo-doador `Σ V rho_b² W / Σ V rho_b W`, gate `cs > COL_CS_MIN`; `filler_donor=1` e o P2 | [:32](src/equations.py#L32) |
+| `BiomassGradient` | Gradiente SPH de `rho_b`; magnitude e o gate de interface da Marangoni | [:97](src/equations.py#L97) |
+| `KernelSum` | `sigma_a = Σ V_j W_ij` (particao da unidade, Violeau §3.6) | [:125](src/equations.py#L125) |
+| `KernelGradientCorrection` | `L = M⁻¹` de Bonet-Lok, fallback identidade se `det<0.25` | [:136](src/equations.py#L136) |
+| `ParticleShift` | Shifting Fickiano na banda `rho_b∈[0.1,0.8)`, com cap | [:171](src/equations.py#L171) |
+| `SurfactantEquation` | Brookshaw bi-escala (`D_int`/`D_ext`) + producao `σ·qs·(1-cs/cs_max)·noise·f(c_n)` − `λ_eff·cs`; filler transparente | [:210](src/equations.py#L210) |
+| `MarangoniForce` | `F = -β·gate(|∇rho_b|)·L·∇cs` (KGC) | [:294](src/equations.py#L294) |
+| `LinearDrag` | `F = -(γ + 1.5γ·rho_b²)·v` | [:355](src/equations.py#L355) |
+| `ViscousForce` | Viscosidade SPH com `mu_eff = mu·min(rho_avg, 1)` | [:373](src/equations.py#L373) |
+| `BiomassEOS` | Repulsao quadratica + atracao leve, fades em `rho_b` (zero abaixo de 0.1) | [:412](src/equations.py#L412) |
+| `OsmoticForce` | **Desabilitada**, mantida como roadmap (Objetivo 2 do §1) | [:451](src/equations.py#L451) |
+| `FlagellarForce` | Magnitude constante `f0·gate(rho_b)·n̂(-∇cs)`, gate `[0.2, 0.6]` | [:483](src/equations.py#L483) |
+| `OxigenConsumption` | Difusao bi-escala do nutriente + consumo `k_n·rho_b·c_n` | [:545](src/equations.py#L545) |
+| `NutrientSource` | Reposicao `k_src(1-c_n)`, regime nutrient-rich [T2] | [:593](src/equations.py#L593) |
 
 ---
 
 ## 7. Parametros Calibrados (branch `ram-8827-v1`)
 
+> **LIMPEZA DE CODIGO (2026-09-14, pedido da usuaria).** O codigo passou a conter SO o baseline
+> P2 (+ o parametro `KERNEL`/`H_FACTOR` do teste P2W). `main.py` 1965 -> ~660 linhas,
+> `src/equations.py` 1112 -> ~600. Tudo o que estava "preservado desligado" foi REMOVIDO e esta
+> no commit `a2d6dfd`: mitose e `use_splitting`, Pass N, piso (`use_floor`/`is_env`), ponte,
+> matriz (`is_matrix`/`is_conv`), promocao, `WAKE_SEG`/`WAKE_SPREAD`/`WAKE_RECYCLE`/`WAKE_ATTACH`/
+> `WAKE_MODE`, `FILLER_RHO_B_FLOOR`, sumidouro quadratico (`CS_SINK_K`), `CS_PROD_CN`,
+> `COL_TARGET_FRAC`, `GROWTH_*` (ganho de massa, boost motil), `MOTOR_SCALE`, `AGAR_FADE`,
+> `AGAR_DRAG_RATIO`, `chi`/`ChemotacticFlux`, `D_b`/`BiomassDiffusion`, osmolito
+> (`c_o`/`OsmolyteProduction`), `InterpolateVelocity`, inoculo plato, `m0`, `gen`,
+> `FILLER_NUTRIENT_TRANSPARENT`. `OsmoticForce` mantida (roadmap, §10). As colunas do `log.csv`
+> NAO mudaram (a `pass_n_spawned` segue com o nome historico; conta insert+wake). O HDF5 deixou
+> de gravar `c_o`, `is_matrix`, `is_conv`, `is_env`, `rho_b_pre`. Em `tools/` e `plots/` sairam
+> scripts e figuras de series encerradas; `tools/compara_osm.py` e `tools/plot_expansao_comp.py`
+> foram removidos por engano e RESTAURADOS — sao importados por `rank_runs.py` e `compara_raio.py`.
+> Antes de apagar um script, procurar quem o IMPORTA, nao so quem o cita.
+>
+> **Verificado bit-a-bit contra o codigo pre-limpeza** (`runs/_verif_controle` x
+> `runs/_verif_limpeza`, 10 threads): as 58 arrays do HDF5 identicas nos passos 1, 2, 6, 200,
+> 400 e 600, com wake em 100-600 e insercao em 200 e 400. **Regra aprendida:** ao enxugar
+> equacoes, nao fundir `a = x*y` + `d += a` numa so expressao — isso deixa o compilador usar FMA
+> e muda o ultimo bit; o codigo mantem os statements separados de proposito.
+>
+> **Correcao do "bit-a-bit" do P2 (medida na mesma verificacao).** Rodar HOJE o codigo
+> pre-limpeza NAO reproduz o HDF5 do `runs/P2_fillerdonor` original: difere em ~1e-14 ja no
+> passo 200 (identico no 0), e o caos leva a diferenca a 4a casa do log em t=12.7 (passo 600).
+> O `_verif_P2` comparou so o log (4-6 digitos) nos passos 0 e 200, onde ainda coincide. A
+> origem e anterior a limpeza (o controle difere igual). Implicacao: o P2 original e uma
+> realizacao, nao a referencia exata; comparacoes com ele valem no nivel de ruido entre
+> realizacoes, como ja se faz com as de thread diferente.
+>
+> **BASELINE = P2 = E11 + `COL_FILLER_DONOR=1` (2026-09-11, decisao da usuaria, licao #88).**
+> Reproduz `runs/P2_fillerdonor` BIT-A-BIT (45 colunas + `t` nas iteracoes 0 e 200,
+> `runs/_verif_P2`). E o unico da serie P que liga os bracos ao nucleo sem sair da classe
+> dendritica. Validacao ate t=100 em `runs/P2_t100`. O bloco abaixo (E11) continua valendo
+> para todas as outras constantes.
+>
+> **BASELINE = E11 (2026-09-11, decisao da usuaria).** `main.py` e `src/` reproduzem
+> `runs/E11_t100` BIT-A-BIT (45 colunas do log e o `t` do dt adaptativo nas iteracoes 0 e
+> 200, `runs/_verif_E11`). E o E5 sem piso, `k_src=0.3`, `HILL_K=0.25`, `sigma=11.1`,
+> `k_col=0.03`, teto `cs_max=0.5`, inoculo quartico, wake+insert, SEM mitose, ganho 1,
+> t=100. Todo o codigo posterior (mitose, sumidouro, plato, `WAKE_ATTACH`, `MOTOR_SCALE`,
+> gates parametrizados) fica PRESERVADO DESLIGADO (§10) — ver bloco apos a licao #87.
+>
 > **BASELINE MIGRADO C4 -> E5 (2026-09-01).** A tabela abaixo e do C4. As mudancas para a
 > serie E (`k_src=0.3`, `HILL_K=0.25`, `sigma=11.1`, `k_col=0.03`, e a **correcao de bug**
 > da `BiomassEOS` em `Group` proprio — no C4 o ramo repulsivo NUNCA disparava, `p>0` em
@@ -1891,9 +2006,9 @@ Calibracao pos-Passes A-I.7. **MARCO I.7:** Transicao blob→dendritico confirma
 
     **(G) `rho_b = 0.1` em escala LINEAR 0-1 e quase a cor do zero** — terceira aparicao da
     armadilha de renderizacao das licoes #49 e #56. O piso so LE como colonia em escala LOG. Painel
-    log ja existe em [plots/plot.py](plots/plot.py); a comparacao dos criterios esta em
-    [plots/piso_criterio.png](plots/piso_criterio.png) e a varredura em
-    [plots/piso_varredura.png](plots/piso_varredura.png).
+    log ja existe em [plots/plot.py](plots/plot.py); as figuras da comparacao dos criterios
+    (`piso_criterio.png`, `piso_varredura.png`) foram removidas na limpeza de 2026-09-14 e
+    estao no commit `a2d6dfd`.
 
     **(H) A METRICA DE BURACO ESTAVA ERRADA POR UM TETO QUE EU MESMO IMPUS** (2026-09-01): medi
     "vazio" so dentro do envelope (`d < 1.5h = 2.7 dx` de material) e conclui que restavam **169
@@ -1970,8 +2085,8 @@ Calibracao pos-Passes A-I.7. **MARCO I.7:** Transicao blob→dendritico confirma
 
     Implementado como `python tools/plot_piso.py --fill[=N] <runs...>` (padrao N=3.5 dx), com
     elemento estruturante em DISCO — o quadrado deixa a borda em degrau. Sobre o E5: `--fill=3.5`
-    desenha +2683 particulas e leva o buraco de 1200 para 472 dx². Comparacao visual em
-    [plots/E5_fill_render.png](plots/E5_fill_render.png). `use_floor = False` em
+    desenha +2683 particulas e leva o buraco de 1200 para 472 dx² (figura `E5_fill_render.png`
+    no commit `a2d6dfd`). `use_floor = False` em
     [main.py](main.py); verificado que reproduz o E5 **bit-a-bit** (iteracao 200 identica em
     `t`, `a_marangoni`, `contrast_cs` e `mass_total`). O codigo do piso fica preservado desligado
     (§10): com `is_env` sempre 0, as sete isencoes em `src/equations.py` sao no-op.
@@ -2048,7 +2163,35 @@ Calibracao pos-Passes A-I.7. **MARCO I.7:** Transicao blob→dendritico confirma
     dirigidas contra a deposicao cega do B1. E o B1 foi julgado contra criterios que **nao
     incluiam C5**; sob C5 ele ataca o defeito certo.
 
-    **Ordem recomendada: C (barata, direta) -> B (media) -> A (bloqueada ate resolver `cs_max`).
+    **RESULTADO (2026-09-02): C e B REPROVADAS; as tres rotas convergem em `cs_max`.**
+
+    **Rota C** (`runs/C1_wakeseg`, `C2_freq50`, `C3_freq25`): deposicao dirigida ao longo do
+    rastro. `C5b` medio (t 35-50) vai de **12.1 para 19.4** — cerca de UM desvio — contra o
+    alvo de 70. E `WAKE_FREQ` **nao tem efeito atribuivel** entre 25 e 100. **Erro de metodo
+    a nao repetir:** li uma tendencia (cadeia do wake 99 -> 215 -> 467) e depois uma inversao
+    nas MESMAS tres amostras; `C5b` varia **±7 pontos DENTRO de um run**, entao ambas eram
+    ruido. `SEED` fixo nao protege — ele fixa a condicao inicial, e a morfologia diverge
+    caoticamente assim que os parametros mudam. C5 passou a ser reportado como media±desvio
+    sobre t ∈ [35,50] (§2.2 e `tools/plot_trajetoria.py`).
+
+    **Rota B** (`runs/B1_agarfade`, `B2_agar_press_drag`): o mecanismo JA existia (`agar_fade`
+    = ramo so repulsivo) e os dois testes anteriores eram invalidos — o A2 rodou com o bug de
+    `Group` da EOS, o A2b mediu ocupacao em t~29. **B1** engajou plenamente (`|p|` do agar
+    0 -> 0.121 em 21268 particulas, `rho/rho0` max 5.86 -> 3.63) e nao adiantou: `C5b` 9.4%
+    contra 11.3% do baseline. **B2** (pressao + `AGAR_DRAG_RATIO`=0.1) move o agar 26× mais,
+    mas ele e arrastado JUNTO em vez de sair da frente — AR 7.61 -> **3.13**, dedos 24 -> 15,
+    `a_mar` 12.31 -> **4.02**, `C5b` 2.6%. E o `runs/A1` reproduzido, agora com pressao.
+
+    **O ACHADO — a adveccao e INVARIANTE: 31 -> 31 -> 34.** Tres regimes radicalmente
+    diferentes do meio (rigido sem pressao, rigido com pressao, movel com pressao) e o numero
+    de particulas que a colonia TRANSPORTA alem de `r=2` nao muda. **O gargalo nao e o meio** —
+    e a forca motriz: com ~276 portadoras e `a_mar` ~12 a colonia move as pontas e deposita
+    atras, faca o meio o que fizer.
+
+    **Convergencia:** C ataca como o material e depositado, B ataca o meio, e as duas
+    reprovaram; a rota A ataca a forca motriz, que e o que a invariancia identificou como
+    limitante — e esta bloqueada pelo teto de `cs`. **As tres convergem em `cs_max`, que e o
+    problema aberto do projeto e e anterior a C5.**
     Plano completo, com criterios de aceitacao pre-registrados, em
     [docs/PLANO_C5_CONTINUIDADE.md](docs/PLANO_C5_CONTINUIDADE.md).
 
@@ -2064,6 +2207,1622 @@ Calibracao pos-Passes A-I.7. **MARCO I.7:** Transicao blob→dendritico confirma
     aparece em t=50. Subprodutos favoraveis: motor CRESCENTE em t=100 (`a_mar` 13.65 vs
     12.31), `c_n`=0.758 nos bracos (contra 0.086 do C4 em t=89, licao #47), massa +3.9% —
     **a janela util do E5 vai muito alem de t=50**, ao contrario do C4.**
+
+74. **P5 (`COL_CS_MIN` 0.30 -> 0.10) REPROVADO — elegibilidade nao e conversao: 91% do que
+    ela acrescenta para no LIMBO; e o gate de `cs` tem de SUBIR, nao descer** (2026-09-02,
+    `runs/P5_csmin010_REPROVADO`): medido no P2 em t=50, a densidade linear de colonia cai
+    **27x** do nucleo a ponta (10.7 -> 0.40 particulas por dx de perimetro) com um degrau de
+    3.2x em r=2.0. No mesmo raio o gate da colonizacao fechava — de **83%** das candidatas
+    elegiveis em r=1.5-2.0 para **14%** em 2.0-2.5, e **zero** alem de 2.5 — enquanto as
+    outras duas condicoes estavam satisfeitas (`c_n` 0.93, 100% acima do gate; doador
+    0.46-0.51, acima do quorum). Baixar o gate para 0.10 abriu a regiao certa.
+
+    **E reprovou, com o numero da licao #59 reproduzido:**
+
+    | r > 1 | colonia | **limbo sub-quorum** |
+    |---|---:|---:|
+    | delta P5 - P2 | **+625** | **+6185** |
+
+    **90.8% do acrescimo parou no limbo** (K3 mediu ~92%). `contrast_cs` 9.5 -> **5.2**,
+    vazio >1.5dx no envelope 0.026% -> **0.711%** (27x), `rho_b>0.5` 1283 -> **523**.
+
+    **A CAUSA — elegibilidade nao e conversao.** A colonizacao e uma relaxacao exponencial
+    com `tau = 1/k_col = 33 s`: a recruta SOBE em rampa na direcao do doador. Tempo mediano
+    para cruzar o quorum: **24 s**, contra **0.73 s** de passagem da frente por um ponto.
+    Baixar o gate nao acelerou nada — multiplicou por dez quantas particulas ficam presas no
+    MEIO da rampa, em `rho_b` 0.02-0.09: pela licao #53 elas nao tem pressao (`fade`=0), nao
+    sao propelidas (gate flagelar 0.2-0.6) nem regularizadas (shift >=0.1), **e produzem
+    `cs`**. O requisito e NASCER no quorum, nao crescer ate ele.
+
+    **`k_col` e o gate NAO sao alavancas independentes.** `k_col` so muda a VELOCIDADE de
+    chegada ao mesmo equilibrio; o equilibrio e fixado pelo gate. Sob o gate 0.30 esse
+    equilibrio custa **+279%** de producao efetiva — e foi ele que a licao #49 mediu com
+    `k_col`=0.1 custando 49% do motor e 0.3 matando-o. A unica variavel livre e o GATE.
+
+    **E o gate tem de SUBIR.** Nascer no quorum custa ~10x mais `cs` por particula que ficar
+    no limbo (`qs(0.19)`=0.38 contra `qs(0.05)`=0.038), entao so cabe fazer isso com poucas,
+    e onde `cs` ja encosta no teto — ali `(1-cs/cs_max)`=0.2 amortece por construcao.
+    Producao efetiva adicional (`Sigma qs*(1-cs/cs_max)`, base = 35.9 da colonia viva do P2):
+
+    | gate | 0.40 | 0.35 | 0.30 | 0.20 |
+    |---|---:|---:|---:|---:|
+    | adicional (alvo 0.7*doador) | **+38%** | +94% | +279% | +1956% |
+
+    **Orcamento medido: ~+30%** — foi esse o acrescimo do P5, e derrubou o contraste 45%.
+
+    **DOIS GANHOS REAIS sobrevivem a reprovacao, e o segundo corrige a #66-E:**
+
+    (a) **[CORRIGIDO — a referencia estava errada, ver bloco P4 abaixo.]** Ganho REAL do P5:
+    ocupacao dentro do contorno do dedo (C4a) em r=2.0-2.5 **0.44 -> 0.60**, densidade linear
+    em r=2.0 **1.16 -> 2.99**, e continuidade **93.0%** sob a definicao com limbo (contra
+    59.8% do P4). Sob a definicao estrita (so quorum ou filler) o P5 REGRIDE: 41.3% -> 19.4%.
+
+    (b) **O orcamento de `cs` NAO se aplica ao filler.** Ele e gateado fora da
+    `SurfactantEquation` como fonte E destino (`a_c_s=0`), entao **preencher os bracos com
+    filler custa ZERO em `cs`** — so a colonizacao, que fabrica biomassa VIVA, paga. Sao
+    dois defeitos com orcamentos disjuntos: a BASE (r 1.5-2.5, colonia viva, +38% apertado)
+    e os BRACOS (r>2.5, ~42% do contorno vazio, 62% do material e wake, custo zero).
+
+    **ARMADILHA DE RENDERIZACAO, quarta aparicao (cf. #49, #56, #67-G):** no painel de
+    `rho_b` em viridis/LogNorm(1e-3,1), a faixa **0.02-0.09 — o limbo — pinta VERDE-AGUA**,
+    a mesma familia de cor do quorum. Li os "dendritos tubulares continuos" do P5 como
+    colonia; eram bainha de limbo. O mesmo estado da **93%** de continuidade se o limbo
+    contar e **19.4%** se nao contar. Instrumento: [tools/plot_continuidade.py](tools/plot_continuidade.py)
+    plota as duas populacoes LADO A LADO com varredura de escala — a diferenca entre os dois
+    paineis E o tamanho da ilusao. **Nunca julgar continuidade pela cor de `rho_b`.**
+
+    **Erro de processo a nao repetir:** reportei o P5 como ganho ("base engrossou 2x") medindo
+    `colonia = rho_b>=0.1 ou is_filler` por anel — metrica correta — mas sem checar a
+    COMPOSICAO do que entrou. A densidade linear em r=2.0-2.5 de fato dobrou; so que o que a
+    dobrou nao era colonia. **Ao reportar ganho de preenchimento, decompor SEMPRE em
+    colonia / limbo antes de concluir** — a soma pode subir com a colonia parada.
+
+    ---
+
+    **P6 (gate 0.30 -> 0.40, alvo 0.7*doador, `k_col` 0.20) REPROVADO NA DIRECAO OPOSTA — e
+    e ele que fecha a alavanca** (`runs/P6_base_REPROVADO`): aplicada a prescricao acima. O
+    `contrast_cs` foi a **14.2** (o melhor da serie; P2 9.5, P5 5.2) e **todo o resto
+    desabou**:
+
+    | t=50, r>1 | P6 | P2 | P5 |
+    |---|---:|---:|---:|
+    | colonia | **1330** | 3567 | 4168 |
+    | viva | **80** | 777 | 1460 |
+    | limbo | 61 | 2167 | 13995 |
+    | ocupacao r 1.5-2.0 (C4a) | **0.41** | 0.65 | 0.64 |
+    | densidade linear r=1.0 | **3.39** | 8.93 | 8.77 |
+
+    O contraste de 14.2 e o contraste de uma colonia que nao existe.
+
+    **O ACOPLAMENTO QUE FALTAVA — a colonizacao alimenta o WAKE.** `BiomassGrowth` e
+    MULTIPLICATIVO, entao a colonizacao e o **unico termo aditivo do modelo** e a fonte de
+    TODOS os portadores novos. E o wake exige mae com `rho_b > WAKE_RHO_B_MIN = 0.05`
+    ([main.py](main.py), `_phi_s = fluid.rho_b_grown`, **filler incluido**). Medido:
+
+    | | maes (`rho_b`>0.05) | filler | nao-filler | massa do wake | teto | `mean_v` |
+    |---|---:|---:|---:|---:|---:|---:|
+    | P2 | 5652 | 3586 | 2066 | 11.3 | 23.7 | 1.37e-3 |
+    | P5 | 8615 | 3471 | 5144 | 12.0 | 23.7 | 1.03e-3 |
+    | **P6** | **2348** | 1876 | **472** | **5.6** | 23.7 | 6.6e-4 |
+
+    Estrangular a colonizacao cortou as maes em 58% e a deposicao do wake em 50% — e como
+    menos colonia produz menos `cs`, menos particulas passam no gate 0.40: **e um laco que
+    se reforca para baixo**. O gate nao e alavanca livre, esta em realimentacao com o
+    proprio campo que o define.
+
+    **CORRIGE O ENQUADRAMENTO DA #74:** o limbo NAO e so desperdicio. Para o wake vale um
+    LIMIAR (`rho_b >= 0.05`), nao a magnitude — e um portador em 0.05 custa **15x menos
+    `cs`** que um em 0.3 (`qs` 0.038 contra 0.59). O limbo e a forma BARATA de alimentar o
+    wake que constroi os bracos.
+
+    **AS TRES RODADAS ESTAO NA MESMA FRONTEIRA DE PARETO** — e o gate so anda sobre ela:
+
+    | | portadores | `contrast_cs` | colonia r>1 |
+    |---|---:|---:|---:|
+    | P6 (gate 0.40) | 2348 | 14.2 | 1330 |
+    | **P2 (gate 0.30)** | 5652 | 9.5 | 3567 |
+    | P5 (gate 0.10) | 8615 | 5.2 | 4168 |
+
+    Monotonico nas tres colunas. E a lei (L) da licao #67 de novo: **preencher e ter motor
+    sao antagonistas enquanto o material que preenche produzir `cs`.** `COL_CS_MIN=0.30` e o
+    ponto de equilibrio; a alavanca esta ESGOTADA nas duas direcoes.
+
+    **A SAIDA MEDIDA — o wake tem metade do orcamento parado e nao custa `cs`.** Nenhuma
+    rodada chegou perto do teto (11.3-12.0 de **23.7** = `WAKE_MASS_BUDGET`*massa inicial):
+    o wake e limitado por MAE e por DESLOCAMENTO (`disp >= WAKE_DISP*dx`), nao por
+    orcamento. E filler e gateado fora da `SurfactantEquation` como fonte E destino
+    (licao #39/#66-E), entao **preencher os bracos com filler custa ZERO em `cs`**. Sao dois
+    defeitos com orcamentos DISJUNTOS:
+
+    | zona | defeito | mecanismo | custo em `cs` |
+    |---|---|---|---|
+    | base, r 1.5-2.5 | continuidade da colonia viva | colonizacao | apertado (~+30%) — **esgotado** |
+    | bracos, r > 2.5 | ~42% do contorno vazio (C4a 0.46-0.60) | **wake** (12 unidades de teto ociosas) | **zero** |
+
+    **Ressalva para a rota do wake:** a licao #65 ja reprovou depositar ao longo do segmento
+    inteiro (`WAKE_SEG`), que custou 25% de AR. Mas aquilo foi julgado antes do C5 existir e
+    sem `WAKE_ATTACH`, e o alvo agora e outro (ocupacao dentro do contorno, nao vazio areal).
+
+    ---
+
+    **ERRO DE ATRIBUICAO — comparei a serie inteira contra o baseline errado** (2026-09-03):
+    P5 e P6 rodaram com `WAKE_ATTACH`=1.05 ligado, ou seja sobre o **P4**, e eu os comparei
+    contra o **P2**, que nao o tem. O `WAKE_ATTACH` sozinho vale mais em C5 que tudo o que a
+    serie P testou depois:
+
+    | | colonia r>1 | maes | **conn 1.05 dx (quorum)** | + limbo | `contrast_cs` |
+    |---|---:|---:|---:|---:|---:|
+    | P2 | 3567 | 5652 | 12.5% | 49.1% | 9.51 |
+    | **P4** | 2743 | 4904 | **41.3%** | 59.8% | 10.03 |
+    | P5 | 4168 | 8615 | 19.4% | **93.0%** | 5.67 |
+    | P6 | 1330 | 2348 | 7.7% | 7.0% | 14.23 |
+
+    **Regra:** ao abrir uma rodada, anotar explicitamente contra QUAL rodada ela sera medida,
+    e conferir que a config difere dela por UMA alavanca. Aqui a config de referencia tinha
+    avancado (P2 -> P4) sem que eu atualizasse a referencia das medicoes.
+
+    **P4 vs P5 — a comparacao limpa (uma alavanca, `COL_CS_MIN` 0.30 -> 0.10) e o achado que
+    orienta o resto:** o P5 tem **1376 particulas de colonia A MAIS** e **597 A MENOS** no
+    maior componente (1627 -> 1030 em valor ABSOLUTO, nao fracao). Componentes a 1.05 dx:
+    536 -> 855.
+
+    E **nao e falta de contato local**: 95% (P4) e 92% (P5) das particulas de colonia tem
+    vizinho a <1.05 dx, com mediana de 2-3 vizinhos nas duas. O material do P5 esta encostado
+    localmente; o que falta e CAMINHO ate o centro — sao ilhas densas e orfas. A varredura de
+    escala separa os dois: o P4 sobe 41 -> 73 ja a 1.2 dx e satura em 84% (faltam poucas
+    ligacoes e curtas); o P5 sobe 19 -> 54 e so alcanca o P4 a **2.7 dx** (precisa de saltos
+    2.5x maiores).
+
+    **PARA O C5, COMO O MATERIAL ENTRA IMPORTA MAIS QUE QUANTO ENTRA.** `WAKE_ATTACH` poe
+    cada particula nova a <=1.05 dx de material existente **por construcao**; a colonizacao
+    converte quem passa nos gates de `cs` e `c_n`, e esse conjunto e um subconjunto esparso
+    da rede — cada ilha nasce densa e orfa. Adicionar por ADJACENCIA e o mecanismo certo
+    para continuidade; adicionar por CONVERSAO e o mecanismo certo para preenchimento local
+    (o P5 de fato entrega ocupacao 0.44 -> 0.60 e densidade 1.16 -> 2.99 em r=2.0).
+
+75. **A LARGURA DO BRACO: cintura em r/R99=0.65, barriga em 0.83, razao 2.1x — e a barriga
+    ACOMPANHA A FRENTE. Quatro alavancas refutadas por medicao antes de rodar, e o
+    `contrast_cs` invalidado como orcamento** (diagnostico sobre o P5, 2026-09-03):
+
+    **(A) A COLONIA REAL NAO VARIA DE LARGURA — o manto de limbo varia.** Largura local
+    medida por transformada de distancia (EDT = raio do maior circulo inscrito; nao depende
+    de escolher setor angular, licao #67-F):
+
+    | r/R99 | 0.40 | 0.48 | 0.55 | 0.62 | 0.70 | 0.78 | 0.85 | 0.93 |
+    |---|---:|---:|---:|---:|---:|---:|---:|---:|
+    | colonia estrita | 1.4 | 1.2 | 1.4 | 1.4 | 1.4 | 1.3 | 1.3 | 1.0 |
+    | colonia + limbo | 3.0 | 3.0 | 2.5 | **2.2** | 3.1 | 4.4 | **4.5** | 4.0 |
+
+    A colonia e um fio de **1.3 dx constante**. Toda a variacao (max/min 2.1x, identica nos
+    8 bracos) esta no limbo.
+
+    **(B) O MECANISMO E UM ENGARRAFAMENTO.** Velocidade mediana por CLASSE:
+
+    | r/R99 | viva | limbo | razao |
+    |---|---:|---:|---:|
+    | 0.40-0.57 | 2.6e-3 | 1.0e-3 | 2.5x |
+    | 0.70-0.78 | 1.6e-2 | **4.5e-3** | 3.6x |
+    | 0.78-0.88 (barriga) | 1.9e-2 | **8.2e-4** | 23x |
+    | 0.88-1.00 | 3.0e-2 | 3.9e-4 | **77x** |
+
+    A viva acelera monotonicamente (tem o motor); o limbo e passivo. Onde a viva rareia
+    (9% -> 1% do corpo), o limbo estagna e o material que vem atras empilha. `dv/dr>0`
+    rarefaz (cintura), `dv/dr<0` comprime (barriga).
+
+    **O LIMBO NAO E CARGA MORTA — e a unica parte do VOLUME que recebe forca.** A
+    `MarangoniForce` gateia so `is_filler`, e limbo nao e filler. Medido: filler do wake e
+    **0% pinado** e ainda assim anda 24x mais devagar que o limbo (6.0e-5 vs 1.4e-3),
+    porque filler esta FORA da Marangoni. Isso **corrige o enquadramento da licao #74**.
+
+    **(C) A MARANGONI NAO ENFRAQUECE — O GATE FECHA.** `a_mar` no limbo fica em 0.57 -> 0.52
+    da cintura a ponta, e o gradiente de `cs` e ate MAIOR na barriga (0.069 vs 0.030). O que
+    colapsa e a FRACAO que passa no gate `smoothstep(|grad rho_b|, 0.05, 0.6)`: 79% -> 70%
+    -> **51%** -> 44%. Quando cruza 50%, a particula MEDIANA deixa de receber forca.
+
+    **(D) QUATRO ALAVANCAS REFUTADAS, todas por medicao previa (nenhuma rodada gasta):**
+
+    1. **Alargar o gate flagelar** — ja reprovado no P3 (`[0.1,0.8]`): `p90/p50` de velocidade
+       5.0 -> 6.8. `FlagellarForce` tem magnitude CONSTANTE, entao da-la a mais particulas
+       nao move o corpo, cria cavaleiros.
+    2. **Converter limbo em filler** — removeria o unico motor do limbo (item B).
+    3. **Alargar o gate da Marangoni** `[0.05,0.6] -> [0.02,0.3]` — protocolo §3.3.6 rodado:
+       `cs_inf` inalterado (o gate nao toca producao), push para fora em todo o braco (sem
+       patologia da §3.3.4), MAS o gate medio do CORPO INTEIRO vai 0.437 -> 0.678 (**1.55x**)
+       com so **1.27x de diferencial** ponta/nucleo. **E um aumento global de `beta` (5.0 ->
+       7.75) disfarcado**, e a §3.3.4 marca esse caso como perda de seletividade dendritica.
+    4. **Piso em `rho_b`** (0.015 a 0.030 no limbo dos bracos) — extrapolacao linear previa
+       `|grad|` 0.49 e gate 0.89; **medido com a forma SPH exata do `BiomassGradient`: 0.12 e
+       gate 0.24, contra 0.19/0.32 da base**. O piso PIORA. Causa: `|grad rho_b|` mede
+       variacao ESPACIAL, e por o campo todo no mesmo valor **achata** a dispersao (o braco
+       tem CV 2.57 — ele nao e uniforme, e rarefeito). **Quarta extrapolacao linear a falhar
+       nesta sessao** (cf. `chi` do X0, `sigma` do Y1). Desta vez a medicao veio antes da
+       rodada e economizou uma.
+
+    **Corolario:** o que abre o gate e CONTRASTE (denso cercado de vazio), nao nivel medio.
+    Braco do P4: 111 particulas a `rho_b`=0.53, `|grad|`=2.80. Braco do P5: 2954 a 0.0075,
+    `|grad|`=0.19. Recrutamento esparso-e-denso foi dimensionado (2 a 10 dx de espacamento):
+    o melhor ponto da gate 0.32 -> 0.40 por **+36%** de producao — ganho marginal por todo o
+    orcamento. Rota fechada.
+
+    **(E) `contrast_cs` NAO E ORCAMENTO DE MOTOR SOB O TETO — correcao de metodo.** `max_cs`
+    esta cravado em **0.4943 = `cs_max`** no P4, P5 e P6. Logo `contrast_cs = 0.4943/mean_cs`
+    e uma funcao SO de `mean_cs`: qualquer producao adicional o derruba por construcao. O
+    "orcamento de +30%" que orientou toda a serie P foi derivado dele e **nao mede motor**.
+    Usar `a_mar` na FRENTE (licao #51) — e mesmo esse sofre contaminacao de composicao (P4:
+    17 particulas com forca a 8.10; P5: 3571 a 0.603 — o TOTAL do P5 e 15x maior).
+
+    **(F) A EXPANSAO E INVARIANTE — a decima ocorrencia do mesmo achado.** Metrica
+    independente de populacao:
+
+    | | colonia r>1 | limbo | `contrast_cs` | **dR/dt t[25,50]** | **alpha** |
+    |---|---:|---:|---:|---:|---:|
+    | P4 | 2743 | 2367 | 10.04 | **0.0793** | 0.79 |
+    | P5 | 4168 | 13995 | 5.67 | **0.0742** | 0.78 |
+    | P6 | 1330 | 61 | 14.23 | **0.0809** | 0.82 |
+
+    Colonias que diferem 3x em tamanho e 23x em limbo avancam **dentro de 9% uma da outra**.
+    Nenhuma alavanca da serie P mudou o AVANCO — mudaram do que a colonia e feita e onde o
+    material fica. E a invariancia da licao #73 ("adveccao 31 -> 31 -> 34") por outro eixo.
+
+    **(G) A BARRIGA ACOMPANHA A FRENTE.** Medida a cada frame do t=12 ao t=50: o pico de
+    largura fica em **r/R99 = 0.80-0.90 o tempo inteiro**, enquanto o raio ABSOLUTO vai de
+    1.11 a 3.07. Nao e evento historico num raio fixo — e a **zona de deposicao viajando
+    colada a ponta**, a ~15% de R99 atras dela.
+
+    **(H) P7 (`WAKE_SPREAD`) REPROVADO — e fecha a hipotese de granularidade** (2026-09-03,
+    `runs/P7_wakespread`): o wake poe `1 + n_extra` particulas TODAS na posicao vagada, em
+    anel. O P7 fez as MESMAS maes depositarem a MESMA contagem, distribuida ao longo do
+    segmento `x_dep -> x`. **Realocacao, nao adicao** — o que o distingue do `WAKE_SEG`
+    (licao #65, que ADICIONAVA e custou 25% de AR).
+
+    O mecanismo funcionou (as deposicoes ficaram visivelmente espalhadas) e a largura
+    **PIOROU**: max/min 2.14x -> **2.47x**, barriga 4.8 -> 5.5, cintura igual em 2.2.
+    Causa: o wake e ~3200 particulas contra ~14000 de limbo no braco, e e o limbo que forma
+    o manto cuja espessura varia. **Redistribuir 3200 nao muda a distribuicao dos 14000.**
+
+    Resto estavel: `R99` 3.84 -> 3.83, massa 209.5 -> 208.9, dedos 8 -> 9, `contrast_cs`
+    5.67 -> 5.75, `dR/dt` 0.0742 -> 0.0787. **Unico ganho real: continuidade a 1.05 dx
+    19.4% -> 24.2%** — coerente com o mecanismo, porque depositar espalhado adiciona por
+    ADJACENCIA ao longo do rastro em vez de criar ilhas (mesma razao do `WAKE_ATTACH`).
+    Preservado desligado (§10).
+
+    **Instrumento novo:** [tools/plot_largura.py](tools/plot_largura.py) — mapa de largura
+    por EDT, perfil por braco, e velocidade POR CLASSE, que e o painel que fecha o
+    diagnostico.
+
+76. **P8 (`r_growth` 0.02 -> 0.06) REPROVADO — TERCEIRA refutacao da mesma alavanca; e as
+    metricas de continuidade e largura sao MAXIMIZADAS pelo modo de falha** (2026-09-03,
+    `runs/P8_rgrowth006`, alavanca unica sobre o P5): a hipotese era densificar os portadores
+    que ja existem em vez de recrutar novos — medido no P5, os 527 vivos alem de 0.5*R99 tem
+    `rho_b` p90 = **0.19**, contra 0.57 do P4 (que anda), e e a cauda densa que gera o
+    CONTRASTE que abre o gate da Marangoni (licao #75). Densificar custa ~5x menos `cs` que
+    recrutar (qs 4.4x contra 21x por particula) e ha headroom nos bracos (fator de teto 0.42).
+
+    **A alavanca entregou TUDO que prometia:**
+
+    | | P5 | P8 | |
+    |---|---:|---:|---|
+    | `rho_b` p90 dos portadores no braco | 0.19 | **0.44** | alvo era 0.45 |
+    | razao max/min da largura | 2.01 | **1.46** | cintura/barriga resolvida |
+    | continuidade a 1.05 dx | 19.4% | **82.9%** | a melhor ja medida |
+    | `frac(cs>0.45)` | 21% | 34% | |
+    | `contrast_cs` | 5.67 | 6.33 | |
+
+    **E a colonia deixou de ser dendritica:** `R99` 3.84 -> **2.79**, `dR/dt` 0.0742 ->
+    **0.0332** (menos da metade), dedos 8 -> **1**. Disco compacto com lobulos rasos — (a)
+    *Modulated* de Trinschek, criterio de falha explicito da §2.2.
+
+    **AS TRES CONDICOES QUE EU JULGUEI TEREM MUDADO NAO IMPORTAM.** Argumentei que B2
+    (licao #43, sobre o C4) e D5 (licao #64, sobre o D4) tinham reprovado sob condicoes
+    diferentes: (a) sem `k_src` sustentando `c_n`, (b) com `frac(cs>0.45)` em ~90% e nao 52%,
+    (c) com `contrast_cs` como guardrail, que a licao #75-E invalidou sob teto. **Nenhuma das
+    tres altera o mecanismo:** mais biomassa achata `grad cs` e a colonia compacta. Aqui
+    `frac(cs>0.45)` terminou em 34% — ou seja **sem saturacao** — e a morfologia colapsou
+    assim mesmo. O achatamento nao vem de `cs` bater no teto; vem de a fonte ficar
+    espacialmente UNIFORME (mesma classe da licao #48/J5: homogeneizar a fonte homogeneiza
+    o campo).
+
+    **ARMADILHA METODOLOGICA — as metricas que eu vinha otimizando premiam o blob.**
+    Continuidade 82.9% e largura uniforme 1.46 sao os melhores numeros de toda a serie P, e
+    saem de graca num disco: um disco e trivialmente conexo e uniformemente largo. E a
+    TERCEIRA ocorrencia do padrao na mesma serie — o P6 teve o melhor `contrast_cs` (14.2)
+    por nao ter colonia, e o P8 tem a melhor continuidade por nao ter dedo.
+
+    **Regra:** toda metrica de qualidade interna (conectividade, uniformidade, ocupacao,
+    contraste) tem de ser reportada JUNTO de uma metrica de FORMA que o blob reprove —
+    numero de dedos, AR, `R99` ou `dR/dt`. Isoladamente, todas elas sao maximizadas pela
+    degeneracao para disco.
+
+77. **P9 (crescimento gateado por `|v|`) REPROVADO — localizar NAO salva, e a raiz e que o
+    TETO torna `cs_inf` cego a quantidade de biomassa** (2026-09-03, `runs/P9_motilegrowth`):
+    depois do P8 eu atribui o colapso a UNIFORMIDADE do crescimento (licao #76) e testei a
+    correcao obvia: manter `r_growth`=0.02 no corpo e reforcar so onde ha movimento,
+
+        r_eff = r_growth * (1 + 3 * min(|v|/0.01, 1))
+
+    Discriminador escolhido pelo invariante #3 do §9 e VALIDADO antes de rodar: no P5 o `|v|`
+    mediano da biomassa viva vai de 1.04e-3 (nucleo) a **2.87e-2 (ponta) — 27.5x**; no P8
+    (blob) a mesma razao e **0.8x**. Ou seja o gate funciona no regime que queremos e some no
+    que queremos evitar — autoverificavel, e por isso entrou nos criterios.
+
+    **Resultado: indistinguivel do P8, e com MAIS biomassa.**
+
+    | | P5 | P8 (uniforme 0.06) | **P9 (localizado)** |
+    |---|---:|---:|---:|
+    | dedos | 8 | 1 | **1** |
+    | `R99` | 3.84 | 2.79 | 3.03 |
+    | `dR/dt` | 0.0742 | 0.0332 | 0.0495 |
+    | `|v|` ponta/nucleo | 27.5x | 0.8x | **7.2x** |
+    | `cs` na ponta | 0.211 | 0.353 | **0.365** |
+    | **biomassa** | 1.0 | 3.05 | **3.44** |
+
+    O P9 rodava a `r_growth` 3x menor que o P8 no corpo e produziu **mais** biomassa.
+    **Causa: realimentacao positiva** — particula rapida cresce -> fica densa -> abre o gate
+    `|grad rho_b|` da Marangoni -> acelera -> cresce mais. O `min(|v|/v_sat,1)` limita o
+    reforco POR PARTICULA em 4x, mas nao limita o CONJUNTO de particulas rapidas.
+
+    **O discriminador denunciou a si mesmo**, como previsto: a razao caiu 27.5x -> 7.2x. Ao
+    perder a frente localizada a colonia deixou de ter o que discriminar, e o reforco passou
+    a valer em todo lugar. Vale como padrao de projeto: **gate autoverificavel** — escolher o
+    discriminador de modo que a perda de discriminacao seja ela propria um criterio.
+
+    **A RAIZ, medida (e e o que fecha B2/D5/P8/P9 de uma vez).** `cs_inf` por zona sob o teto
+    `(1 - cs/cs_max)`:
+
+    | zona | `rho_b` | producao | `cs_inf` |
+    |---|---:|---:|---:|
+    | interior | 1.00 | 3.48 | 0.479 |
+    | mid-arm | 0.50 | 7.10 | 0.490 |
+    | limbo do braco | 0.05 | 0.39 | **0.456** |
+    | | | **razao interior/limbo** | **1.05x** |
+
+    **Uma particula com 20x mais biomassa produz o mesmo `cs` de equilibrio.** Sob o teto,
+    `cs_inf` e cego a QUANTIDADE de biomassa — logo biomassa nova nao gera gradiente, so
+    preenche area. Isso explica as quatro refutacoes sem recorrer a saturacao: o P8 terminou
+    com `frac(cs>0.45)` em **34%**, sem saturacao alguma, e colapsou assim mesmo.
+
+    **Corolario:** nao existe meio-termo no eixo do crescimento. Nem escalar (B2 refutou
+    0.04) nem espacial (P9 refuta a localizacao). Enquanto `cs_inf` for plano, todo aumento
+    de biomassa efetiva troca dedo por disco. A alavanca e o TETO, nao o crescimento.
+
+78. **O TETO ERA O GARGALO DA EXPANSAO — confirmado; mas a morfologia que o substituto
+    produz foi REPROVADA. Mecanismo certo, ponto de operacao errado** (serie P10-P12,
+    2026-09-03/04): a licao #77 mediu que sob o teto `(1-cs/cs_max)` o `cs_inf` e cego a
+    quantidade de biomassa (razao interior/limbo **1.05x**). Substituido por sumidouro de
+    2a ordem `-K*cs^2` a razao vai a **2.98x**, e — propriedade que torna `K` uma alavanca
+    limpa — como `cs ~ sqrt(P/K)`, **`K` fixa a AMPLITUDE sem tocar a ESTRUTURA** (medido
+    com K=3/10/30: 2.97/2.98/2.99). Fisica: acima da CMC o ramnolipideo se auto-associa em
+    micelas, que saem do pool de monomero interfacialmente ativo.
+
+    **A DESACELERACAO TARDIA CEDEU — criterio pre-registrado atingido:**
+
+    | janela | P5 (teto) | P12 (sumidouro) | razao |
+    |---|---:|---:|---:|
+    | t[25,50] | 0.0736 | 0.0920 | 1.25x |
+    | t[50,75] | 0.0422 | 0.0538 | 1.28x |
+    | **t[75,100]** | **0.0195** | **0.0314** | **1.61x** |
+
+    Expoente em `dR/dt ~ R^p`: **-2.15 -> -1.46** (geometria pura seria -1.00; o criterio
+    pre-registrado era "acima de -1.6"). `R99` final 5.46 -> 6.50. **A vantagem CRESCE com o
+    tempo**, que e a assinatura de escapar de um mecanismo que piora com o raio.
+
+    **E A MORFOLOGIA REPROVOU (decisao da usuaria, §11).** Em t=65 o P12 tem menos biomassa
+    viva (3615 vs 3904) com raio 14% maior — trocou densidade por alcance —, bracos com
+    trechos de 1-2 particulas e **12 dedos contra 16**. Le como aranha rala, nao dendrito.
+    Eu havia argumentado que a forma tentacular com agar limpo entre os bracos casava com a
+    `reference.jpg`; a leitura visual da usuaria discordou e ela e o arbitro.
+
+    **DUAS ARMADILHAS DE ACOPLAMENTO na mesma serie, ambas por escala:**
+
+    (a) **P10 (K=10) — amplitude.** A fisica funcionou espetacularmente (mesma biomassa,
+    `R99` 5.85 contra 3.33 do P5 em t=45; `contrast_cs` 30 contra 5; `max_cs` destravado em
+    1.13 e ESTAVEL, contra os 14.3 da remocao pura do teto no Y3). Mas `a_mar` mediana ficou
+    em **24.34** contra o orcamento ~6 do §8, razao |F_mar|/B_tension = **887** — o brittle
+    neck da licao #24. Bracos viraram filamentos.
+
+    (b) **P11 (K=90) — o gate absoluto.** Corrigir a amplitude via `K` reescala o campo
+    INTEIRO por `sqrt(K)` (`max_cs` 1.130 -> 0.381), e `COL_CS_MIN` e ABSOLUTO. Esqueci de
+    reescala-lo: a colonizacao praticamente parou (biomassa cravada em 0.30 de t=10 a t=35
+    contra 0.78 do P5; 179 vivas contra 547) e a rodada testou uma colonia sem recrutamento.
+    Mesmo laco de realimentacao para baixo do P6 (licao #74). **Regra: ao mudar a escala de
+    um campo, TODO limiar absoluto que vive nessa escala tem de ser reescalado junto** —
+    aqui `COL_CS_MIN` 0.10 -> 0.034, pela razao dos `max_cs`. Com isso (P12) a biomassa
+    voltou a acompanhar o P5.
+
+    **O QUE FICA:** a rota do sumidouro NAO esta refutada — esta com ponto de operacao a
+    calibrar. O par (`K`, `COL_CS_MIN`) tem de ser varrido junto, e o alvo e um `K` entre 10
+    e 90 que mantenha `a_mar` no orcamento SEM ralear a colonia. `CS_SINK_K` e
+    `COL_CS_MIN` ficam parametrizados; `CS_CEILING=0.5` e `CS_SINK_K=0` restauram o
+    comportamento anterior bit-a-bit.
+
+    **Ressalva de dominio:** com o sumidouro a colonia chega a `R99`=6.50 em t=100, contra a
+    parede util de 6.8. Qualquer rodada futura nesse regime precisa de dominio maior que
+    `[-7,7]`.
+
+79. **P13 (`AGAR_FADE`=1.0) REPROVADO — pressurizar o meio sub-quorum produz RESISTENCIA,
+    nao escoamento; e o custo cresce com a frente** (2026-09-04, `runs/P13_agarfade`,
+    alavanca unica sobre o P5, ligada desde t=0):
+
+    **Motivacao (diagnostico da usuaria, confirmado por medicao).** Em [T1] Trinschek a
+    governante e `dh/dt = -div(J_conv + J_Mar) + crescimento`: o crescimento e termo-fonte de
+    VOLUME, gera pressao, a pressao gera fluxo, e a Marangoni e UM DOS FLUXOS — orienta, nao
+    origina. No nosso modelo **a Marangoni faz os dois trabalhos e o crescimento nenhum**. A
+    cadeia `m -> rho -> p -> forca` existe, mas a `BiomassEOS` zera `fade_rep` abaixo de
+    `rho_b=0.1`. Medido em t=50: **83.4% do corpo tem pressao EXATAMENTE zero**, caindo de
+    62% no nucleo para **4.1% na ponta**. Crescer no limbo — 90% do braco — nao empurra nada.
+
+    Isso explicava as duas observacoes da usuaria de uma vez: sem fonte de volume a Marangoni
+    move PARTICULA A PARTICULA (so as gateadas), enquanto num continuo a conservacao OBRIGA o
+    meio a acompanhar — dai os buracos no rastro; e com crescimento alto a biomassa achata
+    `cs`, o motor morre e sobra o inchaco (P8/P9).
+
+    **Pre-requisito verificado antes de rodar:** `p = B*excess^2` so age onde `rho/rho0 > 1`,
+    e o limbo esta a **1.506 de mediana com 98.4% acima de 1** — mola carregada.
+
+    **RESULTADO — piorou o que devia melhorar:**
+
+    | janela | P5 | P13 | razao |
+    |---|---:|---:|---:|
+    | t[25,50] | 0.0736 | 0.0783 | 1.06x |
+    | t[50,75] | 0.0422 | 0.0525 | 1.25x |
+    | **t[75,100]** | **0.0195** | **0.0100** | **0.51x** |
+
+    Expoente em `dR/dt ~ R^p`: **-2.15 -> -2.64** (criterio era subir acima de -1.6).
+
+    **MECANISMO: o agar deixou de ser transparente e virou meio a deslocar.** Ajuda enquanto
+    a colonia e pequena — ha pouco meio para empurrar e a transmissao de empurrao compensa.
+    Quando a frente fica longa, ha muito mais meio pressurizado no caminho e o custo passa o
+    beneficio. **Cruzamento medido em t~75.** Coerente com a licao #58: o agar ou e
+    DESLOCADO ou e ENGOLIDO, e o B1 ja mediu que deslocar nao ajuda a continuidade — agora
+    sabemos que tambem atrapalha a expansao.
+
+    **O risco que eu sinalizei NAO se materializou:** `a_pressure` 3.07 contra 3.05, picos>4
+    em 2% nos dois, e os dedos AUMENTARAM (21 contra 18). Enrijecer nao matou o fingering.
+
+    **Ganhos que sobrevivem:** dedos 18 -> **21**; agar engolido 740 -> **437 (-41%)** — o
+    deslocamento de fato acontece. Morfologia visualmente indistinguivel do P5.
+
+    **O QUE ISSO FECHA:** "crescimento como fonte de volume" NAO se implementa pela EOS. Em
+    [T1] a fonte entra na equacao da ALTURA e gera fluxo por conservacao; aqui ela gera
+    pressao contra um meio que tambem ficou pressurizado. Uma fonte de volume de verdade
+    exigiria termo-fonte na continuidade, nao `fade_rep` no sub-quorum.
+
+80. **ROTA DO SUMIDOURO QUADRATICO FECHADA — 3 pontos, 20x em `K`, morfologia perdida em
+    TODA a faixa. Estruturar o campo custa a forma** (P10/P12/P14, 2026-09-03/04):
+
+    | | motor | dedos t=100 | conn 1.05 t=100 | agar dentro | modo de falha |
+    |---|---:|---:|---:|---:|---|
+    | P5 (teto) | `a_mar` 4.23 | **18** | **11.1%** | **740** | — |
+    | P10 K=10 | 24.34 (4x orcamento) | — | — | — | **fratura** (razao F/Bt 887, licao #24) |
+    | P12 K=90 | 9.06 (2x P5) | 6 | 0.4% | 17 929 | **rarefacao** (disco 96% agar) |
+    | P14 K=200 | 5.51 (= P5) | 6 | 0.6% | 6 560 | **compactacao** (colonia adensa, para de invadir) |
+
+    **A perda de dedos NAO depende da amplitude.** As curvas de dedos do P12 e do P14 sao
+    quase sobreponiveis apesar de `K` diferir 2.2x: as tres rodadas sobem juntas ate t~12,
+    o P5 dispara para 26 e se mantem em 16-21, os dois com sumidouro empacam em 17 e caem
+    monotonicamente ate **6**. E da ESTRUTURA do campo, nao do nivel.
+
+    **A hipotese da "esteira" (P14) foi refutada.** Sob o teto `cs_inf` e plano dentro da
+    colonia (razao 1.05x), entao o gradiente so existe na fronteira colonia-agar — a forca
+    atua na ponta e o corpo nao e puxado. Com o sumidouro `cs_inf` varia DENTRO do braco
+    (0.575 interior / **0.828 mid-arm** / 0.193 limbo), e previ que isso puxaria material do
+    nucleo ao longo do dedo, preenchendo o rastro. **Nao puxa — segura.** Com o motor
+    igualado ao P5 (`a_mar` 5.5 vs 4.2, razao F/Bt 159 vs 154) a colonia fica MAIS compacta,
+    com menos dedos e continuidade final de 0.6%.
+
+    **A continuidade melhora no MEIO e se despedaca no FIM.** C5b por janela:
+
+    | | t[25,50] | t[50,75] | t[75,100] |
+    |---|---|---|---|
+    | P5 | 23.9%+-6.4 | 31.1%+-14.1 | **16.7%+-16.0** |
+    | P12 | 29.7%+-23.4 | **49.1%+-17.2** | 16.4%+-21.1 |
+    | P14 | **43.9%+-16.3** | 31.7%+-23.0 | **7.0%+-13.6** |
+
+    O P14 e o melhor na primeira janela e o pior na ultima, com oscilacao violenta entre 0 e
+    50% depois de t=60. Para o criterio "trajetoria sem buracos durante TODA a simulacao"
+    isso e o oposto do desejado.
+
+    **O MECANISMO FUNCIONOU O TEMPO TODO** — `contrast_cs` do P12/P14 fica 3-4x acima do P5
+    do comeco ao fim, e a licao #78 mediu o ganho de expansao (expoente -2.15 -> -1.46). Nao
+    e que o sumidouro tenha falhado em estruturar o campo: **ele estruturou, e a estrutura
+    custou a forma**. E a lei (L) da licao #67 num eixo novo — nao "preencher contra afinar",
+    e **estruturar o campo contra manter a forma**.
+
+    **CALIBRACAO PREVISIVEL (o que fica de util).** `cs ~ sqrt(P/K)` acertou a terceira casa
+    nas tres rodadas: previ `max_cs` 0.377/0.253 e mediu 0.381/0.256. `K` e alavanca de
+    AMPLITUDE confiavel, e a razao `cs_inf` interior/limbo fica 2.98x para qualquer `K`.
+    **`COL_CS_MIN` e ABSOLUTO na escala de `cs` e tem de ser reescalado junto** — esquecer
+    isso foi o P11 (colonizacao parada, rodada inutilizada).
+
+    **Codigo preservado parametrizado** (§10): `CS_SINK_K=0` + `CS_CEILING=0.5` restauram a
+    base P5 bit-a-bit.
+
+81. **MITOSE (divisao celular) — a fonte de volume que FUNCIONA: continuidade 19% -> 55% e
+    ocupacao 0.63 -> 0.74, ao custo de 33% de relevo. E o gate de densidade e INATACAVEL
+    porque quem divide nao e quem esta comprimido** (serie P15-P18, 2026-09-09):
+
+    **MOTIVACAO.** O P13 fechou "crescimento como fonte de volume via EOS" (o meio
+    pressurizado RESISTE). Restava a forma SPH correta: **dividir a particula** — a filha
+    ocupa espaco vizinho, como uma bacteria que se divide. O bloco `use_splitting` existia
+    em [main.py](main.py) desde o inicio do projeto e **nunca rodou**; auditado, tinha
+    quatro defeitos:
+
+    1. `daughter_data = parent_props.copy()` chamado DUAS vezes — a segunda apagava o `m/2`,
+       entao cada uma das 2 filhas levava a massa INTEIRA: **a massa DOBRAVA**.
+    2. Limiar `m > 1.99*m0` **nunca dispara** — a massa maxima medida em t=100 e 1.695*m0.
+       (O `m0=0` que se ve no HDF5 e artefato: `m0` nao esta em `add_output_arrays`.)
+       **Foi por isso que ele ficou desligado sem diagnostico: nao explodia, nao fazia nada.**
+    3. Copiava 14 de 70 propriedades — filha herdaria LIXO em `is_filler`, `c_n`, `noise`,
+       `x_dep`. E o bug do §12 v2.5 numa QUARTA via de insercao, nunca auditada.
+    4. Offsets aleatorios INDEPENDENTES: as duas filhas podiam nascer coincidentes.
+
+    Reescrito e verificado offline sobre o estado real do P5: massa e biomassa conservadas
+    a **0**, centro de massa a 2e-17, filhas separadas por 1.26 dx (acima do over-pack),
+    todas as persistentes copiadas com `is_filler=0` explicito.
+
+    **P15 (mitose sozinha) — efeito pequeno mas na direcao certa.** 63 divisoes de t=34 a
+    t=100 (o limiar, nao o cap, era o gargalo). Dedos 18 -> 13 (reprova), ocupacao 0.87 ->
+    0.88, `C5b` t[75,100] **16.7%±16.0 -> 18.1%±11.6** — media dentro do desvio mas a
+    **oscilacao caiu 28%**, coerente com preencher por conservacao em vez de por pulsos.
+
+    **P16 (+ `GROWTH_MASS_GAIN`=3, decupagem massa-biomassa) — o ganho real.** O
+    multiplicador entra SO em `d_am`; `d_a_rho_b_grown` fica intocado. A premissa era que
+    `rho_b` e DENSIDADE e `qs(rho_b)` e INTENSIVO, logo ganhar massa nao custaria `cs`.
+    **A premissa vazou:** `Sum m*rho_b` +36% e portadoras vivas 2.1x, porque a mitose dobra
+    a CONTAGEM de produtores mantendo `rho_b` — e a producao de `cs` e somada POR PARTICULA.
+    **A mitose e o canal por onde o ganho de massa vira biomassa efetiva.**
+
+    **P17 (ganho 5 + gate `rho<2`) — o eixo "acelerar" esta esgotado.** Dobrar a fonte
+    mudou 4 pontos de ocupacao (0.70 -> 0.74) e nada em `dR/dt` (0.0594 -> 0.0599).
+
+    **RESULTADO CONSOLIDADO (t=60, P16 e P17 concordam):**
+
+    | | P5 | P16 | P17 |
+    |---|---:|---:|---:|
+    | ocupacao no braco | 0.63 | 0.70 | **0.74** |
+    | **continuidade 1.05 dx** | **19.4%** | 49.3% | **55.2%** |
+    | amplitude da modulacao | 1.23 | 0.95 | **0.83** |
+    | `R99` | **4.38** | 4.03 | 3.97 |
+    | viva | 3101 | 5234 | **6595** |
+
+    **Continuidade quase TRIPLICA e a ocupacao sobe 17%**, ao custo de **33% de relevo** e
+    9% de alcance, com a contagem de dedos preservada (40 -> 34/37, contra 1 do P8/P9).
+    E a lei (L) num eixo novo: **preencher contra RECORTAR** — diferente de #67-L
+    (preencher contra afinar) porque aqui o numero de dedos sobrevive.
+
+    **⚠ TIP-SPLITTING — AFIRMACAO RETIRADA (2026-09-09).** Reportei que o P16 produzia
+    bifurcacao de ponta a partir de t=88 ("primeira vez no projeto"), com base em rastrear a
+    posicao angular dos picos de `R(theta)` e classificar como SPLIT todo pico novo a <25
+    graus de um antigo. **O detector estava SATURADO:** com 35-74 picos o espacamento medio e
+    5-14 graus, entao *qualquer* pico novo esta a <25 graus de algum outro **por
+    construcao** — o criterio nao distingue bifurcacao de nucleacao.
+
+    Sintomas que confirmam a degenerescencia: a correlacao dos "splits" com `R99` da **-0.60**
+    (deveria ser positiva se fosse Mullins-Sekerka), e 11.1 splits por intervalo na faixa de
+    largura [0, 0.40) contra 2.1 na faixa [0.75, 1.00) — ou seja o detector dispara onde os
+    dedos sao MAIS finos, que e o contrario do criterio fisico.
+
+    **Verificacao visual (§11), que e o arbitro:** [plots/tipsplit_P16.png](plots/tipsplit_P16.png)
+    segue o MESMO braco (setor fixo em 67 graus, licao #67-F) de t=68 a t=96. Os lobulos
+    **engrossam e ficam crenulados**, com a biomassa viva formando casca em volta do miolo de
+    filler — **nenhum se divide em dois**. O projeto continua sem tip-splitting, como o §9
+    registra desde o K.15.
+
+    **Regra:** detector de evento por limiar de distancia so e valido enquanto o limiar for
+    MENOR que o espacamento tipico da populacao. Antes de usar, comparar os dois — e a mesma
+    classe da licao #68 (metrica circular): ali o parametro da metrica era o do mecanismo,
+    aqui e o da propria populacao que se mede.
+
+    **A trajetoria NAO e monotonica** (erro meu ao ler so a descida): picos fazem 42 (t=15)
+    -> **75 (t=40)** -> 31 (t=69) -> **40 (t=95)**, com a amplitude estabilizando em ~0.6
+    depois de t=69 enquanto a ocupacao sobe de 0.76 para 0.82. Ha um minimo e uma
+    **recuperacao com os bracos preenchidos**.
+
+    **O SEED NAO E O QUE FORMA OS DEDOS TARDIOS.** Espectro azimutal do P16: modo 8
+    (semeado) domina ate t~19 e e ABANDONADO — t=34 ja esta em modo 11, t=58 em modo 24, e
+    a potencia do m=8 cai de 17.2% para **2.8%**. Confirma o M5 (#67-J) por outra via.
+    **Nao remover a perturbacao inicial**: sem quebra de simetria nao ha o que amplificar, e
+    o teste deixaria de distinguir "a alavanca falhou" de "nao havia semente".
+
+    **O VAZIO INICIAL (t=4.4) CICATRIZA SOZINHO — nao e o defeito que perseguimos.** Medido:
+    165 dx² em t=4.4 -> **109 em t=15**, com a banda r∈[0.35,0.65) indo de ocupacao 0.66
+    (t=8.8) a 0.98 (t=28), tudo ANTES da primeira divisao. Origem: o inoculo e uma gaussiana
+    com `rho_b`=0.62 no nucleo e **0.0002** em r=0.5 — essa banda nasce sub-quorum, com
+    `fade`=0 e pressao zero, e e rasgada pelo nucleo pressurizado. **O vazio que persiste e
+    outro**: cresce de 133 (t=20) a 1123 (t=50) e e o estiramento dos bracos. E ai a mitose
+    ajuda: **782 contra 1123 em t=50, -30%.**
+
+    **O GATE DE DENSIDADE E INATACAVEL — tres calibracoes erradas seguidas, mesma causa.**
+    Desenho: "nao dividir onde `rho/rho0` ja esta alto, porque ali nao falta volume, sobra".
+    Medido no P16 em t=100:
+
+    | classe | n | `rho` p50 | `rho` p99 | % com `rho`>4 |
+    |---|---:|---:|---:|---:|
+    | viva | 25310 | 1.82 | 3.96 | 1% |
+    | **limbo** | 18469 | **3.72** | **8.22** | **42%** |
+    | filler wake | 8272 | 1.48 | 2.53 | 0% |
+    | **maduras (as que dividem)** | **118** | **1.69** | 3.02 | **0%** |
+
+    **Quem divide nao e quem esta comprimido.** Limiar 2.0 (P17) barrou 25% das maduras
+    arbitrariamente e cortou a mitose em 83% — a rodada testou "mitose estrangulada", nao o
+    desenho. Limiar 4.0 e **no-op** (passa 100%). E restringir o GANHO a `rho_b>0.05` corta
+    apenas **5% do fluxo**, porque o limbo quase nao recebe massa.
+
+    **A compressao do limbo e MECANICA, nao de injecao:** ele e espremido pela colonia que
+    expande e nao tem pressao para resistir (`fade_rep`=0 abaixo do quorum — o bloqueio do
+    P13). E **estrutural**, nao das alavancas: o baseline P5, sem mitose nem ganho, ja opera
+    a `rho/rho0` p99 = **4.98**.
+
+    **CORRECAO SOBRE O COLAPSO DE `dt`:** atribui os "35x" a mitose. O grafico mostra P5,
+    P16 e P17 caindo JUNTOS de 2e-2 para ~5e-3 ate t~58 — **a degradacao de fundo e do
+    modelo**. O que a mitose acrescenta e instabilidade TARDIA (mergulhos a 1e-4 depois de
+    t=80), nao a tendencia.
+
+    **Regra de metodo (terceira ocorrencia do mesmo erro nesta serie):** ao calibrar um gate,
+    medir a distribuicao da populacao que ele vai gatear — nao a do corpo inteiro. Usei o
+    p99 global para inferir onde estariam as maduras, e elas vivem numa faixa completamente
+    outra. O p99 global cruza 2.0 em t~20 **inclusive no baseline**.
+
+    **Codigo:** `use_mitose` + `MITOSE_*` + `GROWTH_MASS_GAIN` + `GROWTH_GAIN_RHO_B_MIN`
+    parametrizados; `use_mitose=False` e `GROWTH_MASS_GAIN=1` restauram a base P5.
+    `MITOSE_RHO_MAX=99` deixa o gate desligado, preservado (§10). O bloco antigo
+    `use_splitting` (bugado) fica desligado como referencia historica.
+
+    **A MITOSE RECONSTRUIU METADE DA CADEIA DE PRESSAO — e isso e o achado que sobrevive**
+    (medido a pedido da usuaria, que propos "fazer no centro o que se esperava dos bracos"):
+
+    | anel r/R99 | P5: % com `p`≠0 | **P16** |
+    |---|---:|---:|
+    | [0, 0.15) nucleo | 64.8 | **71.0** |
+    | [0.15, 0.30) | 75.3 | **85.2** |
+    | [0.30, 0.50) | 74.2 | **86.1** |
+    | [0.50, 0.70) | 52.1 | **74.0** |
+    | [0.70, 0.90) | 22.6 | **48.2** |
+    | [0.90, 1.00) frente | 9.4 | **18.9** |
+    | **corpo inteiro** | **40.2%** | **56.8%** |
+
+    O diagnostico que motivou o P13 media **83.4% do corpo com pressao EXATAMENTE zero**; no
+    P16 sao **43%**. As filhas nascem acima do quorum e ganham `fade` da EOS — coisa que o
+    limbo nao tem. **E o empurrao se propaga:** o anel [0.15,0.30) tem `|v|` = **1.2e-2**,
+    25x o nucleo e o maior do corpo. Primeira vez que se mede transmissao do centro para
+    fora nesta serie.
+
+    **O nucleo NAO esta bloqueado**, ao contrario do que eu supunha: so **14%** dele esta
+    pinado e a taxa de massa (0.0025) e igual a dos bracos — ele divide proporcionalmente ao
+    numero de particulas. O que ele nao faz e MOVER (`|v|` = 4.9e-4, o menor de todos os
+    aneis), porque as filhas nascem dentro do kernel da mae: **dividir SUBDIVIDE o espaco,
+    nao o expande** — expandir exige empurrar o vizinho, e isso depende da cadeia de pressao.
+
+    **ONDE A CADEIA AINDA QUEBRA: o ultimo anel** (18.9% com pressao), onde o material e 94%
+    limbo sub-quorum com `fade`=0 por construcao. A frente segue sendo puxada pela Marangoni,
+    nao empurrada por tras.
+
+    **Distincao importante para a proxima rota:** dar pressao ao **limbo** NAO e o que o P13
+    reprovou. La era o **agar** (meio externo, `rho_b`=0), e o resultado foi um meio que
+    resiste. O limbo e material da COLONIA, esta dentro do envelope, e esta a `rho/rho0` =
+    3.72 — ou seja no ramo **REPULSIVO** da EOS, onde ela empurra, e nao no atrativo que
+    contraiu a colonia na licao #66-C.
+
+
+82. **O pin mecanico `rho_b>=0.8` do §10 e REDUNDANTE — em 5 instantes do P16 ele nunca
+    pinou UMA particula que o pin quimico ja nao pinasse; quem congela a colonia (e os
+    bracos, ate r=4.67) e o `c_n < 0.6`, que o §7 documenta como 0.4** (medicao 2026-09-09,
+    `runs/P16_massgain3`):
+
+    | corpo movel (`rho_b>=0.1` ou filler, `is_wake<0.5`) | t=9 | t=31 | t=60 | t=100 |
+    |---|---:|---:|---:|---:|
+    | pinado por `rho_b>=0.8` | 43 | 44 | 45 | 45 |
+    | pinado por `c_n<0.6` | 88 | 190 | 765 | **1187** |
+    | **pinado SO por `rho_b>=0.8`** | **0** | **0** | **0** | **0** |
+
+    As 45 particulas do criterio mecanico tem `c_n` ~0.41 — ja estavam pinadas pelo quimico.
+    **Desligar o criterio do §10 hoje e no-op bit-a-bit.** Isso reenquadra a proibicao: ela
+    nomeia o criterio que nao age. As falhas que a fundamentam (K.25a, M-B.9a) foram medidas
+    com `tension_ratio=0.02` (`B_tension`=0.0018); hoje e 0.30 (**0.0274, 15x**).
+
+    **E o pin quimico nao pina so o nucleo** — alcanca **r=4.67**, ou seja congela material
+    DENTRO dos bracos, e a contagem cresce com a colonia (88 -> 1187). Varredura do limiar:
+
+    | limiar | 0.6 (codigo) | 0.4 (§7, M-B.8) | 0.3 | 0.2 |
+    |---|---:|---:|---:|---:|
+    | pinadas em t=100 | 1187 | **28** | **0** | 0 |
+
+    O `c_n` do nucleo fica em 0.41-0.43 o run inteiro — o equilibrio
+    `k_src/(k_src + k_n*rho_b)` = 0.375 com `k_src=0.3` —, exatamente entre 0.4 e 0.6. Por
+    isso a divergencia codigo(0.6) x doc(0.4) da licao #57, nunca corrigida, vale **42x** em
+    numero de pinadas: nao e detalhe de documentacao.
+
+    **OS DOIS CRITERIOS TEM DE CAIR JUNTOS, e a ordem importa.** Baixar so o quimico para
+    0.3 torna o `rho_b>=0.8` — hoje inerte — o UNICO a pinar, e ele pina precisamente o
+    nucleo. A redundancia mascara qual criterio esta ativo; ao mexer em um, o outro assume.
+
+    **Regra:** antes de tratar um criterio como alavanca, medir quantas particulas ele
+    seleciona **em exclusividade** (nao no total). Um criterio com selecao exclusiva zero nao
+    e uma alavanca — e uma clausula dominada por outra, e desliga-lo prova nada. A recíproca
+    tambem vale: desligar a clausula dominante PROMOVE a dominada a ativa, o que e uma
+    mudanca de fisica que nao aparece no diff.
+
+
+83. **P19 (os DOIS pins desligados + semente azimutal zero) REPROVADO — e a razao NAO e a
+    que o §10 previa: nada fragmentou. A colonia PREENCHEU e a interface ALISOU** (2026-09-09,
+    `runs/P19_sempin_REPROVADO`, sobre a base P16):
+
+    **Config:** pin mecanico `rho_b>=0.8` -> 99.0 e quimico `c_n<0.6` -> 0.3 (zero pinadas,
+    licao #82), `SEED_AMP` 0.06 -> 0 e `NOISE_AMP` 0.6 -> 0 (nenhuma perturbacao azimutal
+    imposta; sobra o `0.10*randn` por particula), mitose e ganho como no P16, t=40.
+
+    | t≈40 | P16 | **P19** | |
+    |---|---:|---:|---|
+    | **amplitude da modulacao** | **0.212** | **0.080** | **0.38x — REPROVA** |
+    | vazio >1dx dentro de R99 | 1.25% | **0.10%** | 12x melhor |
+    | corpo (colonia+filler) | 4004 | **5491** | +37% |
+    | **biomassa VIVA** | 1492 | **2531** | **+70%** |
+    | divisoes acumuladas | 278 | **763** | 2.7x |
+    | `R99` | 2.915 | 2.689 | −8% |
+
+    Criterio pre-registrado: reprova se a amplitude cair abaixo de 0.54x a do P16 **com a
+    colonia expandindo**. Cruzou em t≈36 e terminou em **0.38x**, com `R99` crescendo o tempo
+    todo. A leitura visual (§11) concorda: em t≈38 o P16 tem bracos radiais com baias limpas
+    e o P19 e uma massa preenchida de borda crenulada — (a) *Modulated* de Trinschek.
+
+    **O MODO DE FALHA NAO E O DA PROIBICAO.** O §10 fundamenta o pin em K.25a ("gel uniforme
+    sem estrutura") e M-B.9a ("fragmentacao distribuida"), e eu argumentei que a coesao 15x
+    maior tornava a proibicao re-testavel. **A coesao segurou:** `a_pressure` 3.70, massa
+    208.1 sem runaway, vazio 0.10% — o menor do projeto —, ZERO fragmentacao. O que matou a
+    morfologia foi o oposto: sem ancora, a colonia inteira infla e as pontas perdem
+    trajetoria propria (o diagnostico ORIGINAL do K.15, §2.4-A), entao a interface alisa em
+    vez de se romper. **A conclusao da proibicao continua valida; o mecanismo que ela nomeia,
+    nao.**
+
+    **A TRAJETORIA DA AMPLITUDE E O DADO:** 0.295 (t=13) -> 0.216 (t=25) -> 0.187 (t=30) ->
+    0.112 (t=36) -> **0.080 (t=40)**, monotonica, enquanto o P16 fica em 0.21-0.32. E o
+    espectro acompanha: o P19 seleciona **m=28** em t≈10-13 (comprimento de onda ~3.6 dx),
+    que **nao sobrevive** — coalesce sem deixar estrutura, e em t=40 o espectro esta achatado.
+    Sem semente o sistema escolhe um modo curto demais para se sustentar.
+
+    **A CONTAGEM DE DEDOS NAO DETECTOU NADA** — 32-40 no P19 contra 34-37 no P16 o run
+    inteiro, enquanto a amplitude caia 3.3x. Contar picos de `R(theta)` mede crenulacao, nao
+    relevo. **Reportar SEMPRE contagem de dedos junto da AMPLITUDE**; sozinha ela e cega ao
+    achatamento, do mesmo modo que a continuidade e cega ao blob (licao #76).
+
+    **A MITOSE NAO REGE A LARGADA — e isso responde a premissa da rota.** Contando por classe
+    (cada divisao troca 1 mae por 2 filhas = +1 nao-filler), o P19 tem **ZERO divisoes ate
+    t=13** e a primeira em **t≈16**; tudo que entra antes e filler do wake. Bate com a
+    aritmetica: `ganho·r_growth·(1−rho_b)·c_n_f ≈ 0.0175/s` e `ln(1.3)/0.0175 = 15.0 s` ate
+    cruzar `MITOSE_M_RATIO`. **Entre t=0 e t=16 a expansao e 100% Marangoni**, exatamente como
+    antes — a mitose entra depois.
+
+    **O rasgo inicial (t≈3.6) e um cisalhamento, e independe do pin.** Deslocamento por
+    identidade de t=0 a t=3.6, por banda de raio inicial:
+
+    | banda | P16 (com pin) | P19 (sem pin) |
+    |---|---:|---:|
+    | nucleo denso r<0.25 | 0.00 dx | **0.11 dx** |
+    | **borda do nucleo 0.25-0.45** | **5.28 dx** | **5.07 dx** |
+    | banda sub-quorum 0.45-0.70 | 2.47 dx | 2.74 dx |
+
+    A borda do inoculo e arrancada ~5 dx enquanto a banda a frente anda 2.5 dx — **o vazio e
+    essa diferenca**, e ela e a MESMA com e sem pin. O nucleo solto **nao dilatou** (0.11 dx),
+    o que corrige o que eu havia afirmado. A banda que fica para tras nao acompanha porque
+    **nasce sem mecanica**: em `r∈[0.4,0.5)` o `rho_b` mediano em t=0 e **0.0041**, 0% acima
+    do quorum, `fade` = **0.000**; em `[0.3,0.4)` o `fade` mediano e 0.033 (3% da coesao
+    plena). E a lesao constitutiva da licao #66, presente no nascimento.
+
+    **O QUE FICA:** mais uma face da lei (L) (#67-L) — agora **ancorar contra preencher**.
+    O P19 e o melhor resultado do projeto em continuidade (vazio 0.10%, 12x melhor) e em
+    biomassa viva (+70%), e perde a classe morfologica. **REVERTIDO**: `>= 0.8` e `< 0.6` em
+    [src/scheme.py](src/scheme.py), `SEED_AMP=0.06`, `NOISE_AMP=0.6`. A suspensao do §10 era
+    escopada ao P19 e esta encerrada; a configuracao fica a duas constantes de distancia.
+
+
+84. **O LIMBO E TECIDO CONECTIVO E SUJEIRA AO MESMO TEMPO — e nenhum ajuste de `cs` separa os
+    dois, porque a colonizacao recruta por campo local e o campo nao sabe se aquela posicao e
+    juncao ou baia** (P20/P21, 2026-09-10, `runs/P20_gate_errado`):
+
+    **MOTIVACAO.** A licao #83 fechou a rota do pin. Restava o problema 1 — bracos sem
+    espacamento — diagnosticado assim: o `cs` e azimutalmente uniforme (razao baia/dedo
+    **1.00** em todos os raios, P16 e P19), porque o teto `(1−cs/cs_max)` **corta producao mas
+    nao remove**: taxa de remocao 0.073/s contra 5.87/s do sumidouro, com `L_D`=1.03 ≈ raio da
+    colonia. E um segundo defeito medido junto: **em nenhum run a baia e agar** — 0.0% agar,
+    88-99% limbo, contra o agar limpo das referencias.
+
+    O sumidouro quadratico CRIA o contraste (medido em P12/P14, que rodaram ANTES da mitose
+    existir): razao 0.34 (K=90) / 0.52 (K=200) contra 1.00 do teto. Dai o P20 = P17 +
+    `CS_SINK_K=200`, `CS_CEILING=0`.
+
+    **ERRO DE CALIBRACAO MEU, por 16x — a licao #78-b reproduzida por baixo.** Reescalei
+    `COL_CS_MIN` pela razao dos `max_cs` (0.256/0.494 → 0.052). Mas:
+
+    | candidatas sub-quorum no envelope, t≈21 | P16 (teto) | P20 (sink) |
+    |---|---:|---:|
+    | `max_cs` | 0.4943 | 0.2564 |
+    | **`cs` MEDIANO** | **0.2945** | **0.0184** |
+    | elegiveis pelo gate aplicado | **100.0%** | **1.7%** |
+
+    Sob o teto o campo e **plano** (mediana/max = 0.60) e `COL_CS_MIN=0.10` **nao gateava
+    nada**. Sob o sumidouro ele e **estruturado** (mediana/max = 0.072) — que e o objetivo da
+    mudanca. Preservar a razao ao MAXIMO nao preserva a AREA elegivel: para igualar a fracao o
+    gate teria de ser **0.0032**. Converti um no-op num corte de 98.3%.
+
+    **Regra:** ao reescalar um limiar absoluto sobre um campo cuja mudanca e justamente parar de
+    ser plano, o invariante e a **fracao da populacao que o limiar seleciona**, nunca a razao ao
+    valor de pico. Medir a distribuicao das CANDIDATAS, nao o `max` do campo.
+
+    **O TESTE DECISIVO (P21 = P20 com `COL_CS_MIN` 0.052 → 0.005, uma alavanca):**
+
+    | t≈15 | limbo | **agar** | duty(0.70) | **baia: agar/limbo** | **C5b +limbo** | C5a |
+    |---|---:|---:|---:|---:|---:|---:|
+    | P16 (teto) | 1773 | 0 | 46% | **0% / 98%** | **94.8%** | 1.02 |
+    | **P20** (gate 0.052) | 343 | 987 | 31% | **63% / 32%** | **29.7%** | 0.75 |
+    | **P21** (gate 0.005) | 1312 | **0** | 41% | **0% / 92%** | **93.5%** | 1.05 |
+
+    **As baias de agar do P20 eram o ESTRANGULAMENTO da colonizacao, nao o sumidouro.**
+    Restaurar o gate devolveu o limbo (343 → 1312), zerou o agar no envelope, encheu a baia
+    exatamente como o P16 e recuperou C5b de 29.7% para 93.5%. O sumidouro segue entregando o
+    contraste azimutal (0.83-0.92 medido no P20) — **e nao e isso que limpa a baia**.
+
+    **A LEI:** o limbo e o MESMO material nos dois papeis. Entre nucleo e braco e **tecido
+    conectivo** (a revisao de §2.2 de 2026-09-03 o conta para C5, e e ele que da C5b=93%); entre
+    braco e braco e **sujeira** (impede a baia de ser agar). Produzir da continuidade e baia
+    suja; nao produzir da baia limpa e C5b de 30%. E a lei (L) da licao #67 num eixo novo —
+    **conectar contra separar** — com um unico estoque servindo as duas funcoes.
+
+    **A PREVISAO DO MECANISMO ERROU 2x, e o erro e informativo.** Previ razao baia/dedo de
+    0.30-0.50 sob o sink; medido **0.83-0.92**. Causa: calculei para baia em `rho_b`=0.05
+    (limbo). Com a baia virando agar (`rho_b`≈0) o `cs_∞` local vale 0.0007 — logo o `cs` da
+    baia **nao e produzido la, e importado por difusao dos bracos**. O balanco local nao governa
+    a baia, e por isso o contraste nunca chega ao valor de equilibrio.
+
+    **GANHO COLATERAL REAL, que sobrevive** — o sumidouro reduz o rasgo inicial da licao #83.
+    Predicao ex-ante: o salto `cs` nucleo→agar em t=0 cai de 0.4825 (teto) para 0.1914 (K=200),
+    0.40x; a largura da rampa em t≈4 e geometrica e igual nos dois; logo `|∇cs|` e o
+    cisalhamento caem na mesma proporcao. Medido em raio equivalente:
+
+    | | `R99` | vazio | area | `a_mar` frente |
+    |---|---:|---:|---:|---:|
+    | P5 (teto) t=4.4 | 0.778 | 21.1% | **138 dx²** | 1.585 |
+    | P20 (sink) t=7.0 | 0.750 | 3.9% | **24 dx²** | **0.725** |
+
+    **5.8x menos rasgo** (previ ~55 dx², deu 24) com `a_mar` em 0.46x do previsto 0.40x — erro
+    de 15%. Custo: ~30% mais lento em tempo-para-raio na largada.
+
+    **E o `cs ~ sqrt(P/K)` acertou a 3a casa pela quarta vez:** previsto `max_cs`=0.256, medido
+    **0.2564**.
+
+    ---
+
+    **QUALIFICACAO DA LEI (medida no P21, t=11 a 41): sob o SUMIDOURO o campo PASSA a saber
+    onde e dedo e onde e baia — a lei acima vale sob o TETO.** Distribuicao de `cs` das
+    candidatas a colonizacao, separadas por estarem em setor de dedo ou de baia no proprio raio:
+
+    | t | `cs` dedo (p50) | `cs` baia (p50) | razao | seletividade em gate 0.030 |
+    |---|---:|---:|---:|---|
+    | 11.4 | 0.0491 | 0.0309 | 0.63 | 100% / 52% = 1.9x |
+    | 15.2 | 0.0533 | 0.0297 | 0.56 | 97% / 49% = 2.0x |
+    | 21.2 | 0.0618 | 0.0301 | 0.49 | 98% / 50% = 2.0x |
+    | 29.8 | 0.0603 | 0.0206 | 0.34 | **99% / 33% = 3.0x** |
+
+    Estavel em 5 instantes e **crescendo** — nao e artefato de um ponto. Sob o teto essa janela
+    NAO EXISTE (campo plano, razao 1.00, qualquer gate corta dedo e baia por igual). Os dois
+    runs a atravessaram sem usa-la: P20 com gate 0.052 cortou a baia a 9% **e o dedo a 68%**;
+    P21 com 0.005 deixou passar 100%/87%. **A janela util e ~0.030, nunca testada.**
+
+    **VEREDITO DO P21 — REPROVADO, e fecha a rota do sumidouro pela terceira vez, agora na
+    combinacao que faltava** (com mitose e `COL_CS_MIN` calibrado certo):
+
+    | t≈40 | P16 (teto) | **P21 (sink)** | |
+    |---|---:|---:|---|
+    | agar na baia (r/R99 0.70 e 0.85) | 0% | **0%** | nao resolveu o alvo |
+    | duty em r/R99=0.70 | 25% | **66%** | reprova (limiar 45%) |
+    | **dedos** | 31 | **18** | reprova (limiar 20) |
+    | amplitude | 0.212 | 0.175 | −17% |
+    | **dR/dt t[25,50]** | 0.0594 | **0.0580** | **sem ganho** |
+    | `R99` (t=50) | 3.49 | **3.07** | −12% |
+    | C5b +limbo | 92.2% | 93.9% | preservado |
+    | vazio | 1.2% | 0.9% | preservado |
+
+    **O GANHO TARDIO DA LICAO #78 NAO EXISTE SOB MITOSE.** Aquela licao mediu o sumidouro
+    contra o P5 (SEM mitose) e achou 1.25-1.61x em `dR/dt`. Com mitose, P21 e P16 ficam
+    indistinguiveis (0.0580 vs 0.0594) e **ambos abaixo do P5 puro (0.0736)**. O ganho era
+    contra uma base que ja nao e a nossa. **Regra: vantagem medida contra um baseline antigo
+    tem de ser re-medida quando o baseline muda — nao se soma a mecanismos posteriores.**
+
+    **O CONTRASTE AZIMUTAL E REAL E NAO LIMPA A BAIA.** Em t=40 a razao baia/dedo e 0.81 em
+    r/R99=0.70 e **0.50** em 0.85 — 50% de contraste — e a baia continua **0% agar**. Motivo
+    mecanico: com o gate em 0.005, 96% das candidatas passam, e quem decide o recrutamento e
+    `c_n` (uniforme sob `k_src`=0.3) e o doador. **Nenhum dos dois tem estrutura azimutal** — a
+    colonizacao nao le o campo que o sumidouro estruturou. Estruturar o campo e condicao
+    necessaria e NAO suficiente; falta o gate ler a estrutura.
+
+    **Erro de criterio meu:** pre-registrei "reprova se `a_mar` > 9" lendo a coluna do log, que
+    e um `np.max` (invariante #1 do §9). Em t=40 ela marcou 8.71 e o **p95 sobre quem recebe
+    forca era 1.44** (razao `|F_mar|/B_tension` = 52, contra 66 do P16) — nao havia risco de
+    fratura nenhum. E o 8.71 caiu sozinho a 5.79 em t=49. Criterio de tracao deve usar p95 na
+    populacao ativa, nunca o max do log.
+
+85. **A DEPOSICAO NAO SUPRIME O TRANSPORTE — ELA *E* O MECANISMO DE CONSTRUCAO. A adveccao
+    e invariante pelo QUINTO teste independente, e cortar deposicao MELHORA a morfologia
+    monotonicamente** (serie do inoculo I1-I4 sobre o P22, 2026-09-10/11):
+
+    **CONTEXTO — a cadeia da usuaria.** A lei proposta era: mitose aumenta densidade ->
+    produz surfactante -> gera Marangoni -> expande. Ela e a governante de [T1]
+    (`dh/dt = -div(J_conv + J_Mar) + crescimento`) e o modelo a implementa — mas com um elo
+    a menos do que o enunciado supoe, e foi isso que a serie mediu.
+
+    **(A) O INOCULO PLATO (I1/I2).** A quartica `exp(-(r/0.30)^4)` poe 1/3 da biomassa numa
+    saia de densidade decrescente e o resto numa cauda de 1e-3 que nao divide (gate 0.05),
+    nao produz `cs` e tem `fade`=0. Nao e uma gota depositada. Trocado por densidade
+    uniforme com linha de contato: `A`=0.45, `R`=0.500, `w`=1.5h, `SEED_FRAC`=20% relativo.
+
+    O ponto de operacao e o canto de **tres restricoes simultaneas**, e so ele:
+    - pin exige `rho_b > 0.40` (senao `c_n_eq = k_src/(k_src+k_n*rho_b) >= 0.6` e o nucleo
+      solta — modo de falha do P19)
+    - `fade_rep` pica em `rho_b` ~0.45-0.55 (e vale **ZERO** acima de 0.8)
+    - divisao rapida quer `rho_b < 0.35`
+
+    Em `A`=0.45: biomassa 1.048x (conservada), `c_n_eq`=0.571 (pina), `fade_rep`=**0.957
+    contra 0.000 de hoje**, T de divisao 12 s contra **nunca**, portadoras 152 -> 236.
+
+    **Isso NAO e o I1 da licao #48** ("suavizar CURA a borda mas mata o motor"): aquele
+    reprovou com **+150% de biomassa**, e foi a biomassa que achatou o `cs`. A biomassa
+    constante e o que separa os dois, e e o que a analise preditiva teve de garantir.
+
+    **Resultados I1 (t=8) e I2 (t=40):** `fade`=0 na banda 35% -> 16%; corpo com `p`!=0
+    80.9% -> 87.4%; `cs` no corpo +11% (nao achatou); divisoes 518 -> **1094 (2.1x)** com
+    filhas em `r<0.5` indo de 3.3% para 8.3%. O inoculo **destravou a mitose** exatamente
+    como previsto. Custo: amplitude 0.214+-0.006 -> 0.162+-0.002 (**0.76x**, contra a barra
+    pre-registrada de 0.8x) — a usuaria aceitou na leitura visual (§11 e dela).
+
+    **(B) O DIAGNOSTICO — 219x, medido, nao estimado.** Com a mitose dobrada a adveccao nao
+    mudou. O balanco de forcas no corpo em t=39:
+
+    | | nucleo | meio | frente |
+    |---|---:|---:|---:|
+    | `p` mediano | 2.05e-3 | 6.47e-4 | 1.63e-5 |
+    | `a_mar` mediano | 0.000 | 0.211 | 0.000 |
+    | `\|v\|` mediano | 2.0e-4 | 3.75e-3 | 6.7e-5 |
+
+    O gradiente de pressao existe e aponta para fora (`p` cai **126x** do nucleo a frente),
+    mas da `a_p` = 9.6e-4 -> `v_term` = 1.6e-5, contra `a_mar` = 0.211 -> 3.5e-3. **Razao
+    219x**, e o `|v|` medido (3.75e-3) bate com `a_mar/gamma` na primeira casa: **a
+    velocidade e inteiramente Marangoni; a pressao contribui 0.5%.** Em 40 s o empurrao da
+    pressao desloca material por **0.012 dx**.
+
+    E e estrutural: com `B = rho0*c0^2/7` e `c0`=**0.35** (o §7 documenta 0.8 — divergencia
+    codigo x doc, mesma classe das licoes #41/#57), igualar a Marangoni exigiria
+    `rho/rho0` = 3.33, e a EOS quase-incompressivel pressupoe ~1 (Liu §4.1).
+
+    **(C) A OPCAO 2 (termo-fonte na continuidade) E REDUNDANTE, e o motivo importa.** O
+    projeto usa `SummationDensity` (`rho_a = Sum m_b W_ab`) — **nao ha equacao de
+    continuidade sendo integrada**, entao nao ha onde por o termo (Liu §4.1, Violeau §5.2).
+    Impor `div v = Gamma` exigiria projecao eliptica (ISPH, Violeau §5.4).
+
+    Mas o termo-fonte **ja existe e ja opera**: o `d_am` do `BiomassGrowth` e ele, e medido,
+    **area e massa do corpo crescem JUNTAS 21x com densidade areal constante**
+    (0.00217 -> 0.00214). `div v = Gamma > 0` esta acontecendo. Subir `c0` nao ajudaria: em
+    SPH quase-incompressivel, `c0` maior **reduz a flutuacao de densidade para a mesma
+    pressao** — a pressao e fixada pelo balanco de forcas, nao por `B`. E o CFL nem limita
+    o `dt` hoje (`dt_CFL`=0.086 contra `dt` real 0.007; quem limita e o arrasto, 2/gamma_eff
+    = 0.013).
+
+    **(D) A HIPOTESE DOS DOIS CAMINHOS — E A REFUTACAO.** Se a expansao volumetrica pode ser
+    acomodada por (i) deposicao criando particula no espaco novo, custo ~zero, ou (ii)
+    pressao empurrando material, custo 219x, entao enquanto (i) estiver aberto (ii) nunca e
+    exercitado. Medido: **86% do material da frente NASCEU ali** (viajou <2 dx desde que
+    apareceu); o filler viaja **0.34 dx** de mediana com **0%** alem de 2 dx, contra 10.21 dx
+    das vivas.
+
+    Testado cortando a deposicao:
+
+    | | filler | massa do corpo | `R99` | excedente sobre a linha nula | ganho radial/viva | dedos | amplitude |
+    |---|---:|---:|---:|---:|---:|---:|---:|
+    | I2 | 2489 | 15.40 | 2.556 | — | 0.2213 | 30 | 0.165 |
+    | I3 (so wake cortado) | 1478 | 11.95 (0.78x) | 2.395 | **+6.4%** | 0.2456 | 36 | 0.175 |
+    | I4 (wake + insert) | 636 | 8.20 (0.53x) | 1.919 | **+2.9%** | **0.2448** | **43** | **0.204** |
+
+    A "linha nula" e `R99_I2 * sqrt(massa_rel)` — o raio que a contabilidade de massa
+    preve a densidade areal constante.
+
+    **O excedente CAIU ao cortar mais deposicao (+6.4% -> +2.9%), e o ganho radial por
+    particula viva ficou IDENTICO (0.2456 vs 0.2448) com 57% menos filler.** Se o caminho
+    barato estivesse curto-circuitando o caro, fecha-lo mais deveria AUMENTAR o excedente.
+    Foi o contrario. **A deposicao nao suprimia o transporte — ela e o mecanismo.**
+
+    **(E) A INVARIANCIA DA ADVECCAO, AGORA COM CINCO PONTOS.** O transporte radial por
+    particula viva fica em **0.22-0.25** em: tres regimes de meio (licao #73: rigido sem
+    pressao, rigido com pressao, movel com pressao — 31/31/34 particulas), ao **dobrar a
+    mitose** (I2), e ao **cortar 74% da deposicao** (I4). Nenhuma alavanca mecanica
+    testada no projeto moveu esse numero.
+
+    **(F) O ACHADO COLATERAL, e ele e grande: cortar deposicao MELHORA a morfologia,
+    monotonicamente.** Dedos 30 -> 36 -> **43** e amplitude 0.165 -> 0.175 -> **0.204**,
+    com filler caindo 2489 -> 636. **A amplitude do I4 supera a do proprio P22 (0.166)**,
+    que e o baseline aprovado. Custo: `R99` 2.56 -> 1.92.
+
+    E a lei (L) da licao #67 num sentido nunca testado: todas as series anteriores (V, W, C,
+    B1, P7) mexeram no wake para **adicionar** ou **REALOCAR**; nenhuma cortou fundo.
+    **I4 foi REPROVADO pela usuaria por `R99`**, e a config voltou ao I3 — mas o eixo
+    `R99` x recorte fica aberto e e o mais proximo que o projeto ja chegou de "muitos dedos
+    finos com relevo" simultaneamente.
+
+    **(G) QUATRO ERROS DE METODO MEUS NESTA SERIE, todos com regra geral:**
+
+    1. **Estatistica de cauda.** Reportei "adveccao identica, 3.4% nos dois" usando
+       "originais alem de 0.9*R99" — que olha **8 particulas de 237**, o extremo. O coorte
+       TIPICO viajou 2.3x mais com o plato (desloc. p50 2.15 -> 5.00 dx; ganho radial p50
+       0.099 -> 0.228). **Regra: metrica de transporte em percentil alto e cega ao tipico
+       (invariante #1 do §9). Usar mediana do coorte ou media por particula.**
+
+    2. **Confundidor de raio absoluto.** A primeira medicao de adveccao deu "124 contra 5"
+       cruzando `r`=0.9 — parecia confirmacao espetacular. Era artefato: o plato comeca com
+       material ate `r`=0.50 e a quartica ate 0.40. Normalizado por `R99`, **12% nos dois**.
+       **Regra: cruzamento de raio ABSOLUTO nao compara colonias de tamanho inicial
+       diferente.**
+
+    3. **Teto acumulado calibrado por media.** Dimensionei `WAKE_MASS_BUDGET`=0.018 supondo
+       deposicao LINEAR (metade da massa em t=20). Ela **acelera** — mais maes conforme a
+       colonia cresce — e o teto so travaria em t~35, deixando 5 s de operacao estrangulada.
+       Run morto em t=15 e relancado com 0.009, que travou em t=15.7 (previsto 14-18).
+       **Regra: teto acumulado se calibra pela CURVA de consumo, nunca pela media do run.**
+
+    4. **Estrangular um de dois caminhos.** O I3 cortou o wake e o `insert` depositou **962
+       particulas** (t=8.3 a 39.8) — mais que as 619 do wake — mantendo o caminho aberto por
+       outra porta. So o I4 fechou os dois. **Regra: antes de declarar que um mecanismo foi
+       removido, listar TODAS as vias que produzem o mesmo efeito.**
+
+    **CONSEQUENCIA:** a rota mecanica esta fechada com medicao, nao com argumento. Se a
+    expansao por proliferacao for retomada, tem de ser por ISPH com projecao (Violeau §5.4)
+    — o que exige trocar `SummationDensity` por continuidade, refazer a calibracao da
+    `BiomassEOS`, o `KernelSum`, a KGC e todos os limiares de `rho/rho0`. E migracao de
+    esquema, nao um Pass.
+
+86. **AS VIVAS NAO ESTAO PRESAS — A FRENTE E QUE CORRE 3.6x A FRENTE DA PROLIFERACAO.
+    Balanco de forcas reconstruido por particula, e um bug de colisao de nome no `cs`**
+    (2026-09-11, `runs/I3_wake009`, instrumento [tools/diag_forcas.py](tools/diag_forcas.py)):
+
+    **(A) A CONTAGEM JA FECHA; A POSICAO NAO.** O "12x" de descompasso (territorio aberto
+    contra celulas geradas) foi medido no E11 — config E5, SEM mitose e ganho 1. No I3
+    (mitose + `GROWTH_MASS_GAIN`=5) a mesma conta da, em t=20-40, **~113 vivas/s contra
+    102-140 slots/s** de envelope: razao 0.8-1. Das 113/s, **54/s sao divisao** (aumento de
+    nao-filler) e **59/s recrutamento** (limbo/agar cruzando o quorum). O que falha e ONDE:
+    as vivas alem de 0.85*R99 ficam em ~30 (39 -> 39 -> 27 de t=20 a 40) e a fracao viva do
+    corpo nesse anel cai **78% -> 36% -> 16%**, enquanto 2476 vivas se acumulam em
+    0.3-0.7*R99. A frente e preenchida por filler.
+
+    **(B) BALANCO RADIAL (t=40), validado.** Cada termo do `equations_main` recalculado
+    offline com a formula do solver (CubicSpline 2D, KGC de Bonet-Lok na Marangoni, gradiente
+    sem KGC no flagelo). Validacao: correlacao **1.000** com `au_mar` e `au_flag` gravados, e
+    `soma ~ gamma_eff*u_r` a 1% nas bandas externas.
+
+    | r/R99 | n | rho_b | %rho_b<0.2 | a_mar | a_flag | pressao | viscosa | u_r |
+    |---|---:|---:|---:|---:|---:|---:|---:|---:|
+    | 0.3-0.5 | 1105 | 0.21 | 45% | 0.18 | **0.00** | -6e-4 | +1e-3 | 0.004 |
+    | 0.5-0.7 | 1371 | 0.16 | **78%** | 0.48 | **0.00** | -1e-3 | -0.01 | 0.008 |
+    | 0.7-0.85 | 116 | 0.15 | 71% | 1.59 | 0.00 | -2e-4 | -0.09 | 0.026 |
+    | 0.85-1.0 | 17 | 0.47 | 11% | 2.88 | 0.16 | +5e-4 | -0.33 | 0.050 |
+    | >1.0 | 10 | 0.51 | 0% | 4.70 | 1.29 | -2e-3 | -0.52 | 0.065 |
+
+    Regime SUPERAMORTECIDO: `u_r = (a_mar + a_flag)/gamma_eff`. Pressao ~1e-3 (confirma os
+    219x de #85), pin em so 1-11%, viscosidade desprezivel no meio (na frente ela FREIA ~10%:
+    o corpo segura a ponta). **O meio anda devagar por falta de MOTOR, por duas causas:**
+    (1) o gate flagelar e [0.2, 0.6] e 78% das vivas de 0.5-0.7*R99 estao em `rho_b`<0.2 —
+    forca flagelar mediana EXATAMENTE zero; na frente 89% tem `rho_b`>=0.3 e recebem 1.3-2.6;
+    (2) a Marangoni e 6-25x mais fraca no interior NAO pelo gate (aberto em 97-99%) mas pelo
+    GRADIENTE — o `grad cs` se concentra na frente. Direcao de `-grad cs`: para fora em
+    85-100% das vivas alem de 0.5*R99; neutra/para dentro no nucleo (cos -0.05 a -0.31).
+
+    **(C) O NUMERO QUE MUDA O ENQUADRAMENTO — frente contra proliferacao.** Para manter a
+    posicao RELATIVA numa colonia que cresce, uma celula precisa de `u_r = (r/R99)*dR/dt`.
+    Numa colonia que expande SO por divisao (a lei proposta pela usuaria), o campo e
+    `u_r = k*r/2`, com `k = G*r_growth*rho_b(1-rho_b)*f(c_n)` a taxa especifica de ganho de
+    massa. Com `k` mediano medido nas vivas (0.0125/s), isso da **0.009 em 0.6*R99 — contra
+    0.008 medido**. As vivas do meio andam na velocidade que a proliferacao justifica; o
+    anomalo e a FRENTE, levada por flagelo + Marangoni a 0.05-0.065/s:
+
+    | | expansao exigida `2*(dR/dt)/R` | `k` das vivas | razao frente/proliferacao |
+    |---|---:|---:|---:|
+    | t=20 | 0.054/s | 0.0093/s | **5.8x** |
+    | t=40 | 0.044/s | 0.0123/s | **3.6x** |
+
+    Explica tres coisas ja medidas sem causa: a invariancia do transporte por viva (#85 — ela
+    e fixada pela distribuicao do motor sobre as vivas, que nenhuma alavanca mecanica toca);
+    o P17 (ganho 3->5 encheu o corpo e nao mudou `dR/dt` — a frente nao depende de `k`); e o
+    cruzamento das curvas em t~75-80 no E11 (a razao cai com R porque `dR/dt` desacelera).
+    **Na frente o balanco `k*R/(2*dR/dt)` vale ~0.9**: as ~30 celulas de la mal se
+    sustentam, nunca crescem, e ja estao no TETO de `k` (0.024 contra `G*r/4` = 0.025).
+
+    **(D) COROLARIO: `MITOSE_M_RATIO` NAO acelera a mitose.** A filha nasce com `M_RATIO/2` e
+    divide em `M_RATIO`, entao o tempo entre divisoes e `ln2/k` para QUALQUER limiar. Baixar
+    1.3 -> 1.05 so antecipa a 1a divisao (medido: 14 s -> ~2 s; 39% das vivas ja passam de
+    1.05*m0 em t=2.7) e da um ganho UNICO de contagem `1.3/1.05` = **1.24x**, sem acumular.
+    Divisao ORIENTADA por `-grad cs` tambem nao alcanca a frente: desloca `eps*h` = 0.63 dx
+    por divisao, ~0.001/s de avanco de linhagem contra 0.05/s da frente (50x); 98% das filhas
+    nascem no meio (soma de `k` por anel: ~35/s no meio, ~0.6/s na frente).
+
+    **(E) BUG — colisao de nome: a viscosidade artificial le o SURFACTANTE como velocidade
+    do som.** `pysph.sph.wc.basic.MomentumEquation.loop` usa `cij = 0.5*(d_cs + s_cs)` no
+    termo de Monaghan (`piij = -alpha*cij*muij/rho_ij`). Neste projeto `cs` e o ramnolipideo.
+    O `c0=0.35` passado ao construtor so entra no `dt_cfl`. Consequencias medidas no I3,
+    t=40: no corpo `cs` mediano 0.13 -> viscosidade artificial **2.7x mais fraca** que a
+    pretendida; no agar `cs`=0.012 -> **29x mais fraca**; e ela VARIA com o surfactante
+    (mais forte onde ha mais ramnolipideo). No balanco das vivas o termo e <=3.5e-3, entao
+    **nao e a causa das vivas lentas** — mas toda calibracao de `alpha_mon` desde o K.23
+    (licao #15, "brittle neck") foi feita com esta viscosidade distorcida. **NAO corrigido:**
+    renomear o campo de surfactante ou usar uma equacao de momento propria muda a numerica de
+    TODOS os runs e exige validacao separada (Liu §4.3 — o papel da viscosidade artificial
+    depende de `c` ser a velocidade do som). A mesma classe de risco vale para qualquer
+    equacao do PySPH que leia uma propriedade com nome generico (`cs`, `p`, `h`, `rho`):
+    **antes de nomear um campo novo, conferir se alguma equacao da biblioteca ja o le com
+    outro significado.**
+
+    **MEDIDO NO P2 (2026-09-14, analise preditiva antes de corrigir): a correcao seria inerte.**
+    Viscosidade artificial reconstruida por particula em `runs/P2_t100` (t=51, 75 e 85), com
+    `c_ij` = `cs` (como o solver faz) e com `c_ij` = `c0`:
+
+    | populacao (t=75) | `cs` p50 | `c0/cs` | `\|a_av\|` atual | `\|a_av\|` com `c0` | `\|a_drag\|` | `\|a_mar\|` |
+    |---|---:|---:|---:|---:|---:|---:|
+    | viva | 0.476 | 0.7 | 8.5e-4 | 6.7e-4 | 0.17 | 0.078 |
+    | limbo | 0.405 | 0.9 | 7.5e-4 | 6.8e-4 | 0.80 | 0.79 |
+    | filler do wake | 0.353 | 1.0 | 2.0e-4 | 1.9e-4 | 0.013 | 0 |
+    | agar ate 1.2·R99 | 0.042 | 8.4 | 1.6e-8 | 1.1e-7 | 3.2e-6 | 0 |
+
+    Duas razoes: (a) sob o teto `cs_max`=0.5 o `cs` da colonia fica em 0.35-0.48, ou seja
+    **coincidentemente perto de `c0`=0.35** — o "2.7x mais fraca" acima valia para o I3, nao
+    para o P2; (b) a viscosidade artificial e **2-3 ordens de grandeza menor que o arrasto e a
+    Marangoni** em todas as populacoes, com ou sem correcao. As particulas que formam os pares
+    coincidentes da cascata tardia tem `cs` p50 0.36 (`c0/cs` = 0.95-1.01): **a correcao nao
+    toca o pareamento**. Corrigir continua certo por consistencia de metodo (Liu §4.3), mas nao
+    estende a janela util nem muda a morfologia do P2.
+
+    **(F) As saidas, nenhuma rodada:** (A) dar motor ao meio — forca flagelar de magnitude
+    constante so tem dois regimes, pouco (gate ~0.1 em `rho_b`=0.15 -> u ~0.013) ou demais
+    (gate cheio -> u=0.05, os "cavaleiros" do P3); (B) por a frente sob a lei da proliferacao,
+    `dR/dt <= k*R/2` — ~3.6x menos motor na frente em t=40, risco de perder o fingering
+    (K.5, E4); (C) expansao por crescimento de fato (div v = k, ISPH, Violeau §5.4). Decisao
+    com a usuaria.
+
+    **(G) SAIDA B TESTADA E REPROVADA — B1-motor (`MOTOR_SCALE`=0.5: `beta` 5->2.5 E `f0`
+    3->1.5 pelo mesmo fator), 2026-09-11, `runs/B1_motor05_REPROVADO`, abortado em R99=1.25
+    pelo criterio pre-registrado.** Por que essa alavanca e nao outra: no regime
+    superamortecido `u = F/gamma`, entao escalar os dois motores juntos equivale a `gamma`
+    uniforme maior sem o custo de `dt`. Arrasto so na ponta foi descartado antes de rodar:
+    fingering E a ponta correndo mais que a baia, frear so a ponta ataca a instabilidade e o
+    salto de `gamma` no pescoco e o brittle neck (#15/#22). Reduzir `sigma` foi o E4, que
+    muda o proprio campo (e o reanalisei: frente 3x mais lenta, relevo 0.41x, e o `k` das
+    vivas caiu 3.6x porque a colonia compacta, as vivas ficam cercadas de vivas e `c_n`
+    relaxa a `k_src/(k_src+k_n*rho_b)`, que cruza o pin 0.6 em `rho_b`=0.4).
+
+    Comparacao em R99 IGUAL ([tools/compara_raio.py](tools/compara_raio.py)), R99=1.2:
+
+    | | I3 | B1-motor | |
+    |---|---:|---:|---|
+    | t | 14.3 | 28.3 | frente ~0.33x (previ 0.5x) |
+    | razao frente/proliferacao | 8.7x | ~2.5x | caiu 3.5x — **a alavanca funcionou** |
+    | vivas | 456 | **1029** | 2.3x |
+    | **vivas alem de 0.85*R99** | 38 | **113** | **3x — o objetivo foi atingido** |
+    | `k` mediano / `c_n` / %pin das vivas | 0.0109 / 0.83 / 25% | 0.0127 / 0.84 / 22% | **o mecanismo do E4 NAO ocorreu** |
+    | **amplitude** | 0.184 | **0.114 (0.62x)** | **reprova (limite 0.7x)** |
+    | R99/R90 | 1.30 | 1.18 | mais compacta |
+
+    E a perda de relevo vem DO INICIO, nao e flutuacao: 0.68x em R99~0.7, 0.77x em 1.04,
+    ~0.6x em 1.2. Visual (§11, `B1motor_vs_I3_mesmoR.png`, no commit `a2d6dfd`):
+    o I3 tem borda lobulada com tendrils nascendo; o B1 e disco denso de borda crenulada —
+    (a) *Modulated* / (c) *Circular* do Trinschek.
+
+    **LEITURA:** a biologia alcancou a frente EXATAMENTE como a analise previu — 3x mais
+    vivas na vanguarda, crescimento e nutriente intactos — e o relevo foi embora junto. Os
+    processos que dependem de TEMPO (colonizacao, `tau`=33 s; mitose; crescimento; e a
+    relaxacao difusiva/coesiva da perturbacao semeada) ganham 2-3x mais tempo por unidade de
+    avanco; o que depende de DESLOCAMENTO (wake) nao muda. **E a lei (L) (#67-L) em forma de
+    TAXA: nesta arquitetura o relevo so existe enquanto a frente corre a frente da
+    proliferacao.** A razao 3.6x nao e so um defeito a remover — e, com os dois pontos que
+    temos (E4, confundido; B1, limpo), a condicao de existencia dos dedos no modelo.
+    **Nao repetir a Saida B por outra alavanca de motor** (`gamma`, `beta` isolado, rampa
+    tardia) sem antes explicar por que ela escaparia desta leitura — a rampa so e candidata
+    se a perda de relevo for de NUCLEACAO, e aqui ela ja aparece em R99=0.7.
+
+    Codigo preservado parametrizado: `MOTOR_SCALE` em [main.py](main.py) (1.0 = I3
+    bit-a-bit) e `flag_f0` no scheme, que antes era literal `3.0` no `FlagellarForce`.
+
+    **(H) SAIDA C AVALIADA POR PROJECAO EXATA, SEM RODADA — e ela nao empurra a ponta**
+    (2026-09-11, [tools/projecao_crescimento.py](tools/projecao_crescimento.py)). Resolvi
+    offline a etapa de projecao do ISPH (Cummins & Rudman 1999, Violeau §5.4) restrita ao
+    crescimento: `lap(phi) = Gamma` na colonia, `phi = 0` no agar (superficie livre sem
+    pressao), `u_g = grad(phi)`, com `Gamma = G*r_growth*rho_b(1-rho_b)*f(c_n)`. Laplaciano de
+    Brookshaw em matriz esparsa, gradiente com KGC. **Validado no disco analitico
+    (`u = Gamma*r/2`): erro +1.3 a +1.8% em todos os raios.** E a velocidade que a colonia
+    teria se expandisse SO por proliferacao, medida sobre os frames reais:
+
+    | | `int Gamma dV` / area da colonia | crescimento da area real | corpo 0.3-0.7*R99: `u_g` vs real | frente >0.85*R99: `u_g` vs real |
+    |---|---:|---:|---:|---:|
+    | **E11** (G=1, sem mitose), t=21-80 | 2e-4 a 3e-4 /s | **50-75x maior** | 17-1000x menor | 0.0001 vs 0.05-0.11 |
+    | **I3** (G=5, mitose), t=20-40 | 0.007 /s | ~6x maior | **0.9-1.2x — ja bate** | **0.0002 vs 0.043 (200x)** |
+
+    **Dois achados.** (1) No E11 a biologia e ~1% do corpo, entao a expansao por
+    proliferacao seria 50-75x mais lenta que a real: a Saida C sobre o E11 **congelaria a
+    colonia** (area duplicando em ~1 h de simulacao). Para igualar seria preciso `G`~60 E
+    mitose, que o E11 nao tem. (2) Mesmo onde o crescimento e forte (I3), **a velocidade de
+    crescimento na ponta e ~zero**: num braco fino a superficie livre (`phi=0`) esta a 1-2 dx
+    em todo o contorno, entao o volume novo SAI PELOS LADOS — engorda o braco em vez de
+    alonga-lo. No corpo, o I3 ja se move exatamente na velocidade que a projecao preve (#86-C
+    confirmado por outro metodo). **Expansao por crescimento com superficie livre e
+    intrinsecamente anti-dendritica** — e o resultado de [T3] Giverso (expansao volumetrica ->
+    modo k=1, sem dendritos; quimiotatica -> dendritos), agora medido no nosso modelo.
+
+    **Consequencia para a lei proposta pela usuaria** ("expansao regida pela mitose"): nao e
+    o que a literatura de swarming descreve. [T2] Srinivasan e [T5] Bru atribuem o VOLUME do
+    swarm ao influxo osmotico de agua do agar (van't Hoff), nao a divisao, e [T3] mostra que
+    fonte volumetrica sozinha nao faz dendrito. A mitose POVOA; quem EXPANDE e agua + tracao
+    na frente. Juntando (G) e (H): frear a frente para a biologia alcancar mata o relevo, e
+    fazer a biologia empurrar a frente nao alcanca a ponta. **Saida C nao foi implementada no
+    solver**; a projecao fica como instrumento. Se retomada, a fonte de volume coerente com a
+    literatura e o influxo osmotico (Frente 4 / Objetivo 2 do §1), nao `Gamma` de divisao.
+    **Testado como construcao em seguida — REPROVADO, licao #87.**
+
+87. **OSM1 — INFLUXO OSMOTICO COMO CONSTRUCAO (absorver o agar vizinho das vivas) REPROVADO:
+    absorcao nao cria particula, e o que falta onde a colonia se rompe e PARTICULA** (2026-09-11,
+    `runs/OSM1_osmotico_REPROVADO`, controle `runs/OSM0_semdep`, base E11 reproduzida em
+    `runs/OSM_repro` — 45 colunas bit-a-bit nas iteracoes 0/200/400, inclusive a sequencia do
+    dt): arquitetura B da licao #58 ([T2]: o influxo puxa fluido DO agar para dentro) na forma de
+    taxa. Sobre o E11 (`git fe49aba`), wake e insert DESLIGADOS e agar vizinho de viva absorvido
+    com probabilidade `1-exp(-OSM_K*D*dt)`, `D = sum_j V_j rho_b_j W_ij` so sobre vivas
+    (`OSM_K`=32). O absorvido fica com `rho_b`=0 (QUIMICA de agar: nao cresce, nao produz `cs`,
+    nao consome `c_n`, colonizavel) e `phi_osm`=0.4 lido pela `BiomassEOS` como
+    `max(rho_b, phi_osm)` (MECANICA de colonia, fade 0.84). OSM0 = o mesmo codigo com
+    `use_osm=False`, para separar "tirar a deposicao" de "absorver". O codigo existe so no
+    snapshot dos runs (`runs/OSM1.../main.py`, `src/`), nao no repositorio.
+
+    | R99 igual | amplitude da colonia E11 / OSM1 | C5b (1.05 dx) E11 / OSM1 | agar limpo 0.5-0.9·R99 E11 / OSM1 |
+    |---|---|---|---|
+    | 1.2 | 0.358 / **0.111** | 37.7% / **2.9%** | 60% / 22% |
+    | 1.6 | 0.406 / **0.130** | 26.6% / **2.2%** | 71% / 36% |
+    | 2.0 | 0.357 / **0.147** | 21.1% / **1.7%** | 86% / 46% |
+
+    Reprova nos dois criterios pre-registrados (`runs/OSM1_osmotico_REPROVADO/CRITERIOS.md`:
+    C5b >= 50%, amplitude >= 0.8x), piorando com R99. Interrompido em t=26.6 (ver D).
+
+    **(A) O DIAGNOSTICO: um FOSSO DE VAZIO de 3-5 dx em volta do nucleo.** Varrendo a escala de
+    ligacao em t≈24: o OSM1 liga 1.7% a 1.05 dx, 3.6% a 3 dx e **100% a 5 dx** (alcance 1.07·R99)
+    — a casca absorvida mais os bracos e internamente continua, e um unico fosso a separa do
+    nucleo. E o espaco que as vivas DESOCUPARAM. Vazio `void_10` em t≈26: OSM1 **0.083**, OSM0
+    **0.077**, E11 **0.019**. A absorcao nao preencheu nada, e a pressao do absorvido nao trouxe
+    material para dentro do fosso (219x abaixo da Marangoni, licao #85).
+
+    **(B) O CONTROLE MOSTRA O QUE A DEPOSICAO FAZ.** Sem deposicao (OSM0), as vivas da ponta
+    CAVAM ~20 tuneis radiais no agar, com baias **99.7% limpas** e o miolo vazio — o padrao
+    dendritico e o RASTRO das trajetorias das vivas. Os bracos do E11 sao esses mesmos tuneis,
+    preenchidos pelo filler do wake (`osm1_vs_osm0_vs_E11.png`, no commit `a2d6dfd`).
+    E a licao #85 vista pelo outro lado: a forma vem da trajetoria, o material vem da deposicao.
+
+    **(C) A SELETIVIDADE DE PONTA QUE EU MEDI NAO SE MATERIALIZOU.** O `D` 9.5x maior na ponta
+    que na baia foi medido no E11 em t=49.6, com as vivas nas pontas. Em R99 1.2-2.0 as vivas
+    estao no nucleo e num anel na borda, entao o impulso vai para a borda INTEIRA, e o absorvido
+    ocupa as baias (agar limpo 22-46% contra 60-86%). E ha um erro de principio meu:
+    seletividade por unidade de TAXA nao e seletividade por unidade de TEMPO — uma viva parada
+    acumula exposicao indefinidamente, e a baia a absorve toda dentro de 2h.
+
+    **(D) CUSTO NUMERICO — o dt cai 30x em dois modos.** (1) A absorcao pega justamente o anel
+    de agar COMPRIMIDO que as vivas empurram (`rho/rho0` 1.7-2.0, licao #58); ao ganhar EOS ele
+    descomprime e os pares se afastam rapido (dt_cfl 1.2e-3 em t≈11, recuperado depois). (2) As
+    vivas da ponta ATRAVESSAM as absorvidas: 46 dos 51 pares com r < 0.05 dx envolvem absorvida
+    (minimo 0.0035 dx), e o dt_cfl `h*vij.xij/r²` vai a 1e-3. A t=26.6 os 23 s restantes
+    levariam ~3 h.
+
+    **(E) TRES ERROS MEUS DE PREDICAO.** (1) Previ C5 alto "por construcao", supondo que a viva
+    deixa rastro continuo de material — ela deixa um TUNEL vazio, e a absorcao so reveste as
+    paredes. (2) Previ o absorvido mecanicamente inerte — ele nao move material para o fosso,
+    mas custou o dt (D). (3) Antes de implementar, afirmei que tratar o absorvido "como o filler
+    do wake" evitaria a cegueira de `cs` do M3 e o consumo do M1 — errado: o filler do wake e
+    excluido do `cs` E consome nutriente. Corrigi antes de rodar separando quimica de agar e
+    mecanica de colonia.
+
+    **REGRA (fecha a classe de CONVERSAO):** neste SPH, a continuidade exige PARTICULAS no espaco
+    que a colonia desocupa. Toda regra que so muda propriedade de particula que ja existe —
+    matriz (serie M), piso (E7-E10), promocao (serie P), absorcao (OSM1) — e incapaz de
+    substituir a deposicao, porque no fosso nao ha particula para converter. Os mecanismos que
+    poem particula no espaco vazio sao so quatro: wake, insert, mitose (#81) e Pass N. **Nao
+    testado:** absorcao POR CIMA da deposicao (E11 + OSM). Pelo item (C) ela ocuparia as baias e
+    reduziria a amplitude (lei (L), #67-L); nao recomendado sem argumento novo.
+
+> **RETORNO AO BASELINE E11 (2026-09-11, decisao da usuaria).** Encerra a sequencia P/I/B1/
+> OSM. Feito por CONSTANTES, nao por checkout: todo o codigo posterior ao E11 fica no
+> repositorio, desligado (§10). Valores que reproduzem o E11:
+>
+> | constante | E11 | ultimo valor testado |
+> |---|---|---|
+> | `CS_SINK_K` / `CS_CEILING` | 0.0 / 0.5 | 200 / 0 (P20-P22) |
+> | `COL_CS_MIN` | 0.3 (`= 0.6*cs_max`) | 0.030 (P22) |
+> | `COL_FILLER_DONOR` | 0.0 | 1.0 |
+> | `GROWTH_MASS_GAIN` / `GROWTH_GAIN_RHO_B_MIN` | 1.0 / 0.0 | 5.0 / 0.05 (I3) |
+> | `use_mitose` | False | True (P15-I3) |
+> | `WAKE_MASS_BUDGET` / `WAKE_ATTACH` | 0.12 / 0.0 | 0.009 (I3) / 1.05 |
+> | `INOC_MODE` (particles.py) | "quartica" | "plato" (serie I) |
+> | `total_sim_time` | 100 | 40 |
+> | `MOTOR_SCALE`, `FLAG_F0`, `FLAG_GATE_*`, `NOISE_AMP`, `SEED_AMP` | ja nos valores do E11 | — |
+>
+> **Duas reescritas "matematicamente iguais" quebravam o bit-a-bit, corrigidas:** (a) o gate
+> flagelar dividia a metade de cima por `gate_hi - gate_mid` = 0.19999999999999996, e o E11
+> por 0.2 — agora as duas metades usam `gate_mid - gate_lo`; (b) o inoculo quartico usava
+> `0.30*(1 + SEED_FRAC*cos)`, que difere de `0.30 + 0.06*cos` em ate 5.5e-17 — voltou a
+> forma historica (o comentario do codigo afirmava "bit-identico" e nao era). **Regra:** ao
+> parametrizar uma expressao, conferir a igualdade em PONTO FLUTUANTE contra a forma antiga
+> (`np.array_equal`), nao so na algebra — a divergencia de 1 ulp se amplifica caoticamente e
+> invalida qualquer comparacao bit-a-bit posterior. Consequencia: os runs da serie P/I que
+> usaram o gate parametrizado ou o inoculo `SEED_FRAC` nao reproduzem bit-a-bit com o codigo
+> atual (so na 16a casa).
+>
+> **Limpeza de `plots/` (mesma data):** 51 figuras de diagnostico das series P/I/E removidas
+> (versionadas, recuperaveis pelo git). Ficaram os scripts e as figuras citadas neste
+> documento mais `traj_E11.png` e `E11_C5.png`.
+
+88. **BRACOS DESLOCADOS DO NUCLEO — o defeito que a figura de tese expos, e o P2 como
+    baseline** (2026-09-11, `plots/fig_tese.py`, `tools/rank_runs.py`): a figura do E11 em t=50
+    mostrou bracos que comecam separados do nucleo. Medido: cada um e uma ILHA de filler do
+    wake mais algumas vivas, separada do corpo por 4-8 dx de AGAR (particulas presentes, nao
+    vazio). O braco ja NASCE solto — no ponto medido, um grumo aparece em t=29 longe do corpo
+    e cresce para fora sem nunca se ligar. Mecanismo da licao #73: o wake deposita onde a viva
+    ESTAVA na chamada anterior, e ela anda 2-16 dx entre chamadas; o intervalo fica agar.
+
+    **Nao se resolve na figura** — ligar os bracos na renderizacao seria desenhar material que
+    nao existe (a licao #72-K so autoriza fechar buracos ENCLAUSURADOS). Resolve-se na
+    simulacao, e a alavanca ja existia: `COL_FILLER_DONOR=1` (P2). Com o filler como doador, o
+    agar entre o braco e o nucleo e recrutado na densidade do filler (~0.3) e vira colonia.
+    **E consistente com a licao #87:** conversao funciona onde HA particula; o fosso do OSM1 era
+    vazio, este e agar.
+
+    **Ranking da serie P inteira com as mesmas reguas** (janela t in [35, 50]; forma em R99
+    igual; painel em `plots/rank_serieP_t50.png`). Oito rodadas (P5, P7, P13, P15-P17, P21,
+    P22) viraram blob e duas (P8, P9) disco — e estas tem os MELHORES numeros de continuidade
+    (C5b 50-76%, zero braco solto), a armadilha da licao #76. Separando pela classe:
+
+    | t≈50 | bracos soltos | fora do corpo | C5a | amplitude | dedos | agar limpo | fundo baia |
+    |---|---:|---:|---:|---:|---:|---:|---:|
+    | E11 | 5.2 | 8.1% | 0.25 | 0.345 | 35 | 89% | 1.27 |
+    | P1 | 3.1 | 6.3% | 0.29 | 0.364 | 38 | 89% | 1.12 |
+    | **P2** | **1.3** | **2.0%** | **0.45** | 0.312 | 36 | 78% | 1.81 |
+    | P3 | 3.3 | 3.8% | 0.21 | **0.412** | **40** | **90%** | **1.08** |
+    | P4 | 5.6 | 8.6% | 0.35 | 0.308 | 40 | 72% | 1.48 |
+    | P6 | 5.3 | 11.5% | 0.18 | 0.438 | 34 | 95% | 1.13 |
+
+    O P2 e o unico que resolve os bracos soltos (1.3 contra 5.2) mantendo o fingering; custo
+    ~10% de relevo, baias mais rasas (fundo 1.81 vs 1.27) e 78% de agar limpo. Expansao igual
+    (dR/dt 0.078 vs 0.080), pressao sem picos, 4.4x mais vivas (1206 vs 272), 8% delas pinadas
+    contra 37%.
+
+    **CORRECAO DA LICAO #74 — o `WAKE_ATTACH` NAO resolve.** Os 41% de continuidade do P4 eram
+    de UM instante; na janela t in [35, 50] o C5b e **18 +- 16%**, dentro do ruido do P2, e na
+    figura ele fragmenta tanto quanto o E11 (5.6 bracos soltos). E o erro que a regra de janela
+    do §2.2 existe para evitar, cometido antes da regra.
+
+    **P2P3 (P2 + gate flagelar [0.1, 0.8]) — REPROVADO** (`runs/P2P3`, criterios pre-registrados
+    em `runs/P2P3/CRITERIOS.md`). O P3 tinha o melhor relevo da classe e o P2 a melhor ligacao;
+    a pergunta era se somavam. Nao somam. A segunda realizacao do P2 (`runs/P2_t100`, mesma
+    config com outra ordem de arredondamento) da o piso de ruido:
+
+    | t in [35, 50] | P2 | P2 (2a realizacao) | P2P3 |
+    |---|---:|---:|---:|
+    | bracos soltos / fora do corpo | 1.3 / 2.0% | 2.6 / 3.5% | **3.6 / 4.4%** |
+    | C5a | 0.45 | 0.43 | **0.24** |
+    | amplitude (R99=2.4) / fundo da baia | 0.312 / 1.81 | 0.317 / 1.53 | 0.345 / 1.47 |
+    | picos de pressao > 4 | 0% | 0% | 13% |
+    | cavaleiros (p90/p50 do deslocamento) | 2.0 | 1.85 | 2.1 |
+
+    O gate alargado DESFAZ a ligacao do P2: C5a volta ao nivel do E11 (0.24), 10x o ruido
+    entre realizacoes. O ganho de relevo e ~10%, longe do salto do P3 sobre o E5 (0.412). Os
+    cavaleiros NAO voltaram (2.1 contra 6.8 do P3) — com as vivas extras do P2 no corpo a
+    distribuicao de deslocamento fica estreita; o que se perde deve ser a ponte de recrutas
+    entre braco e nucleo, empurrada para fora pelo gate (nao medido diretamente). O frame de
+    t=50 isolado parece otimo (`fig_P2P3_t50.png`, no commit `a2d6dfd`) — e o ruido
+    entre realizacoes (bracos soltos 1.3 vs 2.6 no MESMO P2) que torna a janela obrigatoria.
+    **O baseline segue P2 puro.**
+
+    **SEGUNDA METADE DO P2 (`runs/P2_t100`, interrompido em t=87.4) — janela util t ≲ 75.**
+    Ganha do E11 no defeito tardio: o componente do centro fica em ~70% da colonia ate t=77,
+    enquanto o do E11 despenca a 83 particulas (1%) em t=80 — o nucleo descolando (licao #73).
+    E os bracos seguem finos, longos e ligados ([plots/cmp_E11_P2_tardio.png](plots/cmp_E11_P2_tardio.png)).
+    Dois defeitos proprios, ambos crescendo com o recrutamento (vivas 1333 -> 3957 de t=51 a 77):
+    (a) o corpo vira um DISCO que engole as baias — fundo 1.66 -> 2.66 contra 1.31 -> 1.73 do
+    E11; (b) **aglomeracao em cascata apos t≈75**: pares a menos de 0.05 dx vao de 779 (t=70)
+    a **5644** (t=87), 1478 deles entre vivas recrutadas (`rho_b` 0.1-0.5), com `rho/rho0` p99
+    5.9; o E11 tambem acumula pares (1246 em t=87), mas devagar e quase sem vivas. O dt caiu a
+    ~1e-4 e o run foi interrompido — levaria horas para t=100. Mecanismo provavel: a recruta
+    em `rho_b`~0.2 tem `fade_rep`~0.16 na `BiomassEOS` e, quando dois vizinhos chegam muito
+    perto, o gradiente do spline cubico vai a zero e nada os separa — instabilidade de
+    PAREAMENTO (Liu §6.4; o shifting, com cap 0.0006h, nao acompanha). **Nao corrigido.**
+    Candidatas, nenhuma testada: kernel Wendland C2 (sem instabilidade de pareamento — Dehnen
+    & Aly 2012, MNRAS 425:1068), piso de repulsao na EOS para vivas, ou shifting mais forte na
+    banda `rho_b` 0.1-0.5 (Lind 2012 [T8]).
+
+    **DETERMINISMO DEPENDE DO NUMERO DE THREADS (verificado, `runs/_verif_P2_5t`).** O
+    `P2_t100` rodou com `OMP_NUM_THREADS=5` e diverge do P2 original (10 threads) a partir da
+    iteracao 600, na 4a-5a casa (t 12.7260 vs 12.7259), amplificando-se depois. Uma copia com
+    5 threads reproduz o `P2_t100` exatamente nas iteracoes 0-600. Causa provavel: a ordem das
+    somas SPH sobre vizinhos muda com a particao entre threads. **Regra:** comparacao
+    bit-a-bit so vale com o MESMO numero de threads (e as verificacoes de hoje, `_verif_E11` e
+    `_verif_P2`, usaram o padrao da maquina, 10); e duas rodadas da mesma config com threads
+    diferentes sao REALIZACOES distintas — usar a diferenca entre elas como piso de ruido.
+
+89. **P2W — kernel Wendland C2 (h = 1.92 dx) sobre o P2: resolve a CASCATA de pareamento e
+    leva o run a t=100; nao muda a morfologia, nem cedo nem tarde** (2026-09-14,
+    `runs/P2W_t100`, criterios e tabela completa em `runs/P2W_t100/CRITERIOS.md`). Alavanca
+    unica e numerica (`KERNEL`/`H_FACTOR` em [main.py](main.py)), motivada pela instabilidade de
+    pareamento do spline cubico sob compressao (licao #88; Price 2012; Dehnen & Aly 2012;
+    Liu §6.4).
+
+    | pares < 0.05 dx (mesma contagem) | t≈87 | t=100 | dt medio t[80,100] |
+    |---|---:|---:|---:|
+    | E11 (cubico) | 871 | 1239 | 0.014 |
+    | P2 (cubico) | 4872, cascata, parado | — | 0.0027 (t 80-87) |
+    | **P2W (Wendland)** | **692** | 1345 | **0.0053** |
+
+    **O que resolve:** a cascata sumiu (7x menos pares que o P2 cubico em t=87, abaixo do
+    proprio E11) e o run terminou. Ate t=50 fica dentro do ruido entre realizacoes do P2 em
+    todos os criterios (bracos soltos 0.8, C5a 0.42, amplitude 0.310, 40 dedos) — a predicao de
+    que a troca de kernel nao mexe na fisica se confirmou.
+
+    **O que nao resolve:** (a) a compressao do corpo continua — `rho/rho0` p99 7.2 em t=100
+    contra 4.8 do E11 —, o Wendland so impede que ela vire pares coincidentes; os pares
+    crescem devagar e aceleram no fim, e o dt medio cai de 0.016 para 0.005 (o E11 fica em
+    0.014). (b) O corpo vira DISCO depois de t≈75, como previsto nos criterios: relevo/Rmax
+    0.63 (t=50) -> 0.48 (t=100), contra 0.70 -> 0.64 do E11. E o defeito fisico do P2
+    (recrutamento crescente), nao numerico. Agar limpo nas baias 71% contra 76-78% do P2.
+
+    **DECISAO DA USUARIA (2026-09-14): o baseline MANTEM o kernel cubico** (`KERNEL="cubic"`,
+    `H_FACTOR=1.8`). O parametro fica no codigo; o P2 segue com janela util t ≲ 75.
+
+    **Nota de medicao:** a contagem de pares usada aqui da numeros absolutos menores que a da
+    licao #88 (E11 871 contra 1246 em t=87). So comparar runs contados pelo MESMO script,
+    [tools/pares_dt.py](tools/pares_dt.py) (`cKDTree.query_pairs(0.05*dx)` sobre o fluido).
+
+90. **O DISCO TARDIO DO P2 E UM LACO filler-doador -> recruta -> wake -> filler-doador, e e a
+    MESMA operacao que liga os bracos ao nucleo** (2026-09-14, analise offline de
+    `runs/P2_t100` contra `runs/E11_t100`, [tools/diag_disco.py](tools/diag_disco.py); indice =
+    identidade, desloc. maximo no campo distante 1e-8 dx). Regiao F = baia de t0=51 engolida
+    ate o disco de raio `R_min(t1=80)`: **2412 dx² no P2 contra 903 no E11**.
+
+    | material de colonia em F no t1 | P2 | E11 |
+    |---|---:|---:|
+    | wake criado depois de t0 | **1376 (50%)** | 246 (57%) |
+    | agar/limbo convertido | **996 (36%)** | 42 (10%) |
+    | colonia de t0 advectada para dentro | 348 (12%) | 107 (25%) |
+    | insert | 43 (2%) | 40 (9%) |
+    | **total** | **2763** | 435 |
+
+    A diferenca P2/E11 esta na CONVERSAO (24x) e no wake (5.6x). **Geometria:** F fica a 2.2 dx
+    (p50; p90 4.3) da colonia de t0 — nao sao baias fundas enchendo pelo fundo, sao fendas
+    estreitas perto do nucleo fechando por ENGROSSAMENTO LATERAL dos bracos. Baia e cunha
+    (estreita perto do centro), entao engrossar ~2-4 dx por lado fecha o fundo primeiro e a
+    frente de fechamento anda para fora: e isso que e `R_min` subindo 1.69 -> 2.68.
+
+    **O gatilho e o gate de `cs` perdendo seletividade, e o laco o acelera.** Candidatas
+    (agar+limbo) em F acima de `COL_CS_MIN`=0.3: P2 **21% (t=51) -> 32 -> 52 -> 72 -> 86% (t=70)**,
+    com o `cs` mediano da baia indo de 0.226 a 0.407 (o do dedo, 0.334 -> 0.409). No E11 a baia
+    fica em 0.20-0.26 e 0-25% passam. **Em t=51 o gate protegia a baia** (razao baia/dedo 0.68):
+    a uniformidade azimutal de `cs` da licao #84 e, no P2, o ESTADO FINAL produzido pelo laco,
+    nao a condicao inicial. `c_n` nao discrimina (100% acima de 0.4 sob `k_src`).
+
+    **O laco, medido pelo peso de doador das recrutas de F ainda sub-quorum:**
+
+    | t | filler de t0 | wake novo | recruta | viva de t0 |
+    |---|---:|---:|---:|---:|
+    | 57 | **58%** | 20% | 7% | 16% |
+    | 64 | 34% | 33% | 17% | 16% |
+    | 72 | 19% | **39%** | **29%** | 13% |
+
+    O filler dos bracos acende (`COL_FILLER_DONOR`=1); o wake depositado DENTRO da baia e as
+    proprias recrutas passam a doar; e as recrutas (e o limbo da rampa) viram maes do wake
+    (`WAKE_RHO_B_MIN`=0.05 — 37% do wake em F tem `rho_b`<0.1, mae no limbo, contra 20% do wake
+    novo nos bracos). O P2 gasta o teto do wake 2.2x mais rapido que o E11 depois de t=51 e o
+    esgota em t≈81 (E11: 57% em t=80).
+
+    **Por que nao ha alavanca limpa:** o que fecha a fenda (filler doando para o agar vizinho,
+    fendas de 4-9 dx) e exatamente o que o P2 foi escolhido para fazer com o vao braco-nucleo
+    (4-8 dx de agar, licao #88) — mesmo objeto, mesma escala, e a licao #72-J ja mostrou que
+    nem criterio local nem topologico separa entrada estreita de baia. E a lei (L) na forma da
+    #84, **conectar contra separar**, agora com o mecanismo medido. O unico elemento proprio do
+    tardio e a subida do `cs` na baia; qualquer alavanca de gate/doador/wake corta tambem a
+    ligacao. **Janela morfologica do P2: t ≲ 55** (em t=55 F ja esta 30% coberta e `R_min`
+    salta 1.64 -> 1.95); a janela numerica segue t ≲ 75.
+
+75. **A LARGURA DO BRACO: cintura em r/R99=0.65, barriga em 0.83, razao 2.1x — e a barriga
+    ACOMPANHA A FRENTE. Quatro alavancas refutadas por medicao antes de rodar, e o
+    `contrast_cs` invalidado como orcamento** (diagnostico sobre o P5, 2026-09-03):
+
+    **(A) A COLONIA REAL NAO VARIA DE LARGURA — o manto de limbo varia.** Largura local
+    medida por transformada de distancia (EDT = raio do maior circulo inscrito; nao depende
+    de escolher setor angular, licao #67-F):
+
+    | r/R99 | 0.40 | 0.48 | 0.55 | 0.62 | 0.70 | 0.78 | 0.85 | 0.93 |
+    |---|---:|---:|---:|---:|---:|---:|---:|---:|
+    | colonia estrita | 1.4 | 1.2 | 1.4 | 1.4 | 1.4 | 1.3 | 1.3 | 1.0 |
+    | colonia + limbo | 3.0 | 3.0 | 2.5 | **2.2** | 3.1 | 4.4 | **4.5** | 4.0 |
+
+    A colonia e um fio de **1.3 dx constante**. Toda a variacao (max/min 2.1x, identica nos
+    8 bracos) esta no limbo.
+
+    **(B) O MECANISMO E UM ENGARRAFAMENTO.** Velocidade mediana por CLASSE:
+
+    | r/R99 | viva | limbo | razao |
+    |---|---:|---:|---:|
+    | 0.40-0.57 | 2.6e-3 | 1.0e-3 | 2.5x |
+    | 0.70-0.78 | 1.6e-2 | **4.5e-3** | 3.6x |
+    | 0.78-0.88 (barriga) | 1.9e-2 | **8.2e-4** | 23x |
+    | 0.88-1.00 | 3.0e-2 | 3.9e-4 | **77x** |
+
+    A viva acelera monotonicamente (tem o motor); o limbo e passivo. Onde a viva rareia
+    (9% -> 1% do corpo), o limbo estagna e o material que vem atras empilha. `dv/dr>0`
+    rarefaz (cintura), `dv/dr<0` comprime (barriga).
+
+    **O LIMBO NAO E CARGA MORTA — e a unica parte do VOLUME que recebe forca.** A
+    `MarangoniForce` gateia so `is_filler`, e limbo nao e filler. Medido: filler do wake e
+    **0% pinado** e ainda assim anda 24x mais devagar que o limbo (6.0e-5 vs 1.4e-3),
+    porque filler esta FORA da Marangoni. Isso **corrige o enquadramento da licao #74**.
+
+    **(C) A MARANGONI NAO ENFRAQUECE — O GATE FECHA.** `a_mar` no limbo fica em 0.57 -> 0.52
+    da cintura a ponta, e o gradiente de `cs` e ate MAIOR na barriga (0.069 vs 0.030). O que
+    colapsa e a FRACAO que passa no gate `smoothstep(|grad rho_b|, 0.05, 0.6)`: 79% -> 70%
+    -> **51%** -> 44%. Quando cruza 50%, a particula MEDIANA deixa de receber forca.
+
+    **(D) QUATRO ALAVANCAS REFUTADAS, todas por medicao previa (nenhuma rodada gasta):**
+
+    1. **Alargar o gate flagelar** — ja reprovado no P3 (`[0.1,0.8]`): `p90/p50` de velocidade
+       5.0 -> 6.8. `FlagellarForce` tem magnitude CONSTANTE, entao da-la a mais particulas
+       nao move o corpo, cria cavaleiros.
+    2. **Converter limbo em filler** — removeria o unico motor do limbo (item B).
+    3. **Alargar o gate da Marangoni** `[0.05,0.6] -> [0.02,0.3]` — protocolo §3.3.6 rodado:
+       `cs_inf` inalterado (o gate nao toca producao), push para fora em todo o braco (sem
+       patologia da §3.3.4), MAS o gate medio do CORPO INTEIRO vai 0.437 -> 0.678 (**1.55x**)
+       com so **1.27x de diferencial** ponta/nucleo. **E um aumento global de `beta` (5.0 ->
+       7.75) disfarcado**, e a §3.3.4 marca esse caso como perda de seletividade dendritica.
+    4. **Piso em `rho_b`** (0.015 a 0.030 no limbo dos bracos) — extrapolacao linear previa
+       `|grad|` 0.49 e gate 0.89; **medido com a forma SPH exata do `BiomassGradient`: 0.12 e
+       gate 0.24, contra 0.19/0.32 da base**. O piso PIORA. Causa: `|grad rho_b|` mede
+       variacao ESPACIAL, e por o campo todo no mesmo valor **achata** a dispersao (o braco
+       tem CV 2.57 — ele nao e uniforme, e rarefeito). **Quarta extrapolacao linear a falhar
+       nesta sessao** (cf. `chi` do X0, `sigma` do Y1). Desta vez a medicao veio antes da
+       rodada e economizou uma.
+
+    **Corolario:** o que abre o gate e CONTRASTE (denso cercado de vazio), nao nivel medio.
+    Braco do P4: 111 particulas a `rho_b`=0.53, `|grad|`=2.80. Braco do P5: 2954 a 0.0075,
+    `|grad|`=0.19. Recrutamento esparso-e-denso foi dimensionado (2 a 10 dx de espacamento):
+    o melhor ponto da gate 0.32 -> 0.40 por **+36%** de producao — ganho marginal por todo o
+    orcamento. Rota fechada.
+
+    **(E) `contrast_cs` NAO E ORCAMENTO DE MOTOR SOB O TETO — correcao de metodo.** `max_cs`
+    esta cravado em **0.4943 = `cs_max`** no P4, P5 e P6. Logo `contrast_cs = 0.4943/mean_cs`
+    e uma funcao SO de `mean_cs`: qualquer producao adicional o derruba por construcao. O
+    "orcamento de +30%" que orientou toda a serie P foi derivado dele e **nao mede motor**.
+    Usar `a_mar` na FRENTE (licao #51) — e mesmo esse sofre contaminacao de composicao (P4:
+    17 particulas com forca a 8.10; P5: 3571 a 0.603 — o TOTAL do P5 e 15x maior).
+
+    **(F) A EXPANSAO E INVARIANTE — a decima ocorrencia do mesmo achado.** Metrica
+    independente de populacao:
+
+    | | colonia r>1 | limbo | `contrast_cs` | **dR/dt t[25,50]** | **alpha** |
+    |---|---:|---:|---:|---:|---:|
+    | P4 | 2743 | 2367 | 10.04 | **0.0793** | 0.79 |
+    | P5 | 4168 | 13995 | 5.67 | **0.0742** | 0.78 |
+    | P6 | 1330 | 61 | 14.23 | **0.0809** | 0.82 |
+
+    Colonias que diferem 3x em tamanho e 23x em limbo avancam **dentro de 9% uma da outra**.
+    Nenhuma alavanca da serie P mudou o AVANCO — mudaram do que a colonia e feita e onde o
+    material fica. E a invariancia da licao #73 ("adveccao 31 -> 31 -> 34") por outro eixo.
+
+    **(G) A BARRIGA ACOMPANHA A FRENTE.** Medida a cada frame do t=12 ao t=50: o pico de
+    largura fica em **r/R99 = 0.80-0.90 o tempo inteiro**, enquanto o raio ABSOLUTO vai de
+    1.11 a 3.07. Nao e evento historico num raio fixo — e a **zona de deposicao viajando
+    colada a ponta**, a ~15% de R99 atras dela.
+
+    **Com (F) + (G): o braco e o registro de ONDE o material foi CRIADO**, nao de como ele se
+    moveu. O wake deposita `1 + n_extra` particulas TODAS na posicao vagada (`x_dep`), em
+    anel — um grumo por mae por chamada. Grumo colado a frente = barriga; o que ficou para
+    tras = cintura. **A correcao e REDISTRIBUIR a mesma deposicao ao longo do rastro**
+    (`WAKE_SPREAD`, P7): mesmas maes, mesma contagem, posicoes espalhadas de `x_dep` a `x`.
+    Massa igual, custo em `cs` ZERO (filler esta fora da `SurfactantEquation`).
+
+    **NAO confundir com `WAKE_SEG`** (licao #65, REPROVADO, AR 10.48 -> 7.83): aquele
+    ADICIONAVA particulas ao longo do segmento alem do grumo. Este REALOCA. A diferenca
+    entre adicionar e realocar e o que separa engrossar de uniformizar.
 
 **Invariantes morfologicos descobertos (K.5-K.14):**
 1. `smoothstep` em `[a,b]` satura em 1.0 no pico → **max(metric) e cego ao estreitamento do gate**. K.1, K.2 pareceram no-op por isso; diagnostico correto requer `n_active` e `mean_active`, nao `max`.
@@ -2209,10 +3968,15 @@ Resultado: pulsacoes episodicas (n_fast pico=114 em t=1.5s via perturbacao inici
 - **Nao** introduzir dependencias externas sem justificativa.
 - **Nao** refatorar a ordem das equacoes em `scheme.py` sem verificar invariantes.
 - **Nao** remover equacoes desabilitadas (como `OsmoticForce`) que sao parte do roadmap.
+  **Excecao registrada (2026-09-14, pedido da usuaria):** a limpeza de codigo removeu todos os
+  mecanismos das series reprovadas que ficavam "preservados desligados" (lista no topo do §7).
+  `OsmoticForce` foi MANTIDA por ser o Objetivo 2 do §1. O codigo removido esta no commit
+  `a2d6dfd`; religar qualquer um deles e reimplementar a partir de la, nao trocar constante.
 - **Nao sugerir implementar rugosidade (Pass L) enquanto a morfologia nao reproduzir `reference.jpg`.** Rugosidade e extensao fisica, nao remedio para motor insuficiente ou selecao competitiva ausente. Se Marangoni + Flagelar + EOS nao geram dendritos finos separados (`AR >= 1:5`), a causa-raiz esta em um desses mecanismos — investigar e refinar antes de adicionar nova fisica.
 - **Nao mudar parametros de surfactante (`σ`, `k_consume`, `D_ext`, `λ_ext`) sem verificar criterios duplos §2.4.** Bloqueio mecanico (A) resolvido por K.17. Bloqueio quimico (B) ATIVO — alavanca permitida atual: `k_consume` (lever direta sobre sumidouro). Nao mexer em `D_ext` e `λ_ext` simultaneamente (lição K.18-K.19). Nao reduzir `λ_ext` abaixo de `λ_int` enquanto motile_boost ativo (destroi Pass J).
 - **Nao sugerir Pass L (rugosidade)** enquanto morfologia nao reproduzir `reference.jpg` (dendritos AR ≥ 1:5, baias estacionarias, tip-splitting visivel). Bloqueio C (Mullins-Sekerka geometrico) provavelmente requer abordagem apos B resolvido.
 - **Nao remover hard pinning mecanico `rho_b>=0.8`** (K.17). Confirmado nao negociavel por K.25a (falha catastrofica) e M-B.9a (fragmentacao distribuida quando substituido por drag forte, lição §22). Pin cinematico e estruturalmente protetor — coesao SPH atual `B_tension≈0.0028` nao resiste ao diferencial de v_term ~ 0.1 entre core e tip sem o pin.
+  **TESTADO E RESTAURADO (P19, 2026-09-09, licao #83).** A suspensao foi escopada a UMA rodada e esta encerrada: os dois pins voltaram a `>= 0.8` e `< 0.6`. O que o teste estabeleceu: (a) o criterio mecanico tem selecao EXCLUSIVA ZERO enquanto o quimico estiver em 0.6 (licao #82) — os dois so caem juntos; (b) **a proibicao esta CERTA na conclusao e ERRADA no mecanismo** — com `tension_ratio`=0.30 (15x a coesao de K.25a/M-B.9a) NAO houve fragmentacao alguma (`a_pressure` 3.70, vazio 0.10%, o menor do projeto), e ainda assim a morfologia reprovou, por ALISAMENTO da interface: amplitude 0.212 -> 0.080 (0.38x) com `R99` crescendo. Sem ancora as pontas perdem trajetoria propria (K.15, §2.4-A). **Nao re-testar por argumento de coesao** — a coesao nao e o que o pin protege.
 - **Ao introduzir mecanismo que aumenta tracao no rim** (f0 maior, motile_boost maior, etc), **re-avaliar `tension_ratio` no mesmo passo** (lição §23). Cohesao SPH deve escalar com motor — ignorar isso reproduz brittle neck (lição §15).
 - **OBRIGATORIO — executar o protocolo §3.3.6 antes de qualquer mudanca em fator de producao ou sumidouro de cs.** Forcas `MarangoniForce` e `FlagellarForce` apontam na direcao `−∇cs` (de alto cs para baixo cs). Para push outward, cs deve **decrescer monotonicamente para fora** ao longo da biomassa — o pico cs deve cair dentro do corpo da colonia, com biomassa contigua entre o pico e o agar. Mudancas em `c_n_factor`, `growth_headroom`, `sigma`, `tip_boost`, `motile_boost`, `qs`, `k_consume`, `lambda` que movam o pico para o agar ou para o rim externo isolado sao PATOLOGICAS — geram push inward na maior parte da colonia. **A falacia "cs concentrado nas pontas puxa para fora" e proibida** — calcular cs_∞ em 4 zonas antes de propor.
 - **OBRIGATORIO — qualquer refinamento adaptativo (Pass N e variantes) deve seguir Vacondio 2013 / Feldman 2006 (Soleimani 2017 §3.2.6).** Substituir 1 mãe por N filhas (hexagonal 2D, N=7) com massa dividida IGUALMENTE (`m_filha = m_mãe/N`), velocidade IDÊNTICA herdada (`u_filha = u_mãe, v_filha = v_mãe` — conservação de momentum). **Sobre `α`/`ε` (AMENDADO 2026-06-02, Pass N v2.5):** Feldman 2006 deriva `ε/α=1` como otimo de densidade para particula **isolada**; em dominio **empacotado** isso e inviável (ε grande → filhas colidem com vizinhos a ~dx → proximity guard aborta). Politica do projeto: `α` pode EXCEDER `ε` (over-pack transitorio) quando o objetivo for preservar dt (h_filha grande) E houver coesao+viscosidade suficientes para relaxar (compromisso Liu §6.5). Trade-off explicito — v2.4 usou `α=ε=0.35` (sub-amostragem, dt 85× pior); v2.5 usa `α=0.75, ε=0.35` (over-pack aceito, dt preservado). **Toda escolha `α≠ε` DEVE citar Liu §6.5 e validar o critério "dt avg t>30s ≥ 0.5× inicial"** (teste de relaxacao do over-pack; lição #27 mostra que over-pack não-relaxado trava o run). **Proibido "adicionar 1 filha"** (lição §25 — falha estrutural em 3 modos comprovada por Pass N v1). **Proibido n_d < 7** (licao §27/§28 — splits parciais quebram momento angular e amplificam tensile instability Liu §6.4). Antes de propor variação, computar: (a) ganho de resolução por split = N (não fração), (b) conservação simultânea de mass + linear momentum + angular momentum. Se algum for violado, voltar ao paper. Filhas com `rho_b ≥ 0.8` herdam pin automaticamente do scheme.py.

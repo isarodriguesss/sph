@@ -9,6 +9,9 @@ nao cruzou o quorum.
 C5 e criterio de TRAJETORIA: uma rodada pode terminar aceitavel e viola-lo o tempo
 todo. No E5 o raio conexo estagna em 0.66-0.82 enquanto `R99` vai a 4.13.
 
+`C5b` varia +-7 pontos DENTRO de um mesmo run, entao o script imprime a MEDIA e o
+DESVIO sobre t em [35, 50] — valor de instante nao e comparavel entre rodadas.
+
     python tools/plot_trajetoria.py runs/E5_hillK025 [saida.png]
 """
 import glob
@@ -119,6 +122,13 @@ def painel(run, out="plots/trajetoria.png", nsnap=4):
         ax.set_xlabel("t (s)")
         ax.grid(alpha=0.25)
     plt.savefig(out, dpi=118, facecolor="0.09", bbox_inches="tight")
+    jan = [s for s in S if 35.0 <= s["t"] <= 50.0]
+    if jan:
+        a = np.array([s["c5a"] for s in jan])
+        b = np.array([s["c5b"] for s in jan])
+        print(f"C5 em t[35,50] ({len(jan)} amostras): "
+              f"C5a = {a.mean():.2f} +- {a.std():.2f}   "
+              f"C5b = {b.mean():.1f}% +- {b.std():.1f}")
     print("->", out)
 
 

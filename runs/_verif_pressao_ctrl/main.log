@@ -1,0 +1,42 @@
+Generating output in /Users/isa/Developer/sph/runs/_verif_pressao_ctrl/main_output
+----------------------------------------------------------------------
+No of particles:
+  fluid: 68121
+  solid: 2108
+  Total: 70229
+----------------------------------------------------------------------
+Setup took: 0.07946 secs
+--------------------------------------------------
+Tempo: 0.00s | Iteração: 0
+Velocidade Máx: 0.4292 | Contraste CS: 828.2406
+c_n: mean=0.9990 max=1.0000 | massa: 197.51
+sigma_a braços (n=67): min=1.000 mean=1.000 frac<0.85=0.00% | c/ filler: mean=1.000
+vazio areal: >0.7dx=2.55% >1.0dx=0.00% >1.5dx=0.00%
+motor na biomassa: a_mar med=1.530 p95=2.10 | biomassa=0.2543 bracos=0.1886 | pinadas=43
+clump(<0.5dx)=0.0% nn_mediana=0.919dx
+Acelerações: Marangoni 2.24 | Drag 0.00 | Pressão 2.99 | Total 5.17
+wake inserção t=2.3s: 145 inseridas
+--------------------------------------------------
+Tempo: 3.75s | Iteração: 200
+Velocidade Máx: 0.1644 | Contraste CS: 91.0816
+c_n: mean=0.9986 max=1.0000 | massa: 197.94
+sigma_a braços (n=70): min=0.623 mean=0.923 frac<0.85=40.00% | c/ filler: mean=0.971
+vazio areal: >0.7dx=25.35% >1.0dx=14.39% >1.5dx=2.85%
+motor na biomassa: a_mar med=0.217 p95=4.71 | biomassa=0.2644 bracos=0.1204 | pinadas=43
+clump(<0.5dx)=20.9% nn_mediana=0.749dx
+Acelerações: Marangoni 7.76 | Drag 9.72 | Pressão 2.89 | Total 10.42
+inserção t=3.7s: 2 partículas inseridas
+wake inserção t=3.7s: 56 inseridas
+wake inserção t=6.1s: 110 inseridas
+--------------------------------------------------
+Tempo: 8.21s | Iteração: 400
+Velocidade Máx: 0.0742 | Contraste CS: 55.7962
+c_n: mean=0.9978 max=1.0000 | massa: 198.43
+sigma_a braços (n=68): min=0.673 mean=0.994 frac<0.85=13.24% | c/ filler: mean=0.975
+vazio areal: >0.7dx=12.74% >1.0dx=4.01% >1.5dx=0.25%
+motor na biomassa: a_mar med=0.167 p95=2.90 | biomassa=0.2396 bracos=0.0510 | pinadas=43
+clump(<0.5dx)=16.7% nn_mediana=0.749dx
+Acelerações: Marangoni 4.75 | Drag 6.19 | Pressão 2.70 | Total 1.48
+inserção t=8.2s: 4 partículas inseridas
+wake inserção t=8.2s: 32 inseridas
+Run took: 156.79439 secs

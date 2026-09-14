@@ -1,0 +1,662 @@
+import csv
+import numpy as np
+from scipy.spatial import cKDTree
+from pysph.solver.application import Application
+from pysph.base.kernels import CubicSpline, WendlandQuintic
+from pysph.solver.solver import Solver
+
+from src.particles import SEED_MODE, create_initial_state
+from src.scheme import MyBiomassScheme
+
+
+# Baseline P2 (E11 + filler doador). Historico e justificativa de cada valor: CLAUDE.md §7/§9.
+
+x_dim, y_dim = 261, 261
+x_min_domain, x_max_domain = -7.0, 7.0
+y_min_domain, y_max_domain = -7.0, 7.0
+dx = (x_max_domain - x_min_domain) / (x_dim - 1)
+
+KERNEL = "cubic"  # "wendland_c2" com H_FACTOR=1.92 em teste (P2W, licao #88)
+H_FACTOR = 1.8
+
+mu = 0.020
+gamma = 60.0
+alpha_mon = 0.12
+c0 = 0.35
+
+beta = 5.0
+FLAG_F0 = 3.0
+FLAG_GATE_LO = 0.2
+FLAG_GATE_HI = 0.6
+
+sigma = 11.1
+HILL_K = 0.25
+CS_CEILING = 0.5
+D = 1.5e-3
+D_ext = 0.08
+lambda_ = 0.15
+LAMBDA_BIO_RATIO = 2.0
+
+r_growth = 0.02
+rho_max = 1.0
+
+D_n = 0.05
+D_n_int = 1e-4
+k_n = 0.5
+k_src = 0.3
+
+k_col = 0.03
+COL_CS_MIN = 0.3
+COL_FILLER_DONOR = 1.0  # P2: filler conta como doador. 0.0 = E11.
+
+total_sim_time = 12.74
+print_freq = 200
+
+NOISE_AMP = 0.6
+SEED = 20260806
+
+use_shift = True
+SHIFT_COEFF = 0.5
+SHIFT_CAP = 0.0006
+SHIFT_RHO_B_MIN = 0.1
+
+use_kgc = True
+KGC_DET_MIN = 0.25
+
+use_insert = True
+INSERT_FREQ = 200
+INSERT_SIGMA_TRIG = 0.85
+INSERT_RHO_B_MIN = 0.5
+INSERT_PROX = 0.7
+INSERT_MAX = 100
+
+use_wake = True
+WAKE_FREQ = 100
+WAKE_DISP = 1.0
+WAKE_PROX = 0.7
+WAKE_RHO_B_MIN = 0.05
+WAKE_MAX = 150
+WAKE_CLUSTER_MAX = 7
+WAKE_RING_RATIO = 0.75
+WAKE_MASS_BUDGET = 0.12
+
+
+LOG_FILE = "log.csv"
+LOG_HEADER = [
+    "t",
+    "iteration",
+    "max_v",
+    "mean_v",
+    "n_fast",
+    "a_marangoni",
+    "a_drag",
+    "a_pressure",
+    "a_flag",
+    "a_total",
+    "min_cs",
+    "max_cs",
+    "mean_cs",
+    "constrast_cs",
+    "min_c_n",
+    "max_c_n",
+    "mean_c_n",
+    "contrast_c_n",
+    "mass_total",
+    "pass_n_spawned",  # nome historico: particulas inseridas (insert + wake) desde a ultima linha
+    "min_sig_bio",
+    "mean_sig_bio",
+    "frac_lowsig_bio",
+    "mean_sig_all",
+    "frac_lowsig_all",
+    "n_bio_arms",
+    "n_ins_arms",
+    "void_07",
+    "void_10",
+    "void_15",
+    "a_mar_bio_med",
+    "a_mar_bio_p95",
+    "cs_bio_arms",
+    "c_n_bio_arms",
+    "biomass_total",
+    "biomass_arms",
+    "n_pinned",
+    "frac_clump",
+    "nn_median",
+    "n_shift_gate",
+    "c_n_junc",
+    "rho_b_junc",
+    "rho_b_dip",
+    "rho_b_dip_r",
+    "n_junc_bio",
+]
+
+
+def kernel_w(r, h):
+    q = np.asarray(r) / h
+    w = np.zeros_like(q, dtype=float)
+    if KERNEL == "wendland_c2":
+        m = q < 2.0
+        w[m] = (7.0 / (4.0 * np.pi * h * h)) * (1.0 - 0.5 * q[m]) ** 4 * (2.0 * q[m] + 1.0)
+        return w
+    fac = 10.0 / (7.0 * np.pi * h * h)
+    m1 = q <= 1.0
+    m2 = (q > 1.0) & (q <= 2.0)
+    w[m1] = fac * (1.0 - 1.5 * q[m1] ** 2 + 0.75 * q[m1] ** 3)
+    w[m2] = fac * 0.25 * (2.0 - q[m2]) ** 3
+    return w
+
+
+def void_fraction(x, y, rho_b, dx, thresholds=(0.7, 1.0, 1.5), n_grid=200):
+    """Fracao da area da colonia sem particula a menos de thr*dx (criterio C1, §2.5)."""
+    colony = rho_b > 0.1
+    if int(np.sum(colony)) < 10:
+        return {t: 0.0 for t in thresholds}
+    r = np.hypot(x, y)
+    R = float(np.percentile(r[colony], 99))
+    if R <= 0:
+        return {t: 0.0 for t in thresholds}
+    g = np.linspace(-R, R, n_grid)
+    GX, GY = np.meshgrid(g, g)
+    # recorta ao dominio: fora dele nao ha particula por construcao
+    inside = (
+        (GX * GX + GY * GY <= R * R)
+        & (np.abs(GX) <= x_max_domain)
+        & (np.abs(GY) <= y_max_domain)
+    )
+    if not np.any(inside):
+        return {t: 0.0 for t in thresholds}
+    d, _ = cKDTree(np.column_stack([x, y])).query(
+        np.column_stack([GX[inside], GY[inside]])
+    )
+    return {t: float(np.mean(d > t * dx)) for t in thresholds}
+
+
+def filler_data(fluid, new_x, new_y, parent, is_wake):
+    n = len(new_x)
+    p = np.asarray(parent, dtype=int)
+    return {
+        "x": new_x,
+        "y": new_y,
+        "m": [dx * dx] * n,
+        "h": list(fluid.h[p]),
+        "rho": list(fluid.rho[p]),
+        "rho_b_grown": list(fluid.rho_b_grown[p]),
+        "cs": list(fluid.cs[p]),
+        "c_n": list(fluid.c_n[p]),
+        "u": [0.0] * n,
+        "v": [0.0] * n,
+        "noise": list(fluid.noise[p]),
+        "is_filler": [1.0] * n,
+        "is_wake": [is_wake] * n,
+        "x_dep": new_x,
+        "y_dep": new_y,
+    }
+
+
+class SwarmApp(Application):
+    def initialize(self):
+        with open(LOG_FILE, "w", newline="") as f:
+            csv.writer(f).writerow(LOG_HEADER)
+        self._m_initial = None
+        self._inseridas_desde_log = 0
+        self._wake_mass_added = 0.0
+
+    def create_particles(self):
+        fluid_solid = create_initial_state(
+            x_dim,
+            y_dim,
+            rho_max,
+            x_min=x_min_domain,
+            x_max=x_max_domain,
+            y_min=y_min_domain,
+            y_max=y_max_domain,
+            seed=SEED,
+            h_factor=H_FACTOR,
+        )
+
+        for pa in fluid_solid:
+            if pa.name == "fluid":
+                pa.add_property("noise")
+                pa.noise[:] = (
+                    1.0
+                    + NOISE_AMP * np.sin(SEED_MODE * np.arctan2(pa.y, pa.x))
+                    + 0.01 * np.random.rand(len(pa.x))
+                )
+                for prop in (
+                    "dt_force",
+                    "dt_cfl",
+                    "au_mar",
+                    "ax_mar",
+                    "ay_mar",
+                    "au_drag",
+                    "ax_drag",
+                    "ay_drag",
+                    "au_flag",
+                    "grad_rho_b_x",
+                    "grad_rho_b_y",
+                    "grad_rho_b_mag",
+                    "grad_cs_x",
+                    "grad_cs_y",
+                    "rho_b_smooth",
+                    "rho_b_w2",
+                    "shift_dC_x",
+                    "shift_dC_y",
+                    "shift_x",
+                    "shift_y",
+                    "Mxx",
+                    "Mxy",
+                    "Myx",
+                    "Myy",
+                    "Lxx",
+                    "Lxy",
+                    "Lyx",
+                    "Lyy",
+                    "sigma_a",
+                    "is_filler",
+                    "is_wake",
+                    "x_dep",
+                    "y_dep",
+                ):
+                    pa.add_property(prop)
+                pa.sigma_a[:] = 1.0
+                pa.Lxx[:] = 1.0
+                pa.Lyy[:] = 1.0
+                pa.x_dep[:] = pa.x[:]
+                pa.y_dep[:] = pa.y[:]
+                pa.add_output_arrays(
+                    [
+                        "rho_b_grown",
+                        "cs",
+                        "u",
+                        "v",
+                        "p",
+                        "noise",
+                        "au_flag",
+                        "au_mar",
+                        "sigma_a",
+                        "is_wake",
+                        "is_filler",
+                        "c_n",
+                        "m",
+                        "rho",
+                    ]
+                )
+            elif pa.name == "solid":
+                pa.add_property("p")
+
+        return fluid_solid
+
+    def create_scheme(self):
+        return MyBiomassScheme(
+            fluids=["fluid"],
+            solids=["solid"],
+            dim=2,
+            mu=mu,
+            gamma=gamma,
+            beta=beta,
+            sigma=sigma,
+            D=D,
+            D_ext=D_ext,
+            lambda_=lambda_,
+            r_growth=r_growth,
+            rho_max=rho_max,
+            c0=c0,
+            alpha_mon=alpha_mon,
+            D_n=D_n,
+            D_n_int=D_n_int,
+            k_n=k_n,
+            k_src=k_src,
+            k_col=k_col,
+            cs_max=CS_CEILING,
+            col_cs_min=COL_CS_MIN,
+            col_filler_donor=COL_FILLER_DONOR,
+            hill_k=HILL_K,
+            lambda_bio_ratio=LAMBDA_BIO_RATIO,
+            flag_gate_lo=FLAG_GATE_LO,
+            flag_gate_hi=FLAG_GATE_HI,
+            flag_f0=FLAG_F0,
+            use_shift=use_shift,
+            shift_coeff=SHIFT_COEFF,
+            shift_cap=SHIFT_CAP,
+            shift_rho_b_min=SHIFT_RHO_B_MIN,
+            use_kgc=use_kgc,
+            kgc_det_min=KGC_DET_MIN,
+        )
+
+    def create_solver(self):
+        kernel = WendlandQuintic(dim=2) if KERNEL == "wendland_c2" else CubicSpline(dim=2)
+        solver = Solver(
+            dim=2,
+            integrator=self.scheme.get_integrator(),
+            kernel=kernel,
+            dt=5e-5,
+            adaptive_timestep=True,
+            cfl=0.4,
+        )
+        solver.tf = total_sim_time
+        solver.set_print_freq(print_freq)
+        return solver
+
+    def post_step(self, solver):
+        if self._m_initial is None:
+            self._m_initial = float(np.sum(self.particles[0].m))
+        if solver.count % print_freq == 0:
+            self._registra(solver)
+        if use_insert and solver.count > 0 and solver.count % INSERT_FREQ == 0:
+            self._insere_vacuo(solver)
+        if use_wake and solver.count > 0 and solver.count % WAKE_FREQ == 0:
+            self._deposita_rastro(solver)
+
+    def _registra(self, solver):
+        fluid = self.particles[0]
+        rb = fluid.rho_b_grown
+        viva = fluid.is_filler < 0.5
+
+        v_mag = np.sqrt(fluid.u**2 + fluid.v**2)
+        max_v = np.max(v_mag)
+        mean_v = np.mean(v_mag)
+        n_fast = int(np.sum(v_mag > 0.1))
+
+        a_mar = np.max(np.abs(fluid.au_mar))
+        a_drag = np.max(np.abs(fluid.au_drag))
+        a_total = np.max(np.sqrt(fluid.au**2 + fluid.av**2))
+        ax_p = fluid.au - fluid.ax_mar - fluid.ax_drag
+        ay_p = fluid.av - fluid.ay_mar - fluid.ay_drag
+        a_pressure = np.max(np.sqrt(ax_p**2 + ay_p**2))
+        a_flag = np.max(np.abs(fluid.au_flag))
+
+        # filler tem cs congelado: fora das estatisticas de cs (licao #39)
+        cs_viva = fluid.cs[viva] if np.any(viva) else fluid.cs
+        min_cs = np.min(cs_viva)
+        max_cs = np.max(cs_viva)
+        mean_cs = np.mean(cs_viva)
+        contrast_cs = (max_cs - min_cs) / (mean_cs + 1e-9)
+
+        min_c_n = np.min(fluid.c_n)
+        max_c_n = np.max(fluid.c_n)
+        mean_c_n = np.mean(fluid.c_n)
+        contrast_c_n = (max_c_n - min_c_n) / (mean_c_n + 1e-9)
+
+        mass_total = float(np.sum(fluid.m))
+
+        arms_mask = (rb >= 0.1) & (rb < 0.5)
+        bio_mask = arms_mask & viva
+        n_bio_arms = int(np.sum(bio_mask))
+        n_ins_arms = int(np.sum(arms_mask & (fluid.is_filler > 0.5)))
+
+        if n_bio_arms > 0:
+            sig_bio = fluid.sigma_a[bio_mask]
+            min_sig_bio = float(np.min(sig_bio))
+            mean_sig_bio = float(np.mean(sig_bio))
+            frac_lowsig_bio = float(np.mean(sig_bio < 0.85))
+        else:
+            min_sig_bio = mean_sig_bio = 1.0
+            frac_lowsig_bio = 0.0
+
+        if int(np.sum(arms_mask)) > 0:
+            sig_all = fluid.sigma_a[arms_mask]
+            mean_sig_all = float(np.mean(sig_all))
+            frac_lowsig_all = float(np.mean(sig_all < 0.85))
+        else:
+            mean_sig_all = 1.0
+            frac_lowsig_all = 0.0
+
+        vf = void_fraction(fluid.x, fluid.y, rb, dx)
+
+        rr = np.hypot(fluid.x, fluid.y)
+        Rc = float(np.percentile(rr[rb > 0.1], 99)) if np.any(rb > 0.1) else 1.0
+        colony = (rb > 0.05) & (rr > 0.3 * Rc)
+        if int(np.sum(colony)) > 10:
+            d, _ = cKDTree(np.column_stack([fluid.x, fluid.y])).query(
+                np.column_stack([fluid.x[colony], fluid.y[colony]]), k=2
+            )
+            nn = d[:, 1] / dx
+            frac_clump = float(np.mean(nn < 0.5))
+            nn_median = float(np.median(nn))
+        else:
+            frac_clump = 0.0
+            nn_median = 1.0
+
+        # juncao nucleo-braco medida so nas portadoras vivas (licao #62)
+        carrier = viva & (rb > 1e-6)
+        ju = (rr >= 0.4) & (rr < 1.2)
+        c_n_junc = float(np.mean(fluid.c_n[ju])) if np.any(ju) else 0.0
+        juc = ju & carrier
+        rho_b_junc = float(np.percentile(rb[juc], 90)) if np.any(juc) else 0.0
+        n_junc_bio = int(np.sum(ju & viva & (rb > 0.1)))
+
+        th = np.arctan2(fluid.y, fluid.x)
+        arm = (rr > 0.55 * Rc) & (rr < 0.75 * Rc) & (rb > 0.1)
+        rho_b_dip = 1.0
+        rho_b_dip_r = 0.0
+        if int(np.sum(arm)) > 20:
+            hist, edges = np.histogram(th[arm], bins=72, range=(-np.pi, np.pi))
+            step = max(0.1, 0.05 * Rc)
+            for b in np.argsort(hist)[-4:]:
+                c = 0.5 * (edges[b] + edges[b + 1])
+                cone = np.abs(((th - c + np.pi) % (2 * np.pi)) - np.pi) < np.deg2rad(9)
+                for r0 in np.arange(0.15 * Rc, 0.75 * Rc, step):
+                    anel = cone & (np.abs(rr - r0) < step)
+                    if not np.any(anel):
+                        continue
+                    ac = anel & carrier
+                    v = float(np.max(rb[ac])) if np.any(ac) else 0.0
+                    if v < rho_b_dip:
+                        rho_b_dip = v
+                        rho_b_dip_r = float(r0)
+
+        n_shift_gate = int(np.sum((rb >= SHIFT_RHO_B_MIN) & (rb < 0.8) & (fluid.c_n >= 0.6)))
+
+        vol = fluid.m[viva] / np.maximum(fluid.rho[viva], 1e-9)
+        biomass_total = float(np.sum(rb[viva] * vol))
+        n_pinned = int(np.sum(rb >= 0.8))
+
+        bio = (rb > 0.1) & viva
+        if int(np.sum(bio)) > 0:
+            arm_bio = bio & (rr > 0.3 * Rc)
+            a_mar_bio_med = float(np.median(fluid.au_mar[bio]))
+            a_mar_bio_p95 = float(np.percentile(fluid.au_mar[bio], 95))
+            if int(np.sum(arm_bio)) > 0:
+                cs_bio_arms = float(np.mean(fluid.cs[arm_bio]))
+                c_n_bio_arms = float(np.mean(fluid.c_n[arm_bio]))
+                biomass_arms = float(
+                    np.sum(rb[arm_bio] * fluid.m[arm_bio] / np.maximum(fluid.rho[arm_bio], 1e-9))
+                )
+            else:
+                cs_bio_arms = c_n_bio_arms = biomass_arms = 0.0
+        else:
+            a_mar_bio_med = a_mar_bio_p95 = cs_bio_arms = c_n_bio_arms = 0.0
+            biomass_arms = 0.0
+
+        print("-" * 50)
+        print(f"Tempo: {solver.t:.2f}s | Iteração: {solver.count}")
+        print(f"Velocidade Máx: {max_v:.4f} | Contraste CS: {contrast_cs:.4f}")
+        print(f"c_n: mean={mean_c_n:.4f} max={max_c_n:.4f} | massa: {mass_total:.2f}")
+        print(
+            f"sigma_a braços (n={n_bio_arms}): min={min_sig_bio:.3f} mean={mean_sig_bio:.3f} "
+            f"frac<0.85={frac_lowsig_bio:.2%} | c/ filler: mean={mean_sig_all:.3f}"
+        )
+        print(f"vazio areal: >0.7dx={vf[0.7]:.2%} >1.0dx={vf[1.0]:.2%} >1.5dx={vf[1.5]:.2%}")
+        print(
+            f"motor na biomassa: a_mar med={a_mar_bio_med:.3f} p95={a_mar_bio_p95:.2f} | "
+            f"biomassa={biomass_total:.4f} bracos={biomass_arms:.4f} | pinadas={n_pinned}"
+        )
+        print(f"clump(<0.5dx)={frac_clump:.1%} nn_mediana={nn_median:.3f}dx")
+        print(
+            f"Acelerações: Marangoni {a_mar:.2f} | Drag {a_drag:.2f} | "
+            f"Pressão {a_pressure:.2f} | Total {a_total:.2f}"
+        )
+
+        with open(LOG_FILE, "a", newline="") as f:
+            csv.writer(f).writerow(
+                [
+                    f"{solver.t:.4f}",
+                    solver.count,
+                    f"{max_v:.6f}",
+                    f"{mean_v:.6f}",
+                    n_fast,
+                    f"{a_mar:.4f}",
+                    f"{a_drag:.4f}",
+                    f"{a_pressure:.4f}",
+                    f"{a_flag:.4f}",
+                    f"{a_total:.4f}",
+                    f"{min_cs:.4f}",
+                    f"{max_cs:.4f}",
+                    f"{mean_cs:.4f}",
+                    f"{contrast_cs:.4f}",
+                    f"{min_c_n:.4f}",
+                    f"{max_c_n:.4f}",
+                    f"{mean_c_n:.4f}",
+                    f"{contrast_c_n:.4f}",
+                    f"{mass_total:.6e}",
+                    self._inseridas_desde_log,
+                    f"{min_sig_bio:.4f}",
+                    f"{mean_sig_bio:.4f}",
+                    f"{frac_lowsig_bio:.4f}",
+                    f"{mean_sig_all:.4f}",
+                    f"{frac_lowsig_all:.4f}",
+                    n_bio_arms,
+                    n_ins_arms,
+                    f"{vf[0.7]:.4f}",
+                    f"{vf[1.0]:.4f}",
+                    f"{vf[1.5]:.4f}",
+                    f"{a_mar_bio_med:.4f}",
+                    f"{a_mar_bio_p95:.4f}",
+                    f"{cs_bio_arms:.5f}",
+                    f"{c_n_bio_arms:.4f}",
+                    f"{biomass_total:.5f}",
+                    f"{biomass_arms:.5f}",
+                    n_pinned,
+                    f"{frac_clump:.4f}",
+                    f"{nn_median:.4f}",
+                    n_shift_gate,
+                    f"{c_n_junc:.4f}",
+                    f"{rho_b_junc:.4f}",
+                    f"{rho_b_dip:.4f}",
+                    f"{rho_b_dip_r:.3f}",
+                    n_junc_bio,
+                ]
+            )
+        self._inseridas_desde_log = 0
+
+    def _adiciona(self, solver, data):
+        fluid = self.particles[0]
+        novas = fluid.empty_clone()
+        novas.add_particles(**data)
+        fluid.append_parray(novas)
+        solver.nnps.update()
+        self._inseridas_desde_log += len(data["x"])
+
+    def _insere_vacuo(self, solver):
+        fluid = self.particles[0]
+        void_idx = np.where(
+            (fluid.rho_b_grown > INSERT_RHO_B_MIN) & (fluid.sigma_a < INSERT_SIGMA_TRIG)
+        )[0]
+        if len(void_idx) == 0:
+            return
+
+        tree = cKDTree(np.column_stack([fluid.x, fluid.y]))
+        prox = INSERT_PROX * dx
+        prox_sq = prox * prox
+        ang = np.arange(6) * (np.pi / 3.0)
+        cos_a = np.cos(ang)
+        sin_a = np.sin(ang)
+
+        new_x, new_y, parent = [], [], []
+        for k in void_idx:
+            xk = float(fluid.x[k])
+            yk = float(fluid.y[k])
+            for j in range(6):
+                vx = xk + dx * cos_a[j]
+                vy = yk + dx * sin_a[j]
+                d_existing, _ = tree.query([vx, vy])
+                if d_existing < prox:
+                    continue
+                if any((vx - ax) ** 2 + (vy - ay) ** 2 < prox_sq for ax, ay in zip(new_x, new_y)):
+                    continue
+                new_x.append(vx)
+                new_y.append(vy)
+                parent.append(int(k))
+            if len(new_x) >= INSERT_MAX:
+                break
+
+        if new_x:
+            self._adiciona(solver, filler_data(fluid, new_x, new_y, parent, 0.0))
+            print(f"inserção t={solver.t:.1f}s: {len(new_x)} partículas inseridas")
+
+    def _deposita_rastro(self, solver):
+        fluid = self.particles[0]
+        m_target = dx * dx
+
+        disp = np.hypot(fluid.x - fluid.x_dep, fluid.y - fluid.y_dep)
+        wake_idx = np.where((fluid.rho_b_grown > WAKE_RHO_B_MIN) & (disp >= WAKE_DISP * dx))[0]
+        # orcamento conta so a massa que o wake adicionou, nao o crescimento
+        if self._wake_mass_added >= WAKE_MASS_BUDGET * self._m_initial:
+            return
+        if len(wake_idx) == 0:
+            return
+
+        tree = cKDTree(np.column_stack([fluid.x, fluid.y]))
+        prox = WAKE_PROX * dx
+        prox_sq = prox * prox
+        h0 = float(fluid.h[0])
+        w_self = float(kernel_w(np.array([0.0]), h0)[0])
+        r_ring = WAKE_RING_RATIO * dx
+        w_ring = float(kernel_w(np.array([r_ring]), h0)[0])
+
+        new_x, new_y, parent = [], [], []
+
+        def livre(px, py):
+            d_ex, _ = tree.query([px, py])
+            if d_ex < prox:
+                return False
+            return not any((px - ax) ** 2 + (py - ay) ** 2 < prox_sq for ax, ay in zip(new_x, new_y))
+
+        for k in wake_idx:
+            sx = float(fluid.x_dep[k])
+            sy = float(fluid.y_dep[k])
+            fluid.x_dep[k] = fluid.x[k]
+            fluid.y_dep[k] = fluid.y[k]
+
+            if not livre(sx, sy):
+                continue
+
+            # completa a densidade do vazio com um anel de ate WAKE_CLUSTER_MAX-1 particulas
+            n_extra = 0
+            nn = tree.query_ball_point([sx, sy], 2.0 * h0)
+            if len(nn) > 0:
+                nn = np.asarray(nn, dtype=int)
+                d_nn = np.hypot(fluid.x[nn] - sx, fluid.y[nn] - sy)
+                rho_void = float(np.sum(fluid.m[nn] * kernel_w(d_nn, h0)))
+                rho_local = float(np.mean(fluid.rho[nn]))
+                deficit = rho_local - (rho_void + m_target * w_self)
+                if deficit > 0.0:
+                    n_extra = int(round(deficit / (m_target * w_ring)))
+                n_extra = max(0, min(n_extra, WAKE_CLUSTER_MAX - 1))
+
+            new_x.append(sx)
+            new_y.append(sy)
+            parent.append(int(k))
+
+            for j in range(n_extra):
+                ang = 2.0 * np.pi * j / max(n_extra, 1)
+                vx = sx + r_ring * np.cos(ang)
+                vy = sy + r_ring * np.sin(ang)
+                if not livre(vx, vy):
+                    continue
+                new_x.append(vx)
+                new_y.append(vy)
+                parent.append(int(k))
+
+            if len(new_x) >= WAKE_MAX:
+                break
+
+        if new_x:
+            self._adiciona(solver, filler_data(fluid, new_x, new_y, parent, 1.0))
+            self._wake_mass_added += len(new_x) * m_target
+            print(f"wake inserção t={solver.t:.1f}s: {len(new_x)} inseridas")
+
+
+if __name__ == "__main__":
+    app = SwarmApp()
+    app.run()

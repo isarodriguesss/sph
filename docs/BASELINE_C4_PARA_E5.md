@@ -48,10 +48,12 @@ No C4, **65961 partículas estavam comprimidas (`rho > 1`) e nenhuma empurrava d
 O `|p|` máximo bate exatamente em `B_tension·0.3 = 1.575e-3`, o teto do ramo **atrativo** —
 ou seja, a única pressão que existia era coesão.
 
-**Atenção ao ler o histórico:** a coluna `a_pressure` do log é uma **estimativa**
-(`B·excess²`), calculada à parte, e reportava ~3.0 no C4. Ela não vinha do campo `p` real.
-Toda conclusão anterior sobre "pressão dentro do orçamento §8" no C4 foi tirada dessa
-estimativa, não da EOS efetiva.
+**Atenção ao ler o histórico:** a coluna `a_pressure` do log reportava ~3.0 no C4 e não vinha
+do campo `p` real. (Correção de 2026-09-14: ela não é uma estimativa `B·excess²` — é o resíduo
+`max |au − a_mar − a_drag|`, que inclui a força flagelar, de máximo `f0` = 3. Os ~3.0 são o
+flagelo. A pressão da EOS isolada está nas colunas `a_press_max`/`a_press_med`; ver §2.5 do
+CLAUDE.md.) Toda conclusão anterior sobre "pressão dentro do orçamento §8" no C4 foi tirada
+dessa coluna, não da EOS efetiva.
 
 É a mesma correção que o `KernelSum` já tinha recebido, pelo mesmo motivo (ver §12 do
 CLAUDE.md, Pass N v2.4).

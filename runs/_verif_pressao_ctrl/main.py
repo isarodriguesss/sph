@@ -128,8 +128,6 @@ LOG_HEADER = [
     "rho_b_dip",
     "rho_b_dip_r",
     "n_junc_bio",
-    "a_press_max",  # |au - Marangoni - arrasto - flagelo - viscosa|: pressao EOS + visc. artificial
-    "a_press_med",  # mediana do mesmo termo na colonia (rho_b >= 0.1 ou filler)
 ]
 
 
@@ -234,10 +232,6 @@ class SwarmApp(Application):
                     "ax_drag",
                     "ay_drag",
                     "au_flag",
-                    "ax_flag",
-                    "ay_flag",
-                    "ax_vis",
-                    "ay_vis",
                     "grad_rho_b_x",
                     "grad_rho_b_y",
                     "grad_rho_b_mag",
@@ -370,11 +364,6 @@ class SwarmApp(Application):
         ay_p = fluid.av - fluid.ay_mar - fluid.ay_drag
         a_pressure = np.max(np.sqrt(ax_p**2 + ay_p**2))
         a_flag = np.max(np.abs(fluid.au_flag))
-        # `a_pressure` (historica) inclui o flagelo e a viscosa; esta e so a pressao da EOS
-        a_press = np.hypot(ax_p - fluid.ax_flag - fluid.ax_vis, ay_p - fluid.ay_flag - fluid.ay_vis)
-        corpo = (rb >= 0.1) | (fluid.is_filler > 0.5)
-        a_press_max = float(np.max(a_press))
-        a_press_med = float(np.median(a_press[corpo])) if np.any(corpo) else 0.0
 
         # filler tem cs congelado: fora das estatisticas de cs (licao #39)
         cs_viva = fluid.cs[viva] if np.any(viva) else fluid.cs
@@ -494,8 +483,8 @@ class SwarmApp(Application):
         )
         print(f"clump(<0.5dx)={frac_clump:.1%} nn_mediana={nn_median:.3f}dx")
         print(
-            f"Acelerações: Marangoni {a_mar:.2f} | Drag {a_drag:.2f} | Flagelo {a_flag:.2f} | "
-            f"Pressão EOS máx {a_press_max:.2e} med {a_press_med:.2e} | Total {a_total:.2f}"
+            f"Acelerações: Marangoni {a_mar:.2f} | Drag {a_drag:.2f} | "
+            f"Pressão {a_pressure:.2f} | Total {a_total:.2f}"
         )
 
         with open(LOG_FILE, "a", newline="") as f:
@@ -546,8 +535,6 @@ class SwarmApp(Application):
                     f"{rho_b_dip:.4f}",
                     f"{rho_b_dip_r:.3f}",
                     n_junc_bio,
-                    f"{a_press_max:.4e}",
-                    f"{a_press_med:.4e}",
                 ]
             )
         self._inseridas_desde_log = 0

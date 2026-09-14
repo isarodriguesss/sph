@@ -243,12 +243,17 @@ O alvo do projeto **nao e escolher** entre "ter buracos" e "ter particulas mal s
 
 **Todas as particulas dentro do swarm contam como colonia.** A distincao `is_filler` permanece valida como ferramenta de diagnostico (atribuir causa), mas **nao** como definicao de quem compoe a colonia para fins de metrica de sucesso.
 
-**Figura de tese:** [plots/fig_tese.py](plots/fig_tese.py) (`make fig RUN=runs/X T=50`) — 2x2 no
-formato do painel (b) de Trinschek: (a) colonia como campo continuo (Shepard, h=dx) com buracos
-FECHADOS de ate 3.5 dx preenchidos so na renderizacao (licao #72-K), (b) borda externa em 5
-instantes, (c) raios maximo/minimo x t medidos nessa mesma borda, (d) `c_s` log fixo [1e-3, 0.5]
-sem filler. Colonia = `rho_b>=0.1` ou filler (§2.2); `--limbo` inclui o limbo. Escalas fixas,
-entao figuras de runs diferentes sao comparaveis. A legenda na tese DEVE declarar o preenchimento.
+**Figura de tese:** [plots/fig_tese.py](plots/fig_tese.py) (`make fig RUN=runs/X T=50`) — 2x2 com
+a disposicao e as CORES do painel (b) de Trinschek (decisao da usuaria, 2026-09-14): (a) colonia
+como campo continuo oliva sobre azul-claro (Shepard, h=dx) com buracos FECHADOS de ate 3.5 dx
+preenchidos so na renderizacao (licao #72-K), (b) borda externa em 5 instantes, contornos pretos,
+(c) raios maximo (vermelho) e minimo (azul-petroleo) x t, com os instantes de (b) marcados,
+(d) `c_s` azul-branco-vermelho sem filler, com o contorno da colonia. Unica diferenca deliberada
+da referencia: `c_s` em escala LOG fixa [1e-3, 0.5] (Trinschek usa linear) — em linear o halo
+some. Testados e descartados para o painel (c): campo de `c_n` e quimografo da frente. Colonia =
+`rho_b>=0.1` ou filler (§2.2); `--limbo` inclui o limbo. Escalas fixas, entao figuras de runs
+diferentes sao comparaveis. A legenda na tese DEVE declarar o preenchimento e que os contornos de
+(b) correspondem aos simbolos de (c).
 
 **Ferramentas de diagnostico (`tools/`):** [plot_classes.py](tools/plot_classes.py) (classe da
 particula — agar, viva, limbo, filler, vazio — porque vazio e agar renderizam iguais em qualquer
@@ -264,6 +269,18 @@ da gaussiana inicial) e [verdict_topico2.py](tools/verdict_topico2.py) (criterio
 de agar engolido).
 
 **Instrumentacao:** `void_07`, `void_10`, `void_15` no `log.csv` (funcao `void_fraction` em [main.py](main.py)); ranking e guardrails automatizados em [tools/compare_runs.py](tools/compare_runs.py); comparativo visual com escalas fixas entre rodadas em [tools/compare_frames.py](tools/compare_frames.py).
+
+**A COLUNA `a_pressure` NAO E PRESSAO (corrigido 2026-09-14).** Ela e `max |au − a_mar − a_drag|`,
+um residuo que inclui a forca FLAGELAR (maximo `f0` = 3) e a viscosa. Em t=0 do P2 ela vale
+exatamente `a_flag` (2.9897): o "`a_pressure` ~3.0 estavel" de dezenas de licoes e o flagelo, e o
+criterio "mediana <= 3 / picos > 4" mediu o flagelo mais eventos de viscosidade/pressao. As
+colunas novas `a_press_max` e `a_press_med` (mediana na colonia, `rho_b>=0.1` ou filler)
+descontam flagelo e viscosa: sobram a pressao da EOS e a viscosidade artificial (desprezivel,
+licao #86-E). No P2 elas valem ~0.07-0.09 (max) e ~1-2e-3 (mediana) nos primeiros 8 s — 30-40x
+e ~1000x abaixo da coluna antiga, coerente com a pressao 219x abaixo da Marangoni (#85-B).
+Adicionadas sem mudar a dinamica: verificado bit-a-bit nas 58 arrays do HDF5 (passos 200 e
+400) e nas 45 colunas antigas do log (`runs/_verif_pressao_ctrl` x `_verif_pressao_novo`).
+**Criterios de pressao novos devem usar `a_press_med`/`a_press_max`, nunca `a_pressure`.**
 
 **Reprodutibilidade — `SEED` em [main.py](main.py), propagada a `create_initial_state` ([src/particles.py](src/particles.py)):**
 
@@ -569,38 +586,76 @@ conda install mpi4py -c conda-forge
 
 ## 6. Arquitetura
 
-**Entry point:** [main.py](main.py) — define `SwarmApp(Application)`, parametros fisicos como globais, cria particulas, scheme e solver. O hook `post_step` imprime diagnosticos por iteracao e opcionalmente trata divisao celular (`use_splitting = False`).
+**Entry point:** [main.py](main.py) — parametros fisicos como globais (baseline P2), `SwarmApp(Application)` cria particulas, scheme e solver. O `post_step` faz tres coisas, nesta ordem: registra o `log.csv` a cada `print_freq` ([main.py:350](main.py#L350) `_registra`), insere filler no vacuo estrutural (`_insere_vacuo`, C3.4) e deposita o rastro do wake (`_deposita_rastro`).
 
-**[src/particles.py](src/particles.py)** — `create_initial_state()` constroi a grade 2D: particulas fluidas com campo Gaussiano `rho_b_grown` (biomassa) + perturbacoes, e particulas-fantasma solidas (2 camadas) formando paredes.
+**[src/particles.py](src/particles.py)** — `create_initial_state()` constroi a grade 2D: inoculo quartico `rho_b = exp(-(r/R_θ)^4)` com `R_θ = 0.30 + 0.06 cos(8θ)` + ruido, e particulas solidas (2 camadas) formando paredes.
 
-**[src/scheme.py](src/scheme.py)** — `MyBiomassScheme(Scheme)` conecta todas as equacoes em dois `Group`s PySPH:
-1. Pre-step (non-real): `SummationDensity` -> `BiomassEOS`
-2. Main step: `MomentumEquation` (Monaghan `alpha`) -> `BiomassGrowth` -> `BiomassGradient` -> `MarangoniForce` -> `ViscousForce` -> `LinearDrag` -> `SurfactantEquation`
+**[src/scheme.py](src/scheme.py)** — `MyBiomassScheme(Scheme)` monta os `Group`s PySPH, nesta ordem:
+1. `SummationDensity` -> 2. `BiomassEOS` (Group proprio: precisa de `rho` finalizado) -> 3. `KernelSum` (`sigma_a`) -> 4. `KernelGradientCorrection` (se `use_kgc`)
+5. Principal: `MomentumEquation` (Monaghan `alpha`) -> `BiomassGrowth` -> `BiomassColonization` -> `BiomassGradient` -> `MarangoniForce` -> `ViscousForce` -> `LinearDrag` -> `SurfactantEquation` -> `OxigenConsumption` -> `NutrientSource` -> `FlagellarForce`
+6. `ParticleShift` (se `use_shift`)
 
 **Invariantes criticos:**
 - `BiomassGradient` **deve** executar antes de `MarangoniForce` — Marangoni usa `grad_rho_b_mag` como gate de interface.
 - `SurfactantEquation` **deve** executar antes de `FlagellarForce` — motilidade flagelar usa o campo `cs` atualizado via `grad_cs_x/y`.
+- `NutrientSource` depois de `OxigenConsumption`, que zera `a_c_n` no `initialize`.
 
-`CustomEulerStep` estende `EulerStep` para integrar `rho_b_grown` e `cs`, com clamping: `rho_b_grown` em [0, 1], `cs` >= 1e-9.
+`CustomEulerStep` integra `rho_b_grown`, `cs`, `c_n`, massa e o deslocamento do shifting, com clamping (`rho_b` em [0,1], `cs` >= 1e-9, `c_n` em [1e-9,1]) e o hard pin (`u=v=0` se `rho_b>=0.8`, `c_n<0.6` ou filler do insert; o filler do wake nunca e pinado).
 
 **[src/equations.py](src/equations.py)** — Equacoes SPH customizadas:
 
-| Equacao | Descricao | Referencia |
+| Equacao | Descricao | Linha |
 |---------|-----------|------------|
-| `BiomassGrowth` | Crescimento logistico gateado por `rho_b < 0.8` e `c_n` (M-B.3): `rate = r * (1 - rho_b/rho_max) * c_n/(c_n+0.1)` | [equations.py:4-22](src/equations.py#L4-L22) |
-| `BiomassGradient` | Gradiente SPH simetrico de biomassa; magnitude usada pelo gate Marangoni |[equations.py:21-49](src/equations.py#L21-L49) |
-| `SurfactantEquation` | Reacao-difusao: Hill QS + frente movel `(1 - rho_b)` + Brookshaw + decaimento | [equations.py:52-83](src/equations.py#L52-L83) |
-| `MarangoniForce` | `F = -beta * nabla_cs * gate(grad_rho_b)`, gradiente simetrico |[equations.py:86-150](src/equations.py#L86-L150) |
-| `LinearDrag` | `F = -gamma_eff * v`, com `gamma_eff = gamma_base + gamma_mature * rho_b^2` |[equations.py:153-198](src/equations.py#L153-L198) |
-| `ViscousForce` | Viscosidade SPH padrao com `mu_eff = mu * min(rho_avg, 1)` | [equations.py:215-259](src/equations.py#L215-L259) |
-| `BiomassEOS` | "Soft Interior, Cohesive Edge" — repulsao quadratica + atracao leve + edge_fade |[equations.py:262-315](src/equations.py#L262-L315) |
-| `OsmoticForce` | **Desabilitada.** Substituida pelo ramo atrativo da EOS. Mantida para referencia | [equations.py:318-363](src/equations.py#L318-L363) |
-| `FlagellarForce` | **Pass K.** Motilidade quimiotactica de magnitude constante: acumula `grad_cs_x/y` em `loop`, aplica `f0 * gate(rho_b) * n̂(∇cs)` em `post_loop` | [equations.py:408-483] (src/equations.py#L408-L483) |
+| `BiomassGrowth` | Logistico `r(1-rho_b)·f(c_n)·rho_b`, gate `rho_b<0.8`, filler nao cresce; massa `d_am = m·d_a_rho_b` | [:4](src/equations.py#L4) |
+| `BiomassColonization` | Unico termo aditivo em `rho_b`: relaxa ao alvo-doador `Σ V rho_b² W / Σ V rho_b W`, gate `cs > COL_CS_MIN`; `filler_donor=1` e o P2 | [:32](src/equations.py#L32) |
+| `BiomassGradient` | Gradiente SPH de `rho_b`; magnitude e o gate de interface da Marangoni | [:97](src/equations.py#L97) |
+| `KernelSum` | `sigma_a = Σ V_j W_ij` (particao da unidade, Violeau §3.6) | [:125](src/equations.py#L125) |
+| `KernelGradientCorrection` | `L = M⁻¹` de Bonet-Lok, fallback identidade se `det<0.25` | [:136](src/equations.py#L136) |
+| `ParticleShift` | Shifting Fickiano na banda `rho_b∈[0.1,0.8)`, com cap | [:171](src/equations.py#L171) |
+| `SurfactantEquation` | Brookshaw bi-escala (`D_int`/`D_ext`) + producao `σ·qs·(1-cs/cs_max)·noise·f(c_n)` − `λ_eff·cs`; filler transparente | [:210](src/equations.py#L210) |
+| `MarangoniForce` | `F = -β·gate(|∇rho_b|)·L·∇cs` (KGC) | [:294](src/equations.py#L294) |
+| `LinearDrag` | `F = -(γ + 1.5γ·rho_b²)·v` | [:355](src/equations.py#L355) |
+| `ViscousForce` | Viscosidade SPH com `mu_eff = mu·min(rho_avg, 1)` | [:373](src/equations.py#L373) |
+| `BiomassEOS` | Repulsao quadratica + atracao leve, fades em `rho_b` (zero abaixo de 0.1) | [:412](src/equations.py#L412) |
+| `OsmoticForce` | **Desabilitada**, mantida como roadmap (Objetivo 2 do §1) | [:451](src/equations.py#L451) |
+| `FlagellarForce` | Magnitude constante `f0·gate(rho_b)·n̂(-∇cs)`, gate `[0.2, 0.6]` | [:483](src/equations.py#L483) |
+| `OxigenConsumption` | Difusao bi-escala do nutriente + consumo `k_n·rho_b·c_n` | [:545](src/equations.py#L545) |
+| `NutrientSource` | Reposicao `k_src(1-c_n)`, regime nutrient-rich [T2] | [:593](src/equations.py#L593) |
 
 ---
 
 ## 7. Parametros Calibrados (branch `ram-8827-v1`)
 
+> **LIMPEZA DE CODIGO (2026-09-14, pedido da usuaria).** O codigo passou a conter SO o baseline
+> P2 (+ o parametro `KERNEL`/`H_FACTOR` do teste P2W). `main.py` 1965 -> ~660 linhas,
+> `src/equations.py` 1112 -> ~600. Tudo o que estava "preservado desligado" foi REMOVIDO e esta
+> no commit `a2d6dfd`: mitose e `use_splitting`, Pass N, piso (`use_floor`/`is_env`), ponte,
+> matriz (`is_matrix`/`is_conv`), promocao, `WAKE_SEG`/`WAKE_SPREAD`/`WAKE_RECYCLE`/`WAKE_ATTACH`/
+> `WAKE_MODE`, `FILLER_RHO_B_FLOOR`, sumidouro quadratico (`CS_SINK_K`), `CS_PROD_CN`,
+> `COL_TARGET_FRAC`, `GROWTH_*` (ganho de massa, boost motil), `MOTOR_SCALE`, `AGAR_FADE`,
+> `AGAR_DRAG_RATIO`, `chi`/`ChemotacticFlux`, `D_b`/`BiomassDiffusion`, osmolito
+> (`c_o`/`OsmolyteProduction`), `InterpolateVelocity`, inoculo plato, `m0`, `gen`,
+> `FILLER_NUTRIENT_TRANSPARENT`. `OsmoticForce` mantida (roadmap, §10). As colunas do `log.csv`
+> NAO mudaram (a `pass_n_spawned` segue com o nome historico; conta insert+wake). O HDF5 deixou
+> de gravar `c_o`, `is_matrix`, `is_conv`, `is_env`, `rho_b_pre`. Em `tools/` e `plots/` sairam
+> scripts e figuras de series encerradas; `tools/compara_osm.py` e `tools/plot_expansao_comp.py`
+> foram removidos por engano e RESTAURADOS — sao importados por `rank_runs.py` e `compara_raio.py`.
+> Antes de apagar um script, procurar quem o IMPORTA, nao so quem o cita.
+>
+> **Verificado bit-a-bit contra o codigo pre-limpeza** (`runs/_verif_controle` x
+> `runs/_verif_limpeza`, 10 threads): as 58 arrays do HDF5 identicas nos passos 1, 2, 6, 200,
+> 400 e 600, com wake em 100-600 e insercao em 200 e 400. **Regra aprendida:** ao enxugar
+> equacoes, nao fundir `a = x*y` + `d += a` numa so expressao — isso deixa o compilador usar FMA
+> e muda o ultimo bit; o codigo mantem os statements separados de proposito.
+>
+> **Correcao do "bit-a-bit" do P2 (medida na mesma verificacao).** Rodar HOJE o codigo
+> pre-limpeza NAO reproduz o HDF5 do `runs/P2_fillerdonor` original: difere em ~1e-14 ja no
+> passo 200 (identico no 0), e o caos leva a diferenca a 4a casa do log em t=12.7 (passo 600).
+> O `_verif_P2` comparou so o log (4-6 digitos) nos passos 0 e 200, onde ainda coincide. A
+> origem e anterior a limpeza (o controle difere igual). Implicacao: o P2 original e uma
+> realizacao, nao a referencia exata; comparacoes com ele valem no nivel de ruido entre
+> realizacoes, como ja se faz com as de thread diferente.
+>
 > **BASELINE = P2 = E11 + `COL_FILLER_DONOR=1` (2026-09-11, decisao da usuaria, licao #88).**
 > Reproduz `runs/P2_fillerdonor` BIT-A-BIT (45 colunas + `t` nas iteracoes 0 e 200,
 > `runs/_verif_P2`). E o unico da serie P que liga os bracos ao nucleo sem sair da classe
@@ -1951,9 +2006,9 @@ Calibracao pos-Passes A-I.7. **MARCO I.7:** Transicao blob→dendritico confirma
 
     **(G) `rho_b = 0.1` em escala LINEAR 0-1 e quase a cor do zero** — terceira aparicao da
     armadilha de renderizacao das licoes #49 e #56. O piso so LE como colonia em escala LOG. Painel
-    log ja existe em [plots/plot.py](plots/plot.py); a comparacao dos criterios esta em
-    [plots/piso_criterio.png](plots/piso_criterio.png) e a varredura em
-    [plots/piso_varredura.png](plots/piso_varredura.png).
+    log ja existe em [plots/plot.py](plots/plot.py); as figuras da comparacao dos criterios
+    (`piso_criterio.png`, `piso_varredura.png`) foram removidas na limpeza de 2026-09-14 e
+    estao no commit `a2d6dfd`.
 
     **(H) A METRICA DE BURACO ESTAVA ERRADA POR UM TETO QUE EU MESMO IMPUS** (2026-09-01): medi
     "vazio" so dentro do envelope (`d < 1.5h = 2.7 dx` de material) e conclui que restavam **169
@@ -2030,8 +2085,8 @@ Calibracao pos-Passes A-I.7. **MARCO I.7:** Transicao blob→dendritico confirma
 
     Implementado como `python tools/plot_piso.py --fill[=N] <runs...>` (padrao N=3.5 dx), com
     elemento estruturante em DISCO — o quadrado deixa a borda em degrau. Sobre o E5: `--fill=3.5`
-    desenha +2683 particulas e leva o buraco de 1200 para 472 dx². Comparacao visual em
-    [plots/E5_fill_render.png](plots/E5_fill_render.png). `use_floor = False` em
+    desenha +2683 particulas e leva o buraco de 1200 para 472 dx² (figura `E5_fill_render.png`
+    no commit `a2d6dfd`). `use_floor = False` em
     [main.py](main.py); verificado que reproduz o E5 **bit-a-bit** (iteracao 200 identica em
     `t`, `a_marangoni`, `contrast_cs` e `mass_total`). O codigo do piso fica preservado desligado
     (§10): com `is_env` sempre 0, as sete isencoes em `src/equations.py` sao no-op.
@@ -3300,6 +3355,25 @@ Calibracao pos-Passes A-I.7. **MARCO I.7:** Transicao blob→dendritico confirma
     **antes de nomear um campo novo, conferir se alguma equacao da biblioteca ja o le com
     outro significado.**
 
+    **MEDIDO NO P2 (2026-09-14, analise preditiva antes de corrigir): a correcao seria inerte.**
+    Viscosidade artificial reconstruida por particula em `runs/P2_t100` (t=51, 75 e 85), com
+    `c_ij` = `cs` (como o solver faz) e com `c_ij` = `c0`:
+
+    | populacao (t=75) | `cs` p50 | `c0/cs` | `\|a_av\|` atual | `\|a_av\|` com `c0` | `\|a_drag\|` | `\|a_mar\|` |
+    |---|---:|---:|---:|---:|---:|---:|
+    | viva | 0.476 | 0.7 | 8.5e-4 | 6.7e-4 | 0.17 | 0.078 |
+    | limbo | 0.405 | 0.9 | 7.5e-4 | 6.8e-4 | 0.80 | 0.79 |
+    | filler do wake | 0.353 | 1.0 | 2.0e-4 | 1.9e-4 | 0.013 | 0 |
+    | agar ate 1.2·R99 | 0.042 | 8.4 | 1.6e-8 | 1.1e-7 | 3.2e-6 | 0 |
+
+    Duas razoes: (a) sob o teto `cs_max`=0.5 o `cs` da colonia fica em 0.35-0.48, ou seja
+    **coincidentemente perto de `c0`=0.35** — o "2.7x mais fraca" acima valia para o I3, nao
+    para o P2; (b) a viscosidade artificial e **2-3 ordens de grandeza menor que o arrasto e a
+    Marangoni** em todas as populacoes, com ou sem correcao. As particulas que formam os pares
+    coincidentes da cascata tardia tem `cs` p50 0.36 (`c0/cs` = 0.95-1.01): **a correcao nao
+    toca o pareamento**. Corrigir continua certo por consistencia de metodo (Liu §4.3), mas nao
+    estende a janela util nem muda a morfologia do P2.
+
     **(F) As saidas, nenhuma rodada:** (A) dar motor ao meio — forca flagelar de magnitude
     constante so tem dois regimes, pouco (gate ~0.1 em `rho_b`=0.15 -> u ~0.013) ou demais
     (gate cheio -> u=0.05, os "cavaleiros" do P3); (B) por a frente sob a lei da proliferacao,
@@ -3331,7 +3405,7 @@ Calibracao pos-Passes A-I.7. **MARCO I.7:** Transicao blob→dendritico confirma
     | R99/R90 | 1.30 | 1.18 | mais compacta |
 
     E a perda de relevo vem DO INICIO, nao e flutuacao: 0.68x em R99~0.7, 0.77x em 1.04,
-    ~0.6x em 1.2. Visual (§11, [plots/B1motor_vs_I3_mesmoR.png](plots/B1motor_vs_I3_mesmoR.png)):
+    ~0.6x em 1.2. Visual (§11, `B1motor_vs_I3_mesmoR.png`, no commit `a2d6dfd`):
     o I3 tem borda lobulada com tendrils nascendo; o B1 e disco denso de borda crenulada —
     (a) *Modulated* / (c) *Circular* do Trinschek.
 
@@ -3417,7 +3491,7 @@ Calibracao pos-Passes A-I.7. **MARCO I.7:** Transicao blob→dendritico confirma
     **(B) O CONTROLE MOSTRA O QUE A DEPOSICAO FAZ.** Sem deposicao (OSM0), as vivas da ponta
     CAVAM ~20 tuneis radiais no agar, com baias **99.7% limpas** e o miolo vazio — o padrao
     dendritico e o RASTRO das trajetorias das vivas. Os bracos do E11 sao esses mesmos tuneis,
-    preenchidos pelo filler do wake ([plots/osm1_vs_osm0_vs_E11.png](plots/osm1_vs_osm0_vs_E11.png)).
+    preenchidos pelo filler do wake (`osm1_vs_osm0_vs_E11.png`, no commit `a2d6dfd`).
     E a licao #85 vista pelo outro lado: a forma vem da trajetoria, o material vem da deposicao.
 
     **(C) A SELETIVIDADE DE PONTA QUE EU MEDI NAO SE MATERIALIZOU.** O `D` 9.5x maior na ponta
@@ -3538,7 +3612,7 @@ Calibracao pos-Passes A-I.7. **MARCO I.7:** Transicao blob→dendritico confirma
     cavaleiros NAO voltaram (2.1 contra 6.8 do P3) — com as vivas extras do P2 no corpo a
     distribuicao de deslocamento fica estreita; o que se perde deve ser a ponte de recrutas
     entre braco e nucleo, empurrada para fora pelo gate (nao medido diretamente). O frame de
-    t=50 isolado parece otimo ([plots/fig_P2P3_t50.png](plots/fig_P2P3_t50.png)) — e o ruido
+    t=50 isolado parece otimo (`fig_P2P3_t50.png`, no commit `a2d6dfd`) — e o ruido
     entre realizacoes (bracos soltos 1.3 vs 2.6 no MESMO P2) que torna a janela obrigatoria.
     **O baseline segue P2 puro.**
 
@@ -3567,6 +3641,88 @@ Calibracao pos-Passes A-I.7. **MARCO I.7:** Transicao blob→dendritico confirma
     bit-a-bit so vale com o MESMO numero de threads (e as verificacoes de hoje, `_verif_E11` e
     `_verif_P2`, usaram o padrao da maquina, 10); e duas rodadas da mesma config com threads
     diferentes sao REALIZACOES distintas — usar a diferenca entre elas como piso de ruido.
+
+89. **P2W — kernel Wendland C2 (h = 1.92 dx) sobre o P2: resolve a CASCATA de pareamento e
+    leva o run a t=100; nao muda a morfologia, nem cedo nem tarde** (2026-09-14,
+    `runs/P2W_t100`, criterios e tabela completa em `runs/P2W_t100/CRITERIOS.md`). Alavanca
+    unica e numerica (`KERNEL`/`H_FACTOR` em [main.py](main.py)), motivada pela instabilidade de
+    pareamento do spline cubico sob compressao (licao #88; Price 2012; Dehnen & Aly 2012;
+    Liu §6.4).
+
+    | pares < 0.05 dx (mesma contagem) | t≈87 | t=100 | dt medio t[80,100] |
+    |---|---:|---:|---:|
+    | E11 (cubico) | 871 | 1239 | 0.014 |
+    | P2 (cubico) | 4872, cascata, parado | — | 0.0027 (t 80-87) |
+    | **P2W (Wendland)** | **692** | 1345 | **0.0053** |
+
+    **O que resolve:** a cascata sumiu (7x menos pares que o P2 cubico em t=87, abaixo do
+    proprio E11) e o run terminou. Ate t=50 fica dentro do ruido entre realizacoes do P2 em
+    todos os criterios (bracos soltos 0.8, C5a 0.42, amplitude 0.310, 40 dedos) — a predicao de
+    que a troca de kernel nao mexe na fisica se confirmou.
+
+    **O que nao resolve:** (a) a compressao do corpo continua — `rho/rho0` p99 7.2 em t=100
+    contra 4.8 do E11 —, o Wendland so impede que ela vire pares coincidentes; os pares
+    crescem devagar e aceleram no fim, e o dt medio cai de 0.016 para 0.005 (o E11 fica em
+    0.014). (b) O corpo vira DISCO depois de t≈75, como previsto nos criterios: relevo/Rmax
+    0.63 (t=50) -> 0.48 (t=100), contra 0.70 -> 0.64 do E11. E o defeito fisico do P2
+    (recrutamento crescente), nao numerico. Agar limpo nas baias 71% contra 76-78% do P2.
+
+    **DECISAO DA USUARIA (2026-09-14): o baseline MANTEM o kernel cubico** (`KERNEL="cubic"`,
+    `H_FACTOR=1.8`). O parametro fica no codigo; o P2 segue com janela util t ≲ 75.
+
+    **Nota de medicao:** a contagem de pares usada aqui da numeros absolutos menores que a da
+    licao #88 (E11 871 contra 1246 em t=87). So comparar runs contados pelo MESMO script,
+    [tools/pares_dt.py](tools/pares_dt.py) (`cKDTree.query_pairs(0.05*dx)` sobre o fluido).
+
+90. **O DISCO TARDIO DO P2 E UM LACO filler-doador -> recruta -> wake -> filler-doador, e e a
+    MESMA operacao que liga os bracos ao nucleo** (2026-09-14, analise offline de
+    `runs/P2_t100` contra `runs/E11_t100`, [tools/diag_disco.py](tools/diag_disco.py); indice =
+    identidade, desloc. maximo no campo distante 1e-8 dx). Regiao F = baia de t0=51 engolida
+    ate o disco de raio `R_min(t1=80)`: **2412 dx² no P2 contra 903 no E11**.
+
+    | material de colonia em F no t1 | P2 | E11 |
+    |---|---:|---:|
+    | wake criado depois de t0 | **1376 (50%)** | 246 (57%) |
+    | agar/limbo convertido | **996 (36%)** | 42 (10%) |
+    | colonia de t0 advectada para dentro | 348 (12%) | 107 (25%) |
+    | insert | 43 (2%) | 40 (9%) |
+    | **total** | **2763** | 435 |
+
+    A diferenca P2/E11 esta na CONVERSAO (24x) e no wake (5.6x). **Geometria:** F fica a 2.2 dx
+    (p50; p90 4.3) da colonia de t0 — nao sao baias fundas enchendo pelo fundo, sao fendas
+    estreitas perto do nucleo fechando por ENGROSSAMENTO LATERAL dos bracos. Baia e cunha
+    (estreita perto do centro), entao engrossar ~2-4 dx por lado fecha o fundo primeiro e a
+    frente de fechamento anda para fora: e isso que e `R_min` subindo 1.69 -> 2.68.
+
+    **O gatilho e o gate de `cs` perdendo seletividade, e o laco o acelera.** Candidatas
+    (agar+limbo) em F acima de `COL_CS_MIN`=0.3: P2 **21% (t=51) -> 32 -> 52 -> 72 -> 86% (t=70)**,
+    com o `cs` mediano da baia indo de 0.226 a 0.407 (o do dedo, 0.334 -> 0.409). No E11 a baia
+    fica em 0.20-0.26 e 0-25% passam. **Em t=51 o gate protegia a baia** (razao baia/dedo 0.68):
+    a uniformidade azimutal de `cs` da licao #84 e, no P2, o ESTADO FINAL produzido pelo laco,
+    nao a condicao inicial. `c_n` nao discrimina (100% acima de 0.4 sob `k_src`).
+
+    **O laco, medido pelo peso de doador das recrutas de F ainda sub-quorum:**
+
+    | t | filler de t0 | wake novo | recruta | viva de t0 |
+    |---|---:|---:|---:|---:|
+    | 57 | **58%** | 20% | 7% | 16% |
+    | 64 | 34% | 33% | 17% | 16% |
+    | 72 | 19% | **39%** | **29%** | 13% |
+
+    O filler dos bracos acende (`COL_FILLER_DONOR`=1); o wake depositado DENTRO da baia e as
+    proprias recrutas passam a doar; e as recrutas (e o limbo da rampa) viram maes do wake
+    (`WAKE_RHO_B_MIN`=0.05 — 37% do wake em F tem `rho_b`<0.1, mae no limbo, contra 20% do wake
+    novo nos bracos). O P2 gasta o teto do wake 2.2x mais rapido que o E11 depois de t=51 e o
+    esgota em t≈81 (E11: 57% em t=80).
+
+    **Por que nao ha alavanca limpa:** o que fecha a fenda (filler doando para o agar vizinho,
+    fendas de 4-9 dx) e exatamente o que o P2 foi escolhido para fazer com o vao braco-nucleo
+    (4-8 dx de agar, licao #88) — mesmo objeto, mesma escala, e a licao #72-J ja mostrou que
+    nem criterio local nem topologico separa entrada estreita de baia. E a lei (L) na forma da
+    #84, **conectar contra separar**, agora com o mecanismo medido. O unico elemento proprio do
+    tardio e a subida do `cs` na baia; qualquer alavanca de gate/doador/wake corta tambem a
+    ligacao. **Janela morfologica do P2: t ≲ 55** (em t=55 F ja esta 30% coberta e `R_min`
+    salta 1.64 -> 1.95); a janela numerica segue t ≲ 75.
 
 75. **A LARGURA DO BRACO: cintura em r/R99=0.65, barriga em 0.83, razao 2.1x — e a barriga
     ACOMPANHA A FRENTE. Quatro alavancas refutadas por medicao antes de rodar, e o
@@ -3812,6 +3968,10 @@ Resultado: pulsacoes episodicas (n_fast pico=114 em t=1.5s via perturbacao inici
 - **Nao** introduzir dependencias externas sem justificativa.
 - **Nao** refatorar a ordem das equacoes em `scheme.py` sem verificar invariantes.
 - **Nao** remover equacoes desabilitadas (como `OsmoticForce`) que sao parte do roadmap.
+  **Excecao registrada (2026-09-14, pedido da usuaria):** a limpeza de codigo removeu todos os
+  mecanismos das series reprovadas que ficavam "preservados desligados" (lista no topo do §7).
+  `OsmoticForce` foi MANTIDA por ser o Objetivo 2 do §1. O codigo removido esta no commit
+  `a2d6dfd`; religar qualquer um deles e reimplementar a partir de la, nao trocar constante.
 - **Nao sugerir implementar rugosidade (Pass L) enquanto a morfologia nao reproduzir `reference.jpg`.** Rugosidade e extensao fisica, nao remedio para motor insuficiente ou selecao competitiva ausente. Se Marangoni + Flagelar + EOS nao geram dendritos finos separados (`AR >= 1:5`), a causa-raiz esta em um desses mecanismos — investigar e refinar antes de adicionar nova fisica.
 - **Nao mudar parametros de surfactante (`σ`, `k_consume`, `D_ext`, `λ_ext`) sem verificar criterios duplos §2.4.** Bloqueio mecanico (A) resolvido por K.17. Bloqueio quimico (B) ATIVO — alavanca permitida atual: `k_consume` (lever direta sobre sumidouro). Nao mexer em `D_ext` e `λ_ext` simultaneamente (lição K.18-K.19). Nao reduzir `λ_ext` abaixo de `λ_int` enquanto motile_boost ativo (destroi Pass J).
 - **Nao sugerir Pass L (rugosidade)** enquanto morfologia nao reproduzir `reference.jpg` (dendritos AR ≥ 1:5, baias estacionarias, tip-splitting visivel). Bloqueio C (Mullins-Sekerka geometrico) provavelmente requer abordagem apos B resolvido.

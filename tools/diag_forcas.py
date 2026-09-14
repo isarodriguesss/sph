@@ -46,8 +46,11 @@ def carrega(run, alvo):
         t = float(h["solver_data"].attrs["t"])
         a = h["particles"]["fluid"]["arrays"]
         ks = ("x", "y", "u", "v", "m", "rho", "p", "h", "cs", "c_n", "rho_b_grown",
-              "is_filler", "is_matrix", "is_env", "is_wake", "au_flag", "au_mar")
+              "is_filler", "is_wake", "au_flag", "au_mar")
         d = {k: np.asarray(a[k], dtype=float) for k in ks}
+        # runs anteriores a limpeza de 2026-09-14 ainda gravam as flags das series revertidas
+        for k in ("is_matrix", "is_env"):
+            d[k] = np.asarray(a[k], dtype=float) if k in a else np.zeros_like(d["x"])
     return t, d
 
 

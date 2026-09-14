@@ -3,10 +3,11 @@
     python plots/fig_tese.py runs/E11_t100 [--t 50] [--tempos 10 20 30 40 50]
                              [--out plots/fig_E11] [--limbo] [--fecha 3.5] [--n 700]
 
-(a) colonia no instante final, campo continuo claro sobre fundo escuro (como a
-    `reference.jpg`); (b) contornos da borda nos `--tempos`, cor = tempo; (c) raios
-    maximo e minimo da colonia contra t, com os instantes de (b) marcados; (d) surfactante
-    `c_s` em escala log fixa com o contorno da colonia — o halo alem da biomassa.
+Mesma disposicao e mesmas cores de Trinschek: (a) colonia no instante final, oliva sobre
+azul-claro; (b) contornos da borda nos `--tempos`, em preto; (c) raios maximo (vermelho) e
+minimo (azul-petroleo) contra t, com os instantes de (b) marcados; (d) surfactante `c_s`
+azul-branco-vermelho com o contorno da colonia — o halo alem da biomassa. Diferenca
+deliberada: `c_s` em escala LOG fixa (Trinschek usa linear), sem a qual o halo some.
 
 COLONIA = `rho_b >= 0.1` ou filler (definicao do §2.2); `--limbo` soma `0 < rho_b < 0.1`.
 O campo e a fracao de colonia reconstruida por Shepard (Price 2007, PASA 24:159) com
@@ -27,18 +28,20 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.colors import LinearSegmentedColormap, LogNorm
+from matplotlib.ticker import MultipleLocator
 from scipy import ndimage as ndi
 from scipy.spatial import cKDTree
 
 DX = 0.0538
 KNN = 32
 CS_MIN, CS_MAX = 1e-3, 0.5
-NB = 256
-
-CMAP_COL = LinearSegmentedColormap.from_list(
-    "colonia", ["#050806", "#0e2a12", "#3f9a3a", "#b8f5a0", "#f4fff0"])
+# paleta do painel (b) de Trinschek et al. 2018 (assets/reference_result.png)
+CMAP_COL = LinearSegmentedColormap.from_list("colonia", ["#b7dde8", "#f3f1dc", "#9a9855"])
 CMAP_CS = LinearSegmentedColormap.from_list(
-    "cs", ["#0b5d73", "#1f8aa3", "#f7f7f7", "#c62828", "#7a0000"])
+    "cs", ["#156f8c", "#6cb3c8", "#f5f5f5", "#d23a3a", "#8e0000"])
+COR_BORDA = "#2b2b2b"
+COR_MAX = "#c0272d"
+COR_MIN = "#1b7a98"
 
 plt.rcParams.update({
     "font.family": "serif", "mathtext.fontset": "cm", "font.size": 9,
@@ -112,7 +115,7 @@ def campo(d, L, n, limbo, fecha):
 
 
 def raios(g, borda, nth=360):
-    """R(theta) = raio mais externo da colonia ao longo de cada direcao."""
+    """Raios maximo e minimo de R(theta), o raio mais externo em cada direcao."""
     cel = g[1] - g[0]
     r = np.arange(0.0, g[-1], 0.5 * cel)
     th = np.linspace(-np.pi, np.pi, nth, endpoint=False)
@@ -128,6 +131,8 @@ def eixos(ax, L, rot=True):
     ax.set_xlim(-L, L)
     ax.set_ylim(-L, L)
     ax.set_aspect("equal")
+    ax.xaxis.set_major_locator(MultipleLocator(2))
+    ax.yaxis.set_major_locator(MultipleLocator(2))
     ax.set_xlabel(r"$x/L$")
     if rot:
         ax.set_ylabel(r"$y/L$")
@@ -173,14 +178,11 @@ def main():
         gg, _, borda, _ = campo(carrega(f), L, n_lo, a.limbo, a.fecha)
         serie[tt] = (gg, borda)
 
-    cores = plt.cm.viridis(np.linspace(0.05, 0.9, len(esc)))
-    for (tt, _), cor in zip(esc, cores):
+    for tt, _ in esc:
         gg, borda = serie[tt]
-        ax[0, 1].contour(gg, gg, borda.astype(float), levels=[0.5], colors=[cor],
-                         linewidths=0.9)
-        ax[0, 1].plot([], [], color=cor, lw=1.2, label=rf"$t={tt:.0f}$")
+        ax[0, 1].contour(gg, gg, borda.astype(float), levels=[0.5], colors=COR_BORDA,
+                         linewidths=0.8)
     eixos(ax[0, 1], L)
-    ax[0, 1].legend(fontsize=7, frameon=False, loc="upper right", handlelength=1.2)
     ax[0, 1].set_title("(b) borda da colônia", loc="left")
 
     ts, rmax, rmin = [], [], []
@@ -189,8 +191,8 @@ def main():
         ts.append(tt)
         rmax.append(R1)
         rmin.append(R0)
-    ax[1, 0].plot(ts, rmax, color="#b2182b", lw=1.4, label="máx")
-    ax[1, 0].plot(ts, rmin, color="#2166ac", lw=1.4, label="mín")
+    ax[1, 0].plot(ts, rmax, color=COR_MAX, lw=1.4, label="máx")
+    ax[1, 0].plot(ts, rmin, color=COR_MIN, lw=1.4, label="mín")
     for tt, _ in esc:
         i = ts.index(tt)
         ax[1, 0].plot(tt, rmax[i], "o", color="k", ms=3)
@@ -205,8 +207,8 @@ def main():
 
     gx, gy = np.meshgrid(g, g)
     pts = np.c_[gx.ravel(), gy.ravel()]
-    viva = d_fim["is_filler"] < 0.5
     vol = d_fim["m"] / d_fim["rho"]
+    viva = d_fim["is_filler"] < 0.5
     cs, den = shepard(d_fim["x"][viva], d_fim["y"][viva], d_fim["cs"][viva], vol[viva],
                       pts, 1.8 * DX)
     cs = np.where(den > 1e-9, cs, CS_MIN).reshape(a.n, a.n)

@@ -2,14 +2,27 @@ import numpy as np
 from pysph.base.utils import get_particle_array
 
 
-SEED_AMP = 0.06
-SEED_MODE = 8
+SEED_AMP = 0.06  # P19 testou 0.0 (sem semente) e REPROVOU — ver licao #83
+SEED_MODE = 8  # M5 (N=16) nao se sustentou: dedos finos mas ocos, agar cercado 417 vs 181
+
+# SEED_FRAC e a modulacao RELATIVA do raio (so o "plato" a usa). A "quartica" fica na
+# forma historica `0.30 + SEED_AMP*cos`: `0.30*(1 + SEED_FRAC*cos)` e igual so na
+# matematica, difere em ate 5.5e-17 e quebra a reproducao bit-a-bit do E11.
+SEED_FRAC = SEED_AMP / 0.30
+
+INOC_MODE = "quartica"  # BASELINE E11. "plato" = serie I (licao #85-A)
+INOC_A = 0.45  # plato: rho_b uniforme. 0.45 e o canto de TRES restricoes simultaneas —
+INOC_R = 0.500  # pin exige rho_b>0.40 (c_n_eq<0.6), fade_rep pica em ~0.5, divisao
+INOC_W = 0.145  # rapida quer <0.35. Em 0.45: c_n_eq=0.571, fade_rep=0.957, T_div=12s.
+# R=0.500 conserva a biomassa (1.02x) — o I1 reprovou por +150% de massa, nao pela borda.
+# W = 1.5h: a borda tem de ser resolvida pelo kernel (Liu §3.3).
 
 
 def create_initial_state(
     x_dim=128,
     y_dim=128,
     rho_max=1.0,
+    dt=0.001,
     x_min=-3.0,
     x_max=3.0,
     y_min=-3.0,
@@ -17,7 +30,7 @@ def create_initial_state(
     seed=None,
     h_factor=1.8,
 ):
-    if seed is not None:
+    if seed is not None:  # reprodutibilidade: mesma condicao inicial entre rotas
         np.random.seed(seed)
     x = np.linspace(x_min, x_max, x_dim)
     y = np.linspace(y_min, y_max, y_dim)
@@ -35,8 +48,22 @@ def create_initial_state(
     dist = np.sqrt((X_grid - center_x) ** 2 + (Y_grid - center_y) ** 2)
     theta = np.arctan2(Y_grid - center_y, X_grid - center_x)
 
-    R_theta = 0.30 + SEED_AMP * np.cos(SEED_MODE * theta)
-    rho_b = np.exp(-((dist / R_theta) ** 4))
+    # A 4a potencia faz um quase top-hat: rho_b cai de 1.0 a 0.15 entre r=0.3 e 0.45
+    # e a ZERO em r=0.6. Isso deixa a borda do nucleo sem biomassa desde t=0 e nada
+    # a repoe depois. Suavizar (I1: p=2, R=0.45) CURA a borda mas mata o motor:
+    # +2.5x biomassa -> cs mais uniforme -> a_mar 2.30->0.75 e morfologia vira
+    # Circular (licao #48). O perfil agudo e o preco da seletividade dendritica.
+    if INOC_MODE == "plato":
+        # Densidade uniforme com linha de contato — a gota depositada nao tem cauda
+        # gaussiana. A quartica poe 1/3 da biomassa numa saia de densidade decrescente
+        # e o resto numa cauda de 1e-3 que nao divide (gate 0.05), nao produz cs e tem
+        # fade=0. Ver licao #83 e a analise preditiva do inoculo.
+        R_theta = INOC_R * (1.0 + SEED_FRAC * np.cos(SEED_MODE * theta))
+        t_edge = np.clip((R_theta - dist) / INOC_W, 0.0, 1.0)
+        rho_b = INOC_A * t_edge * t_edge * (3.0 - 2.0 * t_edge)
+    else:
+        R_theta = 0.30 + SEED_AMP * np.cos(SEED_MODE * theta)
+        rho_b = np.exp(-((dist / R_theta) ** 4))
 
     noise = 0.10 * np.random.randn(*X_grid.shape)
     rho_b += rho_b * noise
@@ -44,6 +71,7 @@ def create_initial_state(
     rho_b_grown_part = np.clip(rho_b.ravel(), 0, rho_max)
 
     cs_part = np.clip(rho_b_grown_part * 0.1, 1e-9, None)
+    c_o_part = np.zeros_like(x_part)
     c_n_part = np.clip(1.0 - 0.8 * rho_b_grown_part, 1e-9, 1.0)
 
     fluid = get_particle_array(
@@ -57,10 +85,13 @@ def create_initial_state(
         rho=rho_part,
         rho_b_grown=rho_b_grown_part,
         cs=cs_part,
+        c_o=c_o_part,
         c_n=c_n_part,
         a_rho_b_grown=np.zeros_like(x_part),
         a_c_s=np.zeros_like(x_part),
+        a_c_o=np.zeros_like(x_part),
         a_c_n=np.zeros_like(x_part),
+        m0=m_part.copy(),
         am=np.zeros_like(x_part),
     )
 
@@ -78,7 +109,8 @@ def create_initial_state(
 
     y_top = np.arange(y.max() + spacing, y.max() + (num_layers + 1) * spacing, spacing)
     y_bottom = np.arange(y.min() - num_layers * spacing, y.min(), spacing)
-    x_tb, y_tb = np.meshgrid(x, np.concatenate([y_bottom, y_top]))
+    x_walls = x
+    x_tb, y_tb = np.meshgrid(x_walls, np.concatenate([y_bottom, y_top]))
     x_solid = np.concatenate([x_lr.ravel(), x_tb.ravel()])
     y_solid = np.concatenate([y_lr.ravel(), y_tb.ravel()])
     m_solid = np.ones_like(x_solid) * dx * dy

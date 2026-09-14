@@ -2,7 +2,7 @@
 
 > Consolidação da evidência. Baseline: `use_kgc=False`. Snapshot analisado:
 > `main_output/` (t≈50 s). Reprodutível por [`test_vacuo_nao_fisico.py`](../test_vacuo_nao_fisico.py)
-> e [`fig_vacuo_consolidado.py`](../fig_vacuo_consolidado.py).
+> e [`fig_vacuo_consolidado.py`](../plots/fig_vacuo_consolidado.py).
 
 ## A questão
 
@@ -68,5 +68,5 @@ temporal em [`plot.py`](../plot.py)), sem qualquer alteração no solver.
 
 ```bash
 python test_vacuo_nao_fisico.py     # asserções (1) sem vácuo real (2) σ_a>0.85 (3) motor vivo
-python fig_vacuo_consolidado.py     # gera docs/fig_vacuo_nao_fisico.png
+python plots/fig_vacuo_consolidado.py     # gera assets/fig_vacuo_nao_fisico.png
 ```

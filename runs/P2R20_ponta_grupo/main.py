@@ -94,9 +94,8 @@ RASTRO_PASSO_MOV = 0.5
 RASTRO_V_MOV = 0.0  # > 0: criterio de VELOCIDADE (u/s) no lugar do passo por chamada
 RASTRO_PONTA = 1.0  # > 0: calota eliptica de semi-eixo RASTRO_PONTA*w atras de p1 (1.0 = semicirculo)
 RASTRO_PONTA_LINK = 6.0  # > 0 (dx): calota so no lider mais externo de cada grupo; 0 = todos
-RASTRO_PONTA_RECOBRE = True  # True: lider com calota converte largura plena ate RASTRO_PONTA*w atras de p0
 FILLER_RHO_B_FLOOR = 0.4
-FILLER_CS_CONDUZ = 1.0
+FILLER_CS_CONDUZ = 0.0
 FILLER_CS_D = 0.0
 FILLER_CS_D_INTERNO = 0.0
 FILLER_CS_LAMBDA = 0.5
@@ -821,23 +820,14 @@ class SwarmApp(Application):
             L2 = float(d @ d)
             if L2 < (0.1 * dx) ** 2:
                 continue
-            tapa = RASTRO_PONTA > 0.0 and (self._rastro_ponta is None or k in self._rastro_ponta)
-            atras = RASTRO_PONTA * w if (tapa and RASTRO_PONTA_RECOBRE) else 0.0
-            if atras > 0.0:
-                raio = 0.5 * np.sqrt(L2) + w + atras
-            else:
-                raio = 0.5 * np.sqrt(L2) + w
-            cand = np.asarray(tree.query_ball_point(0.5 * (p0 + p1), raio), dtype=int)
+            cand = np.asarray(tree.query_ball_point(0.5 * (p0 + p1), 0.5 * np.sqrt(L2) + w), dtype=int)
             if len(cand) == 0:
                 continue
             q = np.column_stack([fluid.x[agar[cand]], fluid.y[agar[cand]]])
             s = ((q - p0) @ d) / L2
-            if atras > 0.0:
-                t = np.clip(s, -atras / np.sqrt(L2), 1.0)
-            else:
-                t = np.clip(s, 0.0, 1.0)
+            t = np.clip(s, 0.0, 1.0)
             dist = np.hypot(q[:, 0] - (p0[0] + t * d[0]), q[:, 1] - (p0[1] + t * d[1]))
-            if tapa:
+            if RASTRO_PONTA > 0.0 and (self._rastro_ponta is None or k in self._rastro_ponta):
                 a = RASTRO_PONTA * w
                 u = np.clip((1.0 - s) * np.sqrt(L2), 0.0, a)
                 lim = w * np.sqrt(u * (2.0 * a - u)) / a

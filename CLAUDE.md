@@ -656,6 +656,32 @@ conda install mpi4py -c conda-forge
 > realizacao, nao a referencia exata; comparacoes com ele valem no nivel de ruido entre
 > realizacoes, como ja se faz com as de thread diferente.
 >
+> **BASELINE = P2R23 (2026-09-17, decisao da usuaria — substitui o P2R21 promovido horas antes).**
+> `main.py` e `src/` estao BIT-A-BIT identicos a `runs/P2R23_conduz`. E o P2R21 mais UMA alavanca:
+> `FILLER_CS_CONDUZ` = 1.0 (o filler conduz `c_s` — difusao com `D_ext` e decaimento a `0.5 lambda`,
+> sem produzir e sem sentir Marangoni, como no P2R10/P2R17).
+>
+> **O que a alavanca entrega** (t=50, contra o P2R21): o painel (d) deixa de ser valor CONGELADO e passa
+> a ser campo MEDIDO em todo o corpo — `c_s` do corpo 0.20 -> **0.44** do teto, baias 0.17 -> 0.25, halo
+> `L` 0.16 -> **0.17 R** (alvo 0.18); **motor `a_mar_bio_p95` 0.37 -> 0.73** (a predicao, ancorada no par
+> P2R16 -> P2R17, era 0.45-0.60); **AR 11.4 -> 9.9**, dentro da faixa 3.8-11.2 de [T12]/PA14 pela primeira
+> vez na serie do rastro; amplitude 0.132 -> 0.176; agar limpo na baia 24% -> 35%; nucleo 0.32 -> 0.39 e
+> baia 0.31 -> 0.37, os dois andando PARA os alvos 0.36 e 0.34.
+>
+> **O que ele custa, e esta aceito na promocao:** `R99` 4.45 -> **4.07**, que ficou 0.7% abaixo do limite
+> 4.10 pre-registrado — margem dentro do ruido entre realizacoes (licao #88), e a rodada foi adotada
+> mesmo assim; picos de `a_press` > 4 de 13% para **31%** das amostras (`a_press_med` 2.73 -> 3.22); C5a
+> 0.14 -> 0.11; dedos 20 -> 15; iter/t 60 -> 62.
+>
+> **Ranking contra a literatura (licoes #95/#99):** 2o lugar, 0.093 — atras do P2R17 (0.074) e a frente
+> do P2R21 (0.129). A diferenca para o P2R17 e que este chega la SEM encolher a colonia: o P2R17 tem
+> `R99` 4.11 com nucleo comendo a base, enquanto aqui o nucleo cresce a partir de 0.32, que era pequeno
+> demais.
+>
+> **Ressalvas herdadas:** o defeito estrutural da ponta continua — o lider e uma celula viva isolada, com
+> a viva mais proxima a 21 dx (licao #98) — e os frames seguem sendo gravados no atraso maximo do rastro
+> (licao #105), entao a ponta e o corpo que eles mostram sao mais finos que os reais.
+
 > **BASELINE = P2R21 (2026-09-17, decisao da usuaria).** `main.py` e `src/` estao BIT-A-BIT
 > identicos ao snapshot `runs/P2R21_ponta_recobre` (verificado por diff). E o P2 mais a serie do
 > rastro: `RASTRO_W`=5, `RASTRO_SEG`=True (conversao ao longo do segmento percorrido), `RASTRO_BAIA`=2,

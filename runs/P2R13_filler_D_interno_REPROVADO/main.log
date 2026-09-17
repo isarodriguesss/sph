@@ -1,0 +1,145 @@
+----------------------------------------------------------------------
+No of particles:
+  fluid: 68121
+  solid: 2108
+  Total: 70229
+----------------------------------------------------------------------
+Setup took: 4.87333 secs
+--------------------------------------------------
+Tempo: 0.00s | Iteração: 0
+Velocidade Máx: 0.4292 | Contraste CS: 828.2406
+c_n: mean=0.9990 max=1.0000 | massa: 197.51
+sigma_a braços (n=67): min=1.000 mean=1.000 frac<0.85=0.00% | c/ filler: mean=1.000
+vazio areal: >0.7dx=2.55% >1.0dx=0.00% >1.5dx=0.00%
+motor na biomassa: a_mar med=1.530 p95=2.10 | biomassa=0.2543 bracos=0.1886 | pinadas=43
+clump(<0.5dx)=0.0% nn_mediana=0.919dx
+Acelerações: Marangoni 2.24 | Drag 0.00 | Flagelo 2.99 | Pressão EOS máx 4.58e-08 med 2.89e-08 | Total 5.17
+wake inserção t=2.3s: 145 inseridas
+--------------------------------------------------
+Tempo: 3.36s | Iteração: 200
+Velocidade Máx: 0.1741 | Contraste CS: 566.0605
+c_n: mean=0.9985 max=1.0000 | massa: 197.94
+sigma_a braços (n=70): min=0.672 mean=0.960 frac<0.85=20.00% | c/ filler: mean=0.987
+vazio areal: >0.7dx=32.08% >1.0dx=22.18% >1.5dx=8.68%
+motor na biomassa: a_mar med=19.032 p95=84.21 | biomassa=0.2567 bracos=0.0984 | pinadas=43
+clump(<0.5dx)=27.2% nn_mediana=0.746dx
+Acelerações: Marangoni 124.12 | Drag 12.00 | Flagelo 2.98 | Pressão EOS máx 1.02e-01 med 5.82e-03 | Total 124.76
+wake inserção t=3.4s: 142 inseridas
+rastro t=3.4s: 2 convertidas (68 lideres)
+wake inserção t=4.4s: 150 inseridas
+--------------------------------------------------
+Tempo: 5.79s | Iteração: 400
+Velocidade Máx: 0.1523 | Contraste CS: 159.2640
+c_n: mean=0.9970 max=1.0000 | massa: 198.82
+sigma_a braços (n=71): min=0.614 mean=0.924 frac<0.85=42.25% | c/ filler: mean=0.986
+vazio areal: >0.7dx=24.52% >1.0dx=12.56% >1.5dx=1.68%
+motor na biomassa: a_mar med=8.486 p95=39.36 | biomassa=0.2535 bracos=0.0435 | pinadas=43
+clump(<0.5dx)=15.5% nn_mediana=0.759dx
+Acelerações: Marangoni 50.50 | Drag 9.16 | Flagelo 3.00 | Pressão EOS máx 1.65e-01 med 4.96e-03 | Total 51.02
+inserção t=5.8s: 4 partículas inseridas
+wake inserção t=5.8s: 151 inseridas
+wake inserção t=7.0s: 151 inseridas
+--------------------------------------------------
+Tempo: 8.03s | Iteração: 600
+Velocidade Máx: 0.2643 | Contraste CS: 138.5017
+c_n: mean=0.9953 max=1.0000 | massa: 199.75
+sigma_a braços (n=72): min=0.485 mean=0.903 frac<0.85=37.50% | c/ filler: mean=0.985
+vazio areal: >0.7dx=19.74% >1.0dx=8.39% >1.5dx=0.91%
+motor na biomassa: a_mar med=9.274 p95=52.15 | biomassa=0.2690 bracos=0.0369 | pinadas=43
+clump(<0.5dx)=12.0% nn_mediana=0.747dx
+Acelerações: Marangoni 70.62 | Drag 15.87 | Flagelo 2.98 | Pressão EOS máx 2.85e-01 med 4.38e-03 | Total 70.62
+inserção t=8.0s: 7 partículas inseridas
+wake inserção t=8.0s: 151 inseridas
+wake inserção t=8.8s: 100 inseridas
+--------------------------------------------------
+Tempo: 9.95s | Iteração: 800
+Velocidade Máx: 0.1075 | Contraste CS: 49.9183
+c_n: mean=0.9935 max=1.0000 | massa: 200.55
+sigma_a braços (n=85): min=0.489 mean=0.907 frac<0.85=36.47% | c/ filler: mean=0.985
+vazio areal: >0.7dx=18.11% >1.0dx=7.26% >1.5dx=0.46%
+motor na biomassa: a_mar med=4.369 p95=19.66 | biomassa=0.2918 bracos=0.0389 | pinadas=43
+clump(<0.5dx)=14.3% nn_mediana=0.740dx
+Acelerações: Marangoni 22.93 | Drag 7.44 | Flagelo 3.00 | Pressão EOS máx 4.01e-01 med 3.21e-03 | Total 22.92
+inserção t=10.0s: 7 partículas inseridas
+wake inserção t=10.0s: 120 inseridas
+wake inserção t=10.6s: 150 inseridas
+--------------------------------------------------
+Tempo: 11.25s | Iteração: 1000
+Velocidade Máx: 0.1755 | Contraste CS: 70.3421
+c_n: mean=0.9922 max=1.0000 | massa: 201.39
+sigma_a braços (n=85): min=0.571 mean=0.939 frac<0.85=30.59% | c/ filler: mean=0.987
+vazio areal: >0.7dx=17.19% >1.0dx=6.96% >1.5dx=0.61%
+motor na biomassa: a_mar med=7.567 p95=44.97 | biomassa=0.2998 bracos=0.0312 | pinadas=43
+clump(<0.5dx)=18.6% nn_mediana=0.728dx
+Acelerações: Marangoni 59.66 | Drag 10.99 | Flagelo 3.00 | Pressão EOS máx 4.96e-01 med 2.80e-03 | Total 59.66
+inserção t=11.3s: 10 partículas inseridas
+wake inserção t=11.3s: 156 inseridas
+wake inserção t=12.0s: 152 inseridas
+--------------------------------------------------
+Tempo: 13.01s | Iteração: 1200
+Velocidade Máx: 0.1489 | Contraste CS: 36.8933
+c_n: mean=0.9900 max=1.0000 | massa: 202.37
+sigma_a braços (n=92): min=0.514 mean=0.905 frac<0.85=40.22% | c/ filler: mean=0.984
+vazio areal: >0.7dx=17.06% >1.0dx=5.69% >1.5dx=0.60%
+motor na biomassa: a_mar med=4.887 p95=24.98 | biomassa=0.3205 bracos=0.0339 | pinadas=43
+clump(<0.5dx)=26.1% nn_mediana=0.708dx
+Acelerações: Marangoni 29.43 | Drag 8.96 | Flagelo 3.00 | Pressão EOS máx 3.60e-01 med 2.58e-03 | Total 29.43
+inserção t=13.0s: 18 partículas inseridas
+wake inserção t=13.0s: 154 inseridas
+wake inserção t=14.3s: 151 inseridas
+--------------------------------------------------
+Tempo: 15.09s | Iteração: 1400
+Velocidade Máx: 1.2816 | Contraste CS: 181.9793
+c_n: mean=0.9875 max=1.0000 | massa: 203.38
+sigma_a braços (n=110): min=0.578 mean=0.911 frac<0.85=43.64% | c/ filler: mean=0.986
+vazio areal: >0.7dx=17.04% >1.0dx=6.02% >1.5dx=0.58%
+motor na biomassa: a_mar med=35.547 p95=80.68 | biomassa=0.3348 bracos=0.0352 | pinadas=43
+clump(<0.5dx)=34.4% nn_mediana=0.678dx
+Acelerações: Marangoni 94.35 | Drag 81.55 | Flagelo 3.00 | Pressão EOS máx 4.54e+00 med 2.79e-03 | Total 93.31
+inserção t=15.1s: 17 partículas inseridas
+wake inserção t=15.1s: 151 inseridas
+wake inserção t=15.2s: 150 inseridas
+--------------------------------------------------
+Tempo: 15.29s | Iteração: 1600
+Velocidade Máx: 1.6603 | Contraste CS: 109.4446
+c_n: mean=0.9870 max=1.0000 | massa: 204.31
+sigma_a braços (n=114): min=0.701 mean=0.960 frac<0.85=25.44% | c/ filler: mean=0.982
+vazio areal: >0.7dx=15.91% >1.0dx=4.84% >1.5dx=0.45%
+motor na biomassa: a_mar med=32.231 p95=153.95 | biomassa=0.3231 bracos=0.0312 | pinadas=43
+clump(<0.5dx)=34.9% nn_mediana=0.668dx
+Acelerações: Marangoni 192.68 | Drag 99.75 | Flagelo 3.00 | Pressão EOS máx 6.68e+00 med 2.69e-03 | Total 192.86
+inserção t=15.3s: 21 partículas inseridas
+wake inserção t=15.3s: 153 inseridas
+wake inserção t=15.4s: 151 inseridas
+--------------------------------------------------
+Tempo: 15.51s | Iteração: 1800
+Velocidade Máx: 1.3446 | Contraste CS: 78.6358
+c_n: mean=0.9865 max=1.0000 | massa: 205.26
+sigma_a braços (n=115): min=0.657 mean=0.943 frac<0.85=29.57% | c/ filler: mean=0.981
+vazio areal: >0.7dx=16.03% >1.0dx=4.17% >1.5dx=0.27%
+motor na biomassa: a_mar med=28.294 p95=178.90 | biomassa=0.3196 bracos=0.0301 | pinadas=43
+clump(<0.5dx)=37.3% nn_mediana=0.649dx
+Acelerações: Marangoni 238.99 | Drag 79.72 | Flagelo 3.00 | Pressão EOS máx 3.88e+00 med 2.31e-03 | Total 239.17
+inserção t=15.5s: 18 partículas inseridas
+wake inserção t=15.5s: 150 inseridas
+wake inserção t=15.6s: 150 inseridas
+--------------------------------------------------
+Tempo: 15.75s | Iteração: 2000
+Velocidade Máx: 0.9079 | Contraste CS: 63.7537
+c_n: mean=0.9858 max=1.0000 | massa: 206.19
+sigma_a braços (n=117): min=0.553 mean=0.884 frac<0.85=47.86% | c/ filler: mean=0.979
+vazio areal: >0.7dx=16.43% >1.0dx=3.37% >1.5dx=0.19%
+motor na biomassa: a_mar med=28.736 p95=185.19 | biomassa=0.3217 bracos=0.0336 | pinadas=43
+clump(<0.5dx)=39.2% nn_mediana=0.636dx
+Acelerações: Marangoni 249.03 | Drag 54.32 | Flagelo 3.00 | Pressão EOS máx 4.51e+00 med 2.09e-03 | Total 249.20
+inserção t=15.7s: 30 partículas inseridas
+wake inserção t=15.7s: 154 inseridas
+wake inserção t=15.9s: 153 inseridas
+--------------------------------------------------
+Tempo: 16.06s | Iteração: 2200
+Velocidade Máx: 0.7495 | Contraste CS: 55.9577
+c_n: mean=0.9847 max=1.0000 | massa: 207.19
+sigma_a braços (n=123): min=0.571 mean=0.855 frac<0.85=51.22% | c/ filler: mean=0.980
+vazio areal: >0.7dx=18.15% >1.0dx=3.92% >1.5dx=0.19%
+motor na biomassa: a_mar med=23.989 p95=175.51 | biomassa=0.3238 bracos=0.0354 | pinadas=43
+clump(<0.5dx)=42.5% nn_mediana=0.595dx

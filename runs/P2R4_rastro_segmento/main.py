@@ -1,6 +1,5 @@
 import csv
 import numpy as np
-from scipy.sparse.csgraph import connected_components
 from scipy.spatial import cKDTree
 from pysph.solver.application import Application
 from pysph.base.kernels import CubicSpline, WendlandQuintic
@@ -82,25 +81,10 @@ WAKE_RING_RATIO = 0.75
 WAKE_MASS_BUDGET = 0.12
 WAKE_SEG = False
 WAKE_SEG_MAX = 6
-RASTRO_W = 5.0
+RASTRO_W = 2.0
 RASTRO_R_MIN = 0.7
 RASTRO_COS_FRENTE = 1.0
 RASTRO_SEG = True
-RASTRO_BAIA = 2.0
-RASTRO_BAIA_CHAMADA = False
-RASTRO_HIST = 10
-RASTRO_R_MOV = 0.4
-RASTRO_PASSO_MOV = 0.5
-RASTRO_V_MOV = 0.0  # > 0: criterio de VELOCIDADE (u/s) no lugar do passo por chamada
-RASTRO_PONTA = 1.0  # > 0: calota eliptica de semi-eixo RASTRO_PONTA*w atras de p1 (1.0 = semicirculo)
-RASTRO_PONTA_LINK = 6.0  # > 0 (dx): calota so no lider mais externo de cada grupo; 0 = todos
-RASTRO_PONTA_RECOBRE = True  # True: lider com calota converte largura plena ate RASTRO_PONTA*w atras de p0
-FILLER_RHO_B_FLOOR = 0.4
-FILLER_CS_CONDUZ = 1.0
-FILLER_CS_D = 0.0
-FILLER_CS_D_INTERNO = 0.0
-FILLER_CS_LAMBDA = 0.5
-AGAR_CS_LAMBDA = 0.125
 
 
 LOG_FILE = "log.csv"
@@ -204,7 +188,7 @@ def filler_data(fluid, new_x, new_y, parent, is_wake):
         "m": [dx * dx] * n,
         "h": list(fluid.h[p]),
         "rho": list(fluid.rho[p]),
-        "rho_b_grown": list(np.maximum(fluid.rho_b_grown[p], FILLER_RHO_B_FLOOR)),
+        "rho_b_grown": list(fluid.rho_b_grown[p]),
         "cs": list(fluid.cs[p]),
         "c_n": list(fluid.c_n[p]),
         "u": [0.0] * n,
@@ -225,11 +209,7 @@ class SwarmApp(Application):
         self._inseridas_desde_log = 0
         self._wake_mass_added = 0.0
         self._rastro_x = None
-        self._rastro_t = None
         self._rastro_y = None
-        self._rastro_hist = []
-        self._col_tree = None
-        self._rastro_ponta = None
 
     def create_particles(self):
         fluid_solid = create_initial_state(
@@ -355,11 +335,6 @@ class SwarmApp(Application):
             shift_rho_b_min=SHIFT_RHO_B_MIN,
             use_kgc=use_kgc,
             kgc_det_min=KGC_DET_MIN,
-            filler_cs_conduz=FILLER_CS_CONDUZ,
-            filler_cs_D=FILLER_CS_D,
-            filler_cs_D_interno=FILLER_CS_D_INTERNO,
-            filler_cs_lambda=FILLER_CS_LAMBDA,
-            agar_cs_lambda=AGAR_CS_LAMBDA,
         )
 
     def create_solver(self):
@@ -722,51 +697,17 @@ class SwarmApp(Application):
         rb = fluid.rho_b_grown
         fil = fluid.is_filler > 0.5
         r = np.hypot(fluid.x, fluid.y)
-        r99 = float(np.percentile(r[(rb >= 0.1) | fil], 99))
-        r_min = RASTRO_R_MIN * r99
+        r_min = RASTRO_R_MIN * float(np.percentile(r[(rb >= 0.1) | fil], 99))
         lider = np.where((~fil) & (rb >= 0.1) & (r >= r_min))[0]
-        if RASTRO_R_MOV > 0.0 and self._rastro_x is not None:
-            n_prev = len(self._rastro_x)
-            cand = np.where((~fil[:n_prev]) & (rb[:n_prev] >= 0.1)
-                            & (r[:n_prev] >= RASTRO_R_MOV * r99) & (r[:n_prev] < r_min))[0]
-            ddx = fluid.x[cand] - self._rastro_x[cand]
-            ddy = fluid.y[cand] - self._rastro_y[cand]
-            passo = np.hypot(ddx, ddy)
-            radial = (ddx * fluid.x[cand] + ddy * fluid.y[cand]) / np.maximum(r[cand], 1e-12)
-            if RASTRO_V_MOV > 0.0 and self._rastro_t is not None:
-                dt_call = max(float(solver.t) - self._rastro_t, 1e-9)
-                ok = (passo / dt_call) >= RASTRO_V_MOV
-            else:
-                ok = passo >= RASTRO_PASSO_MOV * dx
-            mov = cand[ok & (radial >= 0.5 * passo)]
-            lider = np.concatenate([lider, mov])
         agar = np.where((~fil) & (rb <= 1e-12))[0]
         if len(lider) == 0 or len(agar) == 0:
             return
 
-        self._rastro_ponta = None
-        if RASTRO_PONTA > 0.0 and RASTRO_PONTA_LINK > 0.0:
-            tl = cKDTree(np.column_stack([fluid.x[lider], fluid.y[lider]]))
-            n_g, grupo = connected_components(
-                tl.sparse_distance_matrix(tl, RASTRO_PONTA_LINK * dx), directed=False
-            )
-            rl = r[lider]
-            self._rastro_ponta = set()
-            for g in range(n_g):
-                m = np.where(grupo == g)[0]
-                self._rastro_ponta.add(int(lider[m[np.argmax(rl[m])]]))
         tree = cKDTree(np.column_stack([fluid.x[agar], fluid.y[agar]]))
         if RASTRO_SEG:
-            if RASTRO_BAIA > 0.0:
-                col = np.where(fil | (rb > 1e-12))[0]
-                self._col_tree = (cKDTree(np.column_stack([fluid.x[col], fluid.y[col]])), col)
             mae = self._rastro_segmento(fluid, lider, agar, tree)
             self._rastro_x = fluid.x.copy()
-            self._rastro_t = float(solver.t)
             self._rastro_y = fluid.y.copy()
-            if RASTRO_BAIA > 0.0:
-                self._rastro_hist.append((self._rastro_x, self._rastro_y))
-                self._rastro_hist = self._rastro_hist[-RASTRO_HIST:]
             if not mae:
                 return
             alvo = np.fromiter(mae.keys(), dtype=int)
@@ -801,7 +742,7 @@ class SwarmApp(Application):
     def _converte_rastro(self, fluid, alvo, origem, rb):
         fluid.is_filler[alvo] = 1.0
         fluid.is_wake[alvo] = 1.0
-        fluid.rho_b_grown[alvo] = np.maximum(rb[origem], FILLER_RHO_B_FLOOR)
+        fluid.rho_b_grown[alvo] = rb[origem]
         fluid.x_dep[alvo] = fluid.x[alvo]
         fluid.y_dep[alvo] = fluid.y[alvo]
 
@@ -811,7 +752,6 @@ class SwarmApp(Application):
             return mae
         w = RASTRO_W * dx
         n_prev = len(self._rastro_x)
-        novos = []
         for k in lider:
             if k >= n_prev:
                 continue
@@ -821,60 +761,16 @@ class SwarmApp(Application):
             L2 = float(d @ d)
             if L2 < (0.1 * dx) ** 2:
                 continue
-            tapa = RASTRO_PONTA > 0.0 and (self._rastro_ponta is None or k in self._rastro_ponta)
-            atras = RASTRO_PONTA * w if (tapa and RASTRO_PONTA_RECOBRE) else 0.0
-            if atras > 0.0:
-                raio = 0.5 * np.sqrt(L2) + w + atras
-            else:
-                raio = 0.5 * np.sqrt(L2) + w
-            cand = np.asarray(tree.query_ball_point(0.5 * (p0 + p1), raio), dtype=int)
+            cand = np.asarray(tree.query_ball_point(0.5 * (p0 + p1), 0.5 * np.sqrt(L2) + w), dtype=int)
             if len(cand) == 0:
                 continue
             q = np.column_stack([fluid.x[agar[cand]], fluid.y[agar[cand]]])
             s = ((q - p0) @ d) / L2
-            if atras > 0.0:
-                t = np.clip(s, -atras / np.sqrt(L2), 1.0)
-            else:
-                t = np.clip(s, 0.0, 1.0)
+            t = np.clip(s, 0.0, 1.0)
             dist = np.hypot(q[:, 0] - (p0[0] + t * d[0]), q[:, 1] - (p0[1] + t * d[1]))
-            if tapa:
-                a = RASTRO_PONTA * w
-                u = np.clip((1.0 - s) * np.sqrt(L2), 0.0, a)
-                lim = w * np.sqrt(u * (2.0 * a - u)) / a
-            else:
-                lim = w
-            sel = cand[(s <= 1.0) & (dist <= lim)]
-            if RASTRO_BAIA > 0.0 and len(sel):
-                sel = self._guarda_baia(fluid, k, p1, agar, sel, w, novos)
-                novos.extend(zip(fluid.x[agar[sel]], fluid.y[agar[sel]]))
-            for j in sel:
+            for j in cand[(s <= 1.0) & (dist <= w)]:
                 mae.setdefault(int(agar[j]), int(k))
         return mae
-
-    def _guarda_baia(self, fluid, k, p1, agar, sel, w, novos):
-        ctree, col = self._col_tree
-        g = RASTRO_BAIA * dx
-        q = np.column_stack([fluid.x[agar[sel]], fluid.y[agar[sel]]])
-        perto = np.unique(
-            np.concatenate([np.asarray(v, dtype=int) for v in ctree.query_ball_point(q, g)] + [np.zeros(0, int)])
-        )
-        c = np.column_stack([fluid.x[col[perto]], fluid.y[col[perto]]])
-        if novos and RASTRO_BAIA_CHAMADA:
-            c = np.vstack([c, np.asarray(novos)])
-        if len(c) == 0:
-            return sel
-        pts = [np.array([hx[k], hy[k]]) for hx, hy in self._rastro_hist if k < len(hx)] + [p1]
-        d_poly = np.hypot(c[:, 0] - pts[0][0], c[:, 1] - pts[0][1])
-        for a, b in zip(pts[:-1], pts[1:]):
-            e = b - a
-            e2 = float(e @ e)
-            tt = np.clip(((c - a) @ e) / e2, 0.0, 1.0) if e2 > 0.0 else np.zeros(len(c))
-            d_poly = np.minimum(d_poly, np.hypot(c[:, 0] - a[0] - tt * e[0], c[:, 1] - a[1] - tt * e[1]))
-        viz = c[d_poly > w + 0.5 * dx]
-        if len(viz) == 0:
-            return sel
-        d_viz, _ = cKDTree(viz).query(q)
-        return sel[d_viz > g]
 
 
 if __name__ == "__main__":

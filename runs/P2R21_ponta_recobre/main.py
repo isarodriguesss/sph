@@ -96,7 +96,7 @@ RASTRO_PONTA = 1.0  # > 0: calota eliptica de semi-eixo RASTRO_PONTA*w atras de 
 RASTRO_PONTA_LINK = 6.0  # > 0 (dx): calota so no lider mais externo de cada grupo; 0 = todos
 RASTRO_PONTA_RECOBRE = True  # True: lider com calota converte largura plena ate RASTRO_PONTA*w atras de p0
 FILLER_RHO_B_FLOOR = 0.4
-FILLER_CS_CONDUZ = 1.0
+FILLER_CS_CONDUZ = 0.0
 FILLER_CS_D = 0.0
 FILLER_CS_D_INTERNO = 0.0
 FILLER_CS_LAMBDA = 0.5

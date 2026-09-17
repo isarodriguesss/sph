@@ -1,6 +1,6 @@
 """Comparativo VISUAL entre rodadas isoladas (Protocolo CLAUDE.md §11).
 
-Uso:  python tools/compare_frames.py runs/E runs/R0 runs/R1 ...
+Uso:  python tools/compare_frames.py runs/swarm/E runs/swarm/R0 runs/swarm/R1 ...
       python tools/compare_frames.py --t 50 runs/*
 
 Renderiza o mesmo instante de cada rodada com escalas de cor FIXAS (o plot.py usa
@@ -100,7 +100,7 @@ def main(argv):
             i += 1
     runs = [r for r in runs if os.path.isdir(r)]
     if not runs:
-        print("nenhuma rodada; uso: python tools/compare_frames.py runs/R0 runs/R1")
+        print("nenhuma rodada; uso: python tools/compare_frames.py runs/swarm/R0 runs/swarm/R1")
         return
 
     nrow = len(runs) + 1  # +1 para a linha das referencias

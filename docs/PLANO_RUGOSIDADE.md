@@ -7,8 +7,42 @@
 > semente**, nunca rugoso × `reference.jpg`.
 
 **Decisões tomadas (2026-09-14):** obstáculos no plano; rede periódica de pilares; bloqueio da
-difusão decidido pela literatura (seção 1). **Baseline da rugosidade:** o vencedor entre o P2
-e o P2S (`WAKE_SEG`, em rodada) — a decisão sai do veredito do P2S.
+difusão decidido pela literatura (seção 1).
+
+> **ATUALIZAÇÃO 2026-09-17 — baseline e geometria reancorados.** O baseline passou a ser o
+> **P2R23** (P2R21 + filler conduzindo `c_s`), e ele tem braços **4 a 6× mais largos** que o P2 para
+> o qual este plano foi dimensionado. Medido em t=50 (mesma régua nos dois):
+>
+> | em r=2.5 | P2 (base original do plano) | **P2R23 (baseline atual)** |
+> |---|---:|---:|
+> | braços | 19 | 16 |
+> | largura do braço | 1.6 dx | **10.5 dx** |
+> | passo entre braços | 15.4 dx | 18.2 dx |
+> | fresta livre entre braços | 13.8 dx | **7.8 dx** |
+>
+> Com isso, o pilar de 5 dx da tabela da seção 2 deixaria de ser obstáculo (viraria metade da largura
+> do braço) e Λ = 18 dx entraria em **ressonância** com o passo entre braços (18.2 dx) — exatamente o
+> acoplamento que a escolha de rede triangular pretendia evitar. Geometria reancorada, preservando as
+> três razões originais (pilar ≈ largura do braço; fresta ≫ largura; Λ fora de ressonância):
+>
+> | parâmetro | valor original | **novo** | derivação |
+> |---|---:|---:|---|
+> | diâmetro A | 5 dx | **10 dx** (R_p = 5 dx ≈ 0.27) | ≈ largura do braço (9-10.5 dx): o braço não engole o pilar nem é barrado por ele |
+> | espaçamento Λ | 18 dx | **28 dx ≈ 1.51** | livre caminho médio `1/(n·(A+w))` = 35 dx com `n = 1/(Λ²·0.866)`, para ~1.5 contatos por braço no percurso de 52 dx até t=50 |
+> | fresta Λ − A | 13 dx | **18 dx** | 1.8× a largura do braço — passa, mas com atrito |
+> | fração de área | 7% | **~11.6%** | `π R_p²/(Λ²·0.866)` |
+> | nº de pilares em [-7,7]² | ~240 | **~95** (~78 partículas cada, ~7400 no total) | — |
+>
+> A exclusão em r < 1.2 e a rede triangular seguem como estavam. O controle liso da série é o
+> **P2R23** (`runs/swarm/P2R23_conduz`), mesma semente (20260806) e 10 threads. As rodadas desta
+> série vão para **`runs/rugosidade/`**.
+>
+> **V0 executado em 2026-09-17: PASSOU.** Com `use_pilares = False`, as 62 arrays do HDF5 e as 45
+> colunas do log saem bit-a-bit identicas ao P2R23 nas iterações 200 e 400 (10 threads), inclusive o
+> `t` do dt adaptativo. Implementado: constantes `PILAR_*` e `SwarmApp._faz_pilares` em `main.py`
+> (rede triangular; os próprios pontos da grade viram o array `pilar`; grava `pilares.json`), e os
+> pilares como fonte de `SummationDensity`, `KernelSum` e `ViscousForce` em `src/scheme.py`.
+> **Falta a força de contato** (seção 4), que exige a calibração offline de `K` antes de V1.
 
 ---
 

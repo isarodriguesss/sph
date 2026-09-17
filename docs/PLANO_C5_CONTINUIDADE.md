@@ -11,7 +11,7 @@
 > morfológicos — uma colônia que não expande de forma contígua não é um swarm,
 > independente do AR que ela exiba.
 
-Medições em `runs/E5_hillK025` e `runs/C4` (t=0→50), lidas direto do HDF5. Literatura
+Medições em `runs/swarm/E5_hillK025` e `runs/swarm/C4` (t=0→50), lidas direto do HDF5. Literatura
 conforme catalogada em CLAUDE.md §3.0.
 
 **Índice.** [O critério](#o-criterio-c5) · [Diagnóstico](#diagnostico--a-colonia-nao-expande-ela-e-construida) ·
@@ -139,13 +139,13 @@ dentro.
 
 A lição #66-C mediu que dar coesão a região sub-densa **contrai** a colônia (P3: `R99`
 4.62 → 1.93), mas isso é o **ramo atrativo**, o errado para este fim. E
-`runs/A2b_agarfade` testou `agar_fade=1.0` com os **dois** ramos, contra critérios
+`runs/swarm/_logs_reprovados/A2b_agarfade` testou `agar_fade=1.0` com os **dois** ramos, contra critérios
 anteriores ao C5 (a nota da rodada diz "melhora numérica, zero efeito na desjunção",
 medido pela ocupação em t≈29 — não por `C5a`/`C5b`).
 
 **Predição se implementada:** o ágar passa a resistir e a ser empurrado; o anel comprimido
 que a lição #58 mediu em `rho/rho0` = 2.03 com `|p|` = 0 passaria a empurrar de volta.
-Risco conhecido: a lição sobre `AGAR_DRAG_RATIO` (`runs/A1`) mostra que pressão e arrasto
+Risco conhecido: a lição sobre `AGAR_DRAG_RATIO` (`runs/swarm/A1`) mostra que pressão e arrasto
 no ágar não são independentes — baixar o arrasto sem pressão levou `rho/rho0` a 16.7 e
 `R99` a 3.06.
 
@@ -170,7 +170,7 @@ preservados (a deposição é ao longo do rastro que já existe, não uma nova f
 
 ### Diferença crucial para o B1, que foi reprovado
 
-O **B1** (lição #65, `runs/_logs_reprovados/B1_REPROVADO`) depositava
+O **B1** (lição #65, `runs/swarm/_logs_reprovados/B1_REPROVADO`) depositava
 `n = round(d/dx)` pontos ao longo do segmento **inteiro** a cada chamada, houvesse vão ou
 não, e perdeu **25% de AR** (10.48 → 7.83) por engrossamento, com a razão fantasma/viva
 subindo de 91.8 para 122.4.
@@ -252,7 +252,7 @@ solver é o mecanismo de **expansão**, que é o objeto deste plano.
 
 ## Resultado do E11 (t=100) — encher a junção não resolve C5
 
-> **Executado 2026-09-01**, `runs/E11_t100` — E5 sem piso, `total_sim_time`=100. Teste
+> **Executado 2026-09-01**, `runs/swarm/E11_t100` — E5 sem piso, `total_sim_time`=100. Teste
 > pré-registrado: se `C5a` saltasse para perto de 1.0 quando a banda [0.6, 1.8) enchesse,
 > a desjunção seria o gargalo. **A predição de que não era está confirmada.**
 
@@ -309,7 +309,7 @@ controlada. **A janela útil do E5 vai bem além de t=50**, o que não era verda
 
 ## C1 — rota C v1 (deposição no segmento): REPROVADA
 
-> **Executado 2026-09-01**, `runs/C1_wakeseg`, branch `feat/continuidade`. `WAKE_SEG=True`,
+> **Executado 2026-09-01**, `runs/swarm/C1_wakeseg`, branch `feat/continuidade`. `WAKE_SEG=True`,
 > `WAKE_SEG_MAX=6`: o wake percorre o segmento entre `x_dep` e a posição atual da ponta,
 > depositando a cada ~1 dx **onde o teste de proximidade permite**. O anel de adensamento
 > (`n_extra`) fica só no ponto de origem — a diferença para o B1.
@@ -373,7 +373,7 @@ O(N log N) numa KDTree.
 
 ## C2 — cadência (`WAKE_FREQ` 100 → 50): REPROVADA, mas com tendência
 
-> **Executado 2026-09-01**, `runs/C2_freq50`. Hipótese: o defeito do C1 é de **frequência**,
+> **Executado 2026-09-01**, `runs/swarm/C2_freq50`. Hipótese: o defeito do C1 é de **frequência**,
 > não de interpolação — com `WAKE_FREQ=100` a ponta anda ~2 dx entre chamadas e os depósitos
 > saem em ilhas que não emendam.
 
@@ -413,7 +413,7 @@ a tendência é boa e vale continuar. Se `C5b` ficar em ~20% com a cadeia cresce
 
 ## C3 e o fim da rota C — a série de frequência era RUÍDO
 
-> **Executado 2026-09-02**, `runs/C3_freq25`. O critério pré-registrado do C2 pedia
+> **Executado 2026-09-02**, `runs/swarm/C3_freq25`. O critério pré-registrado do C2 pedia
 > `C5b` ≈ 30% e cadeia ≈ 1000 para continuar. Deu `C5b` = 11.8% e cadeia 195 — a
 > tendência **inverteu**. E a checagem seguinte mostrou que nem a tendência nem a
 > inversão existiam.
@@ -465,7 +465,7 @@ atravessar, e a advecção — hoje 31 partículas de 1343 — vira o mecanismo 
 
 ## B1 e B2 — rota B (pressão no ágar): REPROVADA
 
-> **Executado 2026-09-02**, `runs/B1_agarfade` e `runs/B2_agar_press_drag`, isolados
+> **Executado 2026-09-02**, `runs/swarm/B1_agarfade` e `runs/swarm/B2_agar_press_drag`, isolados
 > (`WAKE_SEG=False`, `WAKE_FREQ=100`). O mecanismo **já existia** no código: `agar_fade`
 > faz exatamente o ramo só repulsivo (`fade_rep = agar_fade`, `fade_att = 0` para
 > `rho_b < 0.1`), apenas desligado.
@@ -494,7 +494,7 @@ comprimido, não passar a escoar.
 
 **B2 — mover o meio destrói a colônia.** Com o arrasto em 0.1 o ágar se move 26× mais, e
 se move **junto** com a colônia em vez de sair da frente: AR 7.61 → **3.13**, dedos 24 →
-15, motor a um terço (`a_mar` 4.02), `C5b` a 2.6%. É o modo de falha do `runs/A1`
+15, motor a um terço (`a_mar` 4.02), `C5b` a 2.6%. É o modo de falha do `runs/swarm/A1`
 reproduzido, agora com pressão.
 
 ### O achado: a advecção é invariante
@@ -549,7 +549,7 @@ ele é anterior a C5.**
 
 Não é *de onde vem* o material — é **quão longe cada partícula viaja antes de parar**:
 
-| | medido em `runs/E5_hillK025`, t=50 |
+| | medido em `runs/swarm/E5_hillK025`, t=50 |
 |---|---:|
 | deslocamento da viva mediana | 7.1 dx |
 | p90 | 35.6 dx |
@@ -647,7 +647,7 @@ consequência.
 
 ## P3 — alargar o gate flagelar: REPROVADA, e o motivo argumenta a favor da Proposta 1
 
-> **Executado 2026-09-02**, `runs/P3_flaggate`. Alavanca única sobre o E5: gate flagelar
+> **Executado 2026-09-02**, `runs/swarm/P3_flaggate`. Alavanca única sobre o E5: gate flagelar
 > `[0.2, 0.6] → [0.1, 0.8]`, parametrizado em `FLAG_GATE_LO`/`FLAG_GATE_HI`.
 
 | | E5 | **P3** |
@@ -689,7 +689,7 @@ Gate revertido para `[0.2, 0.6]`; código parametrizado fica (§10).
 
 ## P1 — perfil monótono de `cs`: REPROVADA, e o que ela revelou
 
-> **Executado 2026-09-02**, `runs/P1_monotono`. `CS_CEILING`=0 (sem teto), `CS_PROD_CN`=0
+> **Executado 2026-09-02**, `runs/swarm/P1_monotono`. `CS_CEILING`=0 (sem teto), `CS_PROD_CN`=0
 > (produção sem `c_n`), `sigma` 11.1 → 2.64 (β·σ ÷ 4.2).
 
 | | E5 | **P1** |
@@ -791,7 +791,7 @@ sem o teto o `cs` não satura por área — mas é o que precisa ser medido.
 
 ## P2 e P4 — recrutamento e ancoragem
 
-> **2026-09-02**, `runs/P2_fillerdonor` e `runs/P4_attach`. Medidos sob a definicao fechada
+> **2026-09-02**, `runs/swarm/P2_fillerdonor` e `runs/swarm/P4_attach`. Medidos sob a definicao fechada
 > nesta data: colonia = `rho_b >= 0.1` ou `is_filler`; `0 < rho_b < 0.1` e **agar engolido**.
 
 **P2 (`COL_FILLER_DONOR=1`)** — o filler passa a contar como doador na `BiomassColonization`,

@@ -11,7 +11,7 @@ Duas colunas deliberadamente separadas:
 A diferenca entre as duas e o tamanho da ilusao. A escala de ligacao e varrida
 (1.05 a 2.7 dx) porque conectividade medida numa escala so e circular — licao #68.
 
-    python tools/plot_continuidade.py runs/P2_fillerdonor . [saida.png]
+    python tools/plot_continuidade.py runs/swarm/P2_fillerdonor . [saida.png]
 """
 import glob
 import sys

@@ -12,7 +12,7 @@ todo. No E5 o raio conexo estagna em 0.66-0.82 enquanto `R99` vai a 4.13.
 `C5b` varia +-7 pontos DENTRO de um mesmo run, entao o script imprime a MEDIA e o
 DESVIO sobre t em [35, 50] — valor de instante nao e comparavel entre rodadas.
 
-    python tools/plot_trajetoria.py runs/E5_hillK025 [saida.png]
+    python tools/plot_trajetoria.py runs/swarm/E5_hillK025 [saida.png]
 """
 import glob
 import sys

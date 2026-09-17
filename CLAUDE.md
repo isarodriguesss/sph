@@ -14,7 +14,7 @@ Simulacao 2D em SPH (via [PySPH](https://pysph.readthedocs.io/)) da dinamica de 
 
 ### Objetivos de longo prazo (guiam decisoes arquiteturais)
 
-1. **Superficies rugosas** *(em aberto — bloqueado ate atingir morfologia de `reference.jpg`)* — Partículas de contorno estaticas com geometria irregular que interagem mecanicamente com o fluido e alteram os campos de difusao/escoamento. Toda decisao de refatoracao deve preservar a capacidade de substituir as paredes planas atuais por topografias arbitrarias. **PRE-REQUISITO OBRIGATORIO (§2.2):** a IA so pode sugerir implementar rugosidade (Pass L) apos a simulacao reproduzir a morfologia dendritica de `reference.jpg` via mecanismos hidrodinamicos puros (Marangoni + Flagelar + EOS). Rugosidade e **refinamento fisico**, nao muleta para compensar motor insuficiente.
+1. **Superficies rugosas** *(DESBLOQUEADO em 2026-09-17 — ver a nota no §12)* — Partículas de contorno estaticas com geometria irregular que interagem mecanicamente com o fluido e alteram os campos de difusao/escoamento. Toda decisao de refatoracao deve preservar a capacidade de substituir as paredes planas atuais por topografias arbitrarias. **PRE-REQUISITO SUSPENSO (2026-09-17, §12):** o pre-requisito do §2.2 — reproduzir a morfologia de `reference.jpg` por mecanismos hidrodinamicos puros — NAO foi atingido, e a usuaria decidiu seguir assim mesmo. A rugosidade entra como extensao fisica a caracterizar (rugoso x liso, mesma semente), nao como validacao morfologica. Continua valendo que ela **nao e muleta** para motor insuficiente: nenhum resultado de rugosidade pode ser apresentado como tendo resolvido um defeito do modelo liso.
 2. **Pressao osmotica (van't Hoff)** *(em aberto)* — Reativar `OsmoticForce` com formulacao termodinamicamente consistente (`Pi = iCRT`) acoplada ao campo de biomassa, substituindo a abordagem atual via ramo atrativo da EOS quando estável.
 3. **Motilidade flagelar orientada por gradiente** *(✅ implementado — Pass K)* — Forca propulsiva de **magnitude constante** (`f0 * gate`) alinhada a `-∇cs` (quimiotaxia para agar fresco), gateada a swarmers de borda (`rho_b ∈[0.1, 0.6]`). Ver `FlagellarForce` em [src/equations.py](src/equations.py) e §3.2 Frente 5.
 
@@ -128,6 +128,9 @@ A IA **nunca** deve sugerir mudancas cegas em parametros fisicos. Antes de calib
   [tools/plot_trajetoria.py](tools/plot_trajetoria.py) e olhar a serie, nunca so o ultimo frame.
 - Nao declarar um Pass como "bem-sucedido" baseando-se apenas em metricas escalares — a forma da colonia **comparada a `reference.jpg`** e o validador final.
 - **Gatilho para Pass L (rugosidade):** so propor apos frames mostrarem dendritos de AR >= 1:5 separados por agar limpo. Ate la, refinar mecanismos hidrodinamicos (Pass I-K).
+  **SUSPENSO em 2026-09-17 por decisao da usuaria** — ver a nota de desbloqueio no §12. O que o
+  baseline P2R23 de fato atinge: AR 9.9 (faixa 3.8-11.2 de [T12]/PA14), 15 dedos, 35% de agar limpo
+  na baia. O que NAO atinge: tip-splitting e baia majoritariamente de agar.
 
 ### 2.3 Predicao antes da acao
 
@@ -279,7 +282,7 @@ descontam flagelo e viscosa: sobram a pressao da EOS e a viscosidade artificial 
 licao #86-E). No P2 elas valem ~0.07-0.09 (max) e ~1-2e-3 (mediana) nos primeiros 8 s — 30-40x
 e ~1000x abaixo da coluna antiga, coerente com a pressao 219x abaixo da Marangoni (#85-B).
 Adicionadas sem mudar a dinamica: verificado bit-a-bit nas 58 arrays do HDF5 (passos 200 e
-400) e nas 45 colunas antigas do log (`runs/_verif_pressao_ctrl` x `_verif_pressao_novo`).
+400) e nas 45 colunas antigas do log (`runs/swarm/_verif_pressao_ctrl` x `_verif_pressao_novo`).
 **Criterios de pressao novos devem usar `a_press_med`/`a_press_max`, nunca `a_pressure`.**
 
 **Reprodutibilidade — `SEED` em [main.py](main.py), propagada a `create_initial_state` ([src/particles.py](src/particles.py)):**
@@ -586,6 +589,12 @@ conda install mpi4py -c conda-forge
 
 ## 6. Arquitetura
 
+> **ORGANIZACAO DE `runs/` (2026-09-17, decisao da usuaria):** as rodadas ficam em
+> **`runs/swarm/`** (toda a serie do swarm liso, do A ao P2R23, mais `_logs_reprovados/` e os
+> `_verif_*`) e **`runs/rugosidade/`** (Pass L: pilares). Rodada nova de rugosidade vai para
+> `runs/rugosidade/<nome>`; qualquer outra, para `runs/swarm/<nome>`. As 185 referencias deste
+> documento, dos `docs/` e dos `tools/` foram reescritas para os caminhos novos na mesma data.
+
 **Entry point:** [main.py](main.py) — parametros fisicos como globais (baseline P2), `SwarmApp(Application)` cria particulas, scheme e solver. O `post_step` faz tres coisas, nesta ordem: registra o `log.csv` a cada `print_freq` ([main.py:350](main.py#L350) `_registra`), insere filler no vacuo estrutural (`_insere_vacuo`, C3.4) e deposita o rastro do wake (`_deposita_rastro`).
 
 **[src/particles.py](src/particles.py)** — `create_initial_state()` constroi a grade 2D: inoculo quartico `rho_b = exp(-(r/R_θ)^4)` com `R_θ = 0.30 + 0.06 cos(8θ)` + ruido, e particulas solidas (2 camadas) formando paredes.
@@ -642,14 +651,14 @@ conda install mpi4py -c conda-forge
 > foram removidos por engano e RESTAURADOS — sao importados por `rank_runs.py` e `compara_raio.py`.
 > Antes de apagar um script, procurar quem o IMPORTA, nao so quem o cita.
 >
-> **Verificado bit-a-bit contra o codigo pre-limpeza** (`runs/_verif_controle` x
-> `runs/_verif_limpeza`, 10 threads): as 58 arrays do HDF5 identicas nos passos 1, 2, 6, 200,
+> **Verificado bit-a-bit contra o codigo pre-limpeza** (`runs/swarm/_verif_controle` x
+> `runs/swarm/_verif_limpeza`, 10 threads): as 58 arrays do HDF5 identicas nos passos 1, 2, 6, 200,
 > 400 e 600, com wake em 100-600 e insercao em 200 e 400. **Regra aprendida:** ao enxugar
 > equacoes, nao fundir `a = x*y` + `d += a` numa so expressao — isso deixa o compilador usar FMA
 > e muda o ultimo bit; o codigo mantem os statements separados de proposito.
 >
 > **Correcao do "bit-a-bit" do P2 (medida na mesma verificacao).** Rodar HOJE o codigo
-> pre-limpeza NAO reproduz o HDF5 do `runs/P2_fillerdonor` original: difere em ~1e-14 ja no
+> pre-limpeza NAO reproduz o HDF5 do `runs/swarm/P2_fillerdonor` original: difere em ~1e-14 ja no
 > passo 200 (identico no 0), e o caos leva a diferenca a 4a casa do log em t=12.7 (passo 600).
 > O `_verif_P2` comparou so o log (4-6 digitos) nos passos 0 e 200, onde ainda coincide. A
 > origem e anterior a limpeza (o controle difere igual). Implicacao: o P2 original e uma
@@ -657,7 +666,7 @@ conda install mpi4py -c conda-forge
 > realizacoes, como ja se faz com as de thread diferente.
 >
 > **BASELINE = P2R23 (2026-09-17, decisao da usuaria — substitui o P2R21 promovido horas antes).**
-> `main.py` e `src/` estao BIT-A-BIT identicos a `runs/P2R23_conduz`. E o P2R21 mais UMA alavanca:
+> `main.py` e `src/` estao BIT-A-BIT identicos a `runs/swarm/P2R23_conduz`. E o P2R21 mais UMA alavanca:
 > `FILLER_CS_CONDUZ` = 1.0 (o filler conduz `c_s` — difusao com `D_ext` e decaimento a `0.5 lambda`,
 > sem produzir e sem sentir Marangoni, como no P2R10/P2R17).
 >
@@ -683,7 +692,7 @@ conda install mpi4py -c conda-forge
 > (licao #105), entao a ponta e o corpo que eles mostram sao mais finos que os reais.
 
 > **BASELINE = P2R21 (2026-09-17, decisao da usuaria).** `main.py` e `src/` estao BIT-A-BIT
-> identicos ao snapshot `runs/P2R21_ponta_recobre` (verificado por diff). E o P2 mais a serie do
+> identicos ao snapshot `runs/swarm/P2R21_ponta_recobre` (verificado por diff). E o P2 mais a serie do
 > rastro: `RASTRO_W`=5, `RASTRO_SEG`=True (conversao ao longo do segmento percorrido), `RASTRO_BAIA`=2,
 > `RASTRO_R_MOV`=0.4 (lider por movimento), `FILLER_RHO_B_FLOOR`=0.4, `AGAR_CS_LAMBDA`=0.125, e a calota
 > so no lider mais externo de cada grupo com recobrimento (`RASTRO_PONTA`=1.0, `RASTRO_PONTA_LINK`=6.0,
@@ -707,14 +716,14 @@ conda install mpi4py -c conda-forge
 > (u1/u2/u3 5.3/7.4/8.5 contra 2.9/4.5/6.6 no frame) e o corpo vai de u5 8.8 para 9.6.
 
 > **BASELINE = P2 = E11 + `COL_FILLER_DONOR=1` (2026-09-11, decisao da usuaria, licao #88).**
-> Reproduz `runs/P2_fillerdonor` BIT-A-BIT (45 colunas + `t` nas iteracoes 0 e 200,
-> `runs/_verif_P2`). E o unico da serie P que liga os bracos ao nucleo sem sair da classe
-> dendritica. Validacao ate t=100 em `runs/P2_t100`. O bloco abaixo (E11) continua valendo
+> Reproduz `runs/swarm/P2_fillerdonor` BIT-A-BIT (45 colunas + `t` nas iteracoes 0 e 200,
+> `runs/swarm/_verif_P2`). E o unico da serie P que liga os bracos ao nucleo sem sair da classe
+> dendritica. Validacao ate t=100 em `runs/swarm/P2_t100`. O bloco abaixo (E11) continua valendo
 > para todas as outras constantes.
 >
 > **BASELINE = E11 (2026-09-11, decisao da usuaria).** `main.py` e `src/` reproduzem
-> `runs/E11_t100` BIT-A-BIT (45 colunas do log e o `t` do dt adaptativo nas iteracoes 0 e
-> 200, `runs/_verif_E11`). E o E5 sem piso, `k_src=0.3`, `HILL_K=0.25`, `sigma=11.1`,
+> `runs/swarm/E11_t100` BIT-A-BIT (45 colunas do log e o `t` do dt adaptativo nas iteracoes 0 e
+> 200, `runs/swarm/_verif_E11`). E o E5 sem piso, `k_src=0.3`, `HILL_K=0.25`, `sigma=11.1`,
 > `k_col=0.03`, teto `cs_max=0.5`, inoculo quartico, wake+insert, SEM mitose, ganho 1,
 > t=100. Todo o codigo posterior (mitose, sumidouro, plato, `WAKE_ATTACH`, `MOTOR_SCALE`,
 > gates parametrizados) fica PRESERVADO DESLIGADO (§10) — ver bloco apos a licao #87.
@@ -1531,7 +1540,7 @@ Calibracao pos-Passes A-I.7. **MARCO I.7:** Transicao blob→dendritico confirma
 
     **Terceira armadilha de renderizacao da serie (apos #49 em `ρ_b`):** com `cs` maximo em 14.3, o viewer normaliza a cor por esse valor e a zona de expansao (`cs` 0.08–0.3) renderiza como **zero absoluto** — reportado como "cs esta zero na expansao". Medido, o `cs` do Y3 e **2–4× o do C4 em todo raio**. O painel de `cs` do [tools/plot_fields.py](tools/plot_fields.py) passou a LOG (piso 1e-3) pela mesma razao que o de `ρ_b`; em escala linear o halo radial do C4 — que e o quadro do painel (b) de Trinschek — era invisivel.
 
-57. **A colonia visivel e 94% FILLER — e o `ρ_b` congelado dele alimenta o gate da propria Marangoni** (censo do baseline C4 em t=50, 2026-08-13): medido sobre `runs/C4/main_output/main_03129.hdf5`, separando `is_filler` e `is_wake`. Nao sao duas populacoes, sao **tres**, e o comportamento delas diverge do que a documentacao supunha.
+57. **A colonia visivel e 94% FILLER — e o `ρ_b` congelado dele alimenta o gate da propria Marangoni** (censo do baseline C4 em t=50, 2026-08-13): medido sobre `runs/swarm/C4/main_output/main_03129.hdf5`, separando `is_filler` e `is_wake`. Nao sao duas populacoes, sao **tres**, e o comportamento delas diverge do que a documentacao supunha.
 
     | | viva (`is_filler=0`) | fantasma INSERT (`is_wake=0`) | fantasma WAKE (`is_wake=1`) |
     |---|---|---|---|
@@ -1553,7 +1562,7 @@ Calibracao pos-Passes A-I.7. **MARCO I.7:** Transicao blob→dendritico confirma
 
     **⚠ ENQUADRAMENTO CORRIGIDO PELA LICAO #58.** Esta licao trata o filler como o problema ("fantasma"). Medido no envelope da colonia, ele e 23% e e **fase passiva legitima** ([T2]); o poluente e outra populacao — o **agar invadido**, 72.5%. Ler #58 antes de agir sobre esta.
 
-58. **A colonia ENGOLE o meio em vez de incorpora-lo — 72.5% do corpo e agar invadido, e o filler nao era o problema** (2026-08-13, medido em `runs/C4` e `runs/K3`): a licao #57 chamou o filler de fantasma poluente. Errado. Contando dentro do **envelope** (a <1.5h do corpo `rho_b>0.1`, NAO no disco `R99`, que inclui as baias e infla a area 3.3×), sao **quatro** populacoes:
+58. **A colonia ENGOLE o meio em vez de incorpora-lo — 72.5% do corpo e agar invadido, e o filler nao era o problema** (2026-08-13, medido em `runs/swarm/C4` e `runs/K3`): a licao #57 chamou o filler de fantasma poluente. Errado. Contando dentro do **envelope** (a <1.5h do corpo `rho_b>0.1`, NAO no disco `R99`, que inclui as baias e infla a area 3.3×), sao **quatro** populacoes:
 
     | populacao | definicao | C4 (t=50) | K3 (t=50) |
     |---|---|---:|---:|
@@ -1602,10 +1611,10 @@ Calibracao pos-Passes A-I.7. **MARCO I.7:** Transicao blob→dendritico confirma
 > que se aprendeu. Nada de D1/D2/D3a/D4 esta ativo: sem `phi_m`, sem `phi_s`, filler volta
 > a herdar `rho_b`, `k_src=0`, producao Hill com `sigma=10`, e `d_am = rate*m` (o bug da
 > licao #50 volta a existir — inofensivo em `r_growth=0.02`, que e por que o C4 funciona).
-> Runs preservados em `runs/D1`, `D2`, `D3a`, `D4`, `D4_t100`, `D3b_REPROVADO`,
+> Runs preservados em `runs/swarm/D1`, `D2`, `D3a`, `D4`, `D4_t100`, `D3b_REPROVADO`,
 > `D5_REPROVADO`, `D6`. Proximo passo: **Frente 1 (inoculo)**.
 
-60. **`phi_m` (maturidade) separada de `rho_b` (densidade) — o pin migra de campo e a colonia nao muda em NADA** (Passo D1, 2026-08-13, `runs/D1`, REVERTIDO em 2026-08-14): primeira frente do defeito **D** de [docs/ANALISE_TRES_FRENTES.md](docs/ANALISE_TRES_FRENTES.md) §S3.2. `rho_b` acumulava tres papeis incompativeis — densidade de biomassa viva, chave da EOS e criterio do pin —, e por causa do terceiro qualquer aumento de `r_growth` congelava a colonia (armadilha K.17, medida em K.21). Introduzido `dphi_m/dt = k_m·rho_b·(1−phi_m)` ([equations.py](src/equations.py) `BiomassMaturation`, gate `is_filler<0.5`), com o pin lendo `phi_m>=0.8` ([scheme.py:70](src/scheme.py#L70)) e o teto artificial `rho_b<0.8` do `BiomassGrowth` trocado por `rho_b<rho_max` (S3.1).
+60. **`phi_m` (maturidade) separada de `rho_b` (densidade) — o pin migra de campo e a colonia nao muda em NADA** (Passo D1, 2026-08-13, `runs/swarm/D1`, REVERTIDO em 2026-08-14): primeira frente do defeito **D** de [docs/ANALISE_TRES_FRENTES.md](docs/ANALISE_TRES_FRENTES.md) §S3.2. `rho_b` acumulava tres papeis incompativeis — densidade de biomassa viva, chave da EOS e criterio do pin —, e por causa do terceiro qualquer aumento de `r_growth` congelava a colonia (armadilha K.17, medida em K.21). Introduzido `dphi_m/dt = k_m·rho_b·(1−phi_m)` ([equations.py](src/equations.py) `BiomassMaturation`, gate `is_filler<0.5`), com o pin lendo `phi_m>=0.8` ([scheme.py:70](src/scheme.py#L70)) e o teto artificial `rho_b<0.8` do `BiomassGrowth` trocado por `rho_b<rho_max` (S3.1).
 
     **Resultado: BIT-IDENTICO ao C4** — log em 17 linhas × 40 colunas e **estado final particula a particula** (70 982 particulas, 12 campos, `max|dif| = 0`). `n_pinned` cravado em 43 do inicio ao fim. E o campo novo esta vivo: a mais densa (`rho_b=0.798`) chegou a `phi_m=0.6981` contra `1−e^{−0.03·0.798·50}=0.6979` analitico.
 
@@ -1615,7 +1624,7 @@ Calibracao pos-Passes A-I.7. **MARCO I.7:** Transicao blob→dendritico confirma
 
     **Regra:** ao migrar um criterio (pin, gate, trigger) de um campo para outro, inicialize o campo novo de modo que o conjunto selecionado em t=0 seja EXATAMENTE o antigo. Isso transforma o refactor numa hipotese falsificavel ("deve reproduzir bit-a-bit") em vez de uma mudanca de fisica disfarcada.
 
-61. **`phi_s = max(rho_b, phi_m)` separa consumidor MECANICO de BIOLOGICO — e zerar `rho_b` do filler sem isso dispara quatro efeitos colaterais silenciosos, um deles ja reprovado** (Passo D2, 2026-08-13, `runs/D2`, MANTIDO): segunda frente do defeito D, atacando a lição #57 (a colonia visivel e 94% filler). O filler passa a nascer com `rho_b=0` e `phi_m = max(rho_b, phi_m)` da mae.
+61. **`phi_s = max(rho_b, phi_m)` separa consumidor MECANICO de BIOLOGICO — e zerar `rho_b` do filler sem isso dispara quatro efeitos colaterais silenciosos, um deles ja reprovado** (Passo D2, 2026-08-13, `runs/swarm/D2`, MANTIDO): segunda frente do defeito D, atacando a lição #57 (a colonia visivel e 94% filler). O filler passa a nascer com `rho_b=0` e `phi_m = max(rho_b, phi_m)` da mae.
 
     **A troca ingenua e catastrofica:** fazer a EOS ler `phi_m` no lugar de `rho_b` **zera a pressao da colonia em t=0**, porque so as 43 do nucleo tem `phi_m>0` — a colonia inteira viraria poeira sem pressao, o mesmo `p=0` do agar da lição #58/#40.
 
@@ -1651,7 +1660,7 @@ Calibracao pos-Passes A-I.7. **MARCO I.7:** Transicao blob→dendritico confirma
 
     **Regra (repetida pela quinta vez):** ao definir metrica, decidir explicitamente a POPULACAO antes da estatistica — e reavaliar TODA metrica existente quando uma mudanca altera quem compoe a populacao. Um percentil sobre populacao majoritariamente nula mede quantos nulos existem, nao a grandeza.
 
-63. **D3a APROVADO / D3b REPROVADO — o nutriente destrava o pin quimico, mas `r_growth=0.15` mata a colonia por massa exponencial E por achatamento do gradiente** (2026-08-13, `runs/D3a` e `runs/D3b_REPROVADO`): terceira frente do defeito D, dividida em dois runs para preservar atribuicao (§2.3).
+63. **D3a APROVADO / D3b REPROVADO — o nutriente destrava o pin quimico, mas `r_growth=0.15` mata a colonia por massa exponencial E por achatamento do gradiente** (2026-08-13, `runs/swarm/D3a` e `runs/swarm/_logs_reprovados/D3b_REPROVADO`): terceira frente do defeito D, dividida em dois runs para preservar atribuicao (§2.3).
 
     **D3a (`k_src` 0.0 → 0.3) — APROVADO.** Alvo: o pin quimico `c_n<0.6`, que congelava 152 das 168 vivas (lição #57). Medido em t=50 contra o D2: `min_c_n` 0.0000 → **0.3751** (nunca esgota, igual ao 0.376 do N1), `c_n_bio_arms` 0.552 → **0.786** (pico 0.93, bem acima do limiar), `biomass_total` 0.357 → 0.396, `mean_v` **2×**, `R99` 4.63 → 4.80, modo azimutal m=16 preservado, `a_pressure` 2.58, sem runaway de massa. **`a_mar` na FRENTE 5.955 → 7.334 (+23%)** — exatamente o +23% que o N1 mediu ao ligar `k_src` sobre o C4, reproduzido agora sobre a base D1+D2.
 
@@ -1667,7 +1676,7 @@ Calibracao pos-Passes A-I.7. **MARCO I.7:** Transicao blob→dendritico confirma
 
     **Corolario positivo (o D1 pagou):** 47 particulas vivas cruzaram `rho_b>0.8` pela primeira vez no projeto; sob o pin antigo estariam congeladas (armadilha K.17). Vivas pinadas continuaram **exatamente 43**. E `n_pinned` "subiu" 43→59 apenas porque a metrica conta filler, que herda `phi_m` de maes agora saturadas — **sexta ocorrencia** da armadilha de composicao (cf. #46, #53, #56, #57, #62): a metrica precisa filtrar `is_filler`.
 
-64. **S3.3 do documento esta REFUTADO: o teto de `cs` E o mecanismo do achatamento, e a forma da lei de producao nao muda isso** (D4 e D5, 2026-08-14, `runs/D4` e `runs/D5_REPROVADO`): o D3b tinha reprovado por duas causas (lição #63) e restava saber se eram execucao incompleta ou prescricao errada. As duas foram corrigidas e o alvo re-testado.
+64. **S3.3 do documento esta REFUTADO: o teto de `cs` E o mecanismo do achatamento, e a forma da lei de producao nao muda isso** (D4 e D5, 2026-08-14, `runs/swarm/D4` e `runs/swarm/_logs_reprovados/D5_REPROVADO`): o D3b tinha reprovado por duas causas (lição #63) e restava saber se eram execucao incompleta ou prescricao errada. As duas foram corrigidas e o alvo re-testado.
 
     **D4 (correcao de massa + S3.3-(ii), em `r_growth=0.02`) — APROVADO.** `d_am = m·d_a_rho_b/rho_max`; `qs` Hill trocado por `qs = rho_b` com o teto `(1−cs/cs_max)` MANTIDO; `sigma` 10 → 18, medido para preservar a producao na FRENTE (`media(qs)/media(rho_b)` da 18.0 em `r>0.75·R99`, 16.5 sobre todas as portadoras). Resultado: `a_mar` na frente **7.33 → 7.33 (identico)**, `contrast_cs` 11.1 → **14.7**, `frac(cs>0.45)` 44.3% → 39.7%, contraste radial de `cs` 0.167 → **0.192**, `max_cs` 0.4966 (teto segurou — sem a explosao de faixa dinamica do Y3, lição #56). Custo: `R99` 4.80 → 4.06, `mean_v` −35%, `biomass_total` 0.396 → 0.322.
 
@@ -1683,7 +1692,7 @@ Calibracao pos-Passes A-I.7. **MARCO I.7:** Transicao blob→dendritico confirma
 
     **O que sobrevive:** a correcao de massa (consistencia, e foi ela que permitiu o D5 sequer completar) e os passos D1/D2/D3a. A troca do Hill por linear teve seu proposito refutado; mantida ou nao, e decisao separada — o D4 e melhor em contraste de `cs` e numero de dedos, o D3a e melhor em raio e velocidade.
 
-65. **Frente 2 (S2.1, deposicao ao longo do rastro) REPROVADA — troca vazio por braço grosso, confirmando a licao #45; e o achado util e outro** (B1, 2026-08-14, `runs/B1_REPROVADO`, REVERTIDO): o wake depositava um cluster so na posicao ANTIGA (`x_dep`), enquanto a ponta percorre 2.0-2.4 dx tipico (10 dx no p90) entre chamadas. S2.1 passou a depositar `n = round(d/dx)` pontos ao longo do segmento `x_dep → x` (`WAKE_SEG_MAX=6`).
+65. **Frente 2 (S2.1, deposicao ao longo do rastro) REPROVADA — troca vazio por braço grosso, confirmando a licao #45; e o achado util e outro** (B1, 2026-08-14, `runs/swarm/_logs_reprovados/B1_REPROVADO`, REVERTIDO): o wake depositava um cluster so na posicao ANTIGA (`x_dep`), enquanto a ponta percorre 2.0-2.4 dx tipico (10 dx no p90) entre chamadas. S2.1 passou a depositar `n = round(d/dx)` pontos ao longo do segmento `x_dep → x` (`WAKE_SEG_MAX=6`).
 
     **Os tres criterios pre-registrados falharam:** pico de `void_07` 26.4% → **24.7%** (alvo <15%); razao fantasma/viva nos braços 91.8 → **122.4** (alvo <50, PIOROU); e **AR 10.48 → 7.83 (−25%)**, com os frames mostrando braços nitidamente mais grossos e pontas bulbosas. `R99` 4.62 → 4.48, dedos 19 → 18.
 
@@ -1702,7 +1711,7 @@ Calibracao pos-Passes A-I.7. **MARCO I.7:** Transicao blob→dendritico confirma
     que muda e o TAMANHO do defeito de agar e, com ele, a prioridade dele contra os braços
     ocos (23% de material dentro do proprio contorno). Ler #67 antes de agir sobre esta.
 
-    **A colonia ENGOLE o agar em vez de desloca-lo: 97% da area dela e agar morto em t=50 — e os quatro mecanismos que deveriam corrigir isso sao estruturalmente incapazes** (diagnostico da desjuncao nucleo-braços, 2026-08-25, medido em `runs/C4`): a usuaria apontou a desjuncao no **painel 5** (`rho_b` LOG) a partir do frame 003 (t=12.9). A investigacao mediu quatro coisas, e as tres ultimas sao o motivo de nove tentativas de preenchimento (series J, K3, N2, P, V, W) nunca terem tocado o problema.
+    **A colonia ENGOLE o agar em vez de desloca-lo: 97% da area dela e agar morto em t=50 — e os quatro mecanismos que deveriam corrigir isso sao estruturalmente incapazes** (diagnostico da desjuncao nucleo-braços, 2026-08-25, medido em `runs/swarm/C4`): a usuaria apontou a desjuncao no **painel 5** (`rho_b` LOG) a partir do frame 003 (t=12.9). A investigacao mediu quatro coisas, e as tres ultimas sao o motivo de nove tentativas de preenchimento (series J, K3, N2, P, V, W) nunca terem tocado o problema.
 
     **(A) Dois regimes opostos, separados em t≈21.5.** Contando particulas com `rho_b = 0` exato e `is_filler=0` DENTRO do `R99`:
 
@@ -1745,7 +1754,7 @@ Calibracao pos-Passes A-I.7. **MARCO I.7:** Transicao blob→dendritico confirma
     **Erro de leitura a nao repetir:** dois paineis diferentes renderizam vazio e agar da mesma cor escura. Foi preciso plotar a CLASSE explicitamente (magenta=agar, verde=viva, amarelo=limbo, vermelho=filler, preto=vazio) para desambiguar — e o resultado inverteu a conclusao duas vezes. **Ao diagnosticar "buraco" num painel, plote a classe da particula, nunca so o campo** — ferramenta em [tools/plot_classes.py](tools/plot_classes.py), que tambem imprime a tabela de agar engolido. Terceira variante da mesma armadilha depois de #49 (escala linear escondendo `rho_b`) e #56 (faixa dinamica escondendo `cs`).
 
 
-67. **Serie M (M1-M6) — converter agar engolido em MATRIZ PASSIVA: tres bloqueios independentes, quatro metricas minhas que mediam a coisa errada, e uma LEI (item L) que fecha o topico 2** (2026-08-25/28, `runs/M1_matriz`, `M2_matriz_semconsumo`, `M3_matriz_ativa`, `M4_wake_matriz`, `M5_seed16`, `M6_env3`): sequencia motivada pela licao #66. Cada passo isolou um bloqueio e produziu a recuperacao prevista. Mecanismo: agar (`is_filler=0`, `rho_b<1e-12`) a menos de `1.5h` do corpo vira `rho_b=0.3, is_filler=1, is_matrix=1, is_wake=1` (movel, nao pinada — licao #31). Marcador `is_conv` impede que a convertida sirva de semente, senao a conversao vira flood-fill para o agar aberto.
+67. **Serie M (M1-M6) — converter agar engolido em MATRIZ PASSIVA: tres bloqueios independentes, quatro metricas minhas que mediam a coisa errada, e uma LEI (item L) que fecha o topico 2** (2026-08-25/28, `runs/swarm/M1_matriz`, `M2_matriz_semconsumo`, `M3_matriz_ativa`, `M4_wake_matriz`, `M5_seed16`, `M6_env3`): sequencia motivada pela licao #66. Cada passo isolou um bloqueio e produziu a recuperacao prevista. Mecanismo: agar (`is_filler=0`, `rho_b<1e-12`) a menos de `1.5h` do corpo vira `rho_b=0.3, is_filler=1, is_matrix=1, is_wake=1` (movel, nao pinada — licao #31). Marcador `is_conv` impede que a convertida sirva de semente, senao a conversao vira flood-fill para o agar aberto.
 
     | | mudanca | %agar (disco) | `R99` | `mean_v` | AR / dedos |
     |---|---|---:|---:|---:|---:|
@@ -1778,15 +1787,15 @@ Calibracao pos-Passes A-I.7. **MARCO I.7:** Transicao blob→dendritico confirma
 
     ---
 
-    **(I) M4 — dar fisica de matriz ao filler do wake RESTAURA o motor ACIMA do baseline** (`runs/M4_wake_matriz`, 2026-08-26): as 2655 particulas de filler do wake tinham `rho_b` mediano **0.300, identico ao da matriz**, e estavam fora da Marangoni e da difusao de `cs` apenas pela flag — sendo que elas SAO o material dos braços. Fix: `is_matrix` passa a significar "fisica de fase passiva" e vale para agar convertido E filler do wake; flag separada `is_conv` marca so o agar convertido e serve unicamente a regra de semente (senao a conversao vira flood-fill). Resultado: `a_mar` 8.44 → **12.14, acima dos 11.35 do C4**; `mean_v` **1.27e-3 = 2.6× o C4**; `R99` 3.73 → 4.25; agar cercado **181, o menor de todo o projeto** (C4: 532). Custo: ocupacao dentro do dedo 0.66 → 0.40 — ao sentir Marangoni, o filler e puxado para fora e os braços se espalham em vez de consolidar.
+    **(I) M4 — dar fisica de matriz ao filler do wake RESTAURA o motor ACIMA do baseline** (`runs/swarm/M4_wake_matriz`, 2026-08-26): as 2655 particulas de filler do wake tinham `rho_b` mediano **0.300, identico ao da matriz**, e estavam fora da Marangoni e da difusao de `cs` apenas pela flag — sendo que elas SAO o material dos braços. Fix: `is_matrix` passa a significar "fisica de fase passiva" e vale para agar convertido E filler do wake; flag separada `is_conv` marca so o agar convertido e serve unicamente a regra de semente (senao a conversao vira flood-fill). Resultado: `a_mar` 8.44 → **12.14, acima dos 11.35 do C4**; `mean_v` **1.27e-3 = 2.6× o C4**; `R99` 3.73 → 4.25; agar cercado **181, o menor de todo o projeto** (C4: 532). Custo: ocupacao dentro do dedo 0.66 → 0.40 — ao sentir Marangoni, o filler e puxado para fora e os braços se espalham em vez de consolidar.
 
     **Bug encontrado no caminho:** o dict do `insert` ficou sem `is_conv` (e com indentacao errada), o que faria a propriedade herdar lixo do realloc. E a mesma classe do bug de `is_filler` no Pass N (licao do §12 v2.5). **Toda propriedade persistente nova tem que ser setada explicitamente nos TRES dicts de insercao — Pass N, insert e wake.**
 
-    **(J) M5 — a contagem de dedos NAO e travada pela semente** (`runs/M5_seed16`): trocar `cos(8θ)` por `cos(16θ)` (modo unificado em `rho_b` e `noise`, licao I.1/K.12) deu **11 dedos com modos dominantes m=10,11,12** — nao 16. E o M4, semeado em 8, tem modo dominante em **m=3**. O sistema escolhe o proprio comprimento de onda; a semente desloca, nao fixa. Refuta a hipotese de que a colonia preenchida so amplificava o modo semeado.
+    **(J) M5 — a contagem de dedos NAO e travada pela semente** (`runs/swarm/M5_seed16`): trocar `cos(8θ)` por `cos(16θ)` (modo unificado em `rho_b` e `noise`, licao I.1/K.12) deu **11 dedos com modos dominantes m=10,11,12** — nao 16. E o M4, semeado em 8, tem modo dominante em **m=3**. O sistema escolhe o proprio comprimento de onda; a semente desloca, nao fixa. Refuta a hipotese de que a colonia preenchida so amplificava o modo semeado.
 
     **Armadilha de metrica no M5 (oitava ocorrencia):** `R99`=4.68 parecia "maior que o C4" (4.62). Mas `R99/R90` vale **1.64** no M5 contra 1.23 no C4 — o percentil 99 estava sendo fixado por poucas espiculas. Pelo corpo real o M5 para em `R90`=2.86 contra **3.75** do C4. **Nunca reportar `R99` isolado: cruzar com `R50/R75/R90` para detectar espicula.**
 
-    **(K) M6 — aumentar o alcance da conversao (`MATRIX_ENV` 1.5 → 3.0) vai para o EXTREMO, nao quebra o trade-off** (`runs/M6_env3`): converteu quase todo o agar (**403 restantes contra 14 604**, 5.6% da area) e a colonia virou **disco compacto: 1 dedo, AR 0.13, ocupacao 2.05** (acima de 1 = comprimida), `a_pressure` 3.62.
+    **(K) M6 — aumentar o alcance da conversao (`MATRIX_ENV` 1.5 → 3.0) vai para o EXTREMO, nao quebra o trade-off** (`runs/swarm/M6_env3`): converteu quase todo o agar (**403 restantes contra 14 604**, 5.6% da area) e a colonia virou **disco compacto: 1 dedo, AR 0.13, ocupacao 2.05** (acima de 1 = comprimida), `a_pressure` 3.62.
 
     **(L) A LEI DA SERIE M — com orcamento de material fixo, morfologia dendritica e colonia preenchida sao os dois extremos de UM eixo:**
 
@@ -1803,7 +1812,7 @@ Calibracao pos-Passes A-I.7. **MARCO I.7:** Transicao blob→dendritico confirma
     **Consequencia para o roadmap:** a referencia pede AR ≥ 5 **com** dedos solidos, o que pela lei acima exige **mais material por unidade de comprimento de frente** — crescimento de biomassa, nao redistribuicao. E o crescimento esta bloqueado pelo teto de `cs` (licao #64: `r_growth` > 0.02 leva `frac(cs>0.45)` a ~90% e achata `∇cs`, com Hill ou com producao linear, com ou sem correcao de massa). **O topico 2 e a morfologia de referencia convergem no mesmo bloqueio, que e anterior aos dois: `cs_max`.** Enquanto ele existir, encher e afinar sao mutuamente exclusivos.
 
     **(M) O M4 REPROVA NO §11 — e a comparacao visual inverte o veredito das metricas** (2026-08-28,
-    `tools/compare_frames.py --t 50 runs/C4 runs/M4_wake_matriz`, escalas de cor FIXAS): lado a lado
+    `tools/compare_frames.py --t 50 runs/swarm/C4 runs/swarm/M4_wake_matriz`, escalas de cor FIXAS): lado a lado
     com as duas referencias, o C4 mostra ~20 braços radiais finos — a classe **(b) Fingering** do
     Trinschek e o padrao dos paineis A/B/C da `reference.jpg` — enquanto o M4 e um blob com 6-7
     lobulos curtos, que na taxonomia do proprio Trinschek e **(a) Modulated / (c) Circular**, os
@@ -1818,7 +1827,7 @@ Calibracao pos-Passes A-I.7. **MARCO I.7:** Transicao blob→dendritico confirma
     interior, empurrando matriz com as celulas presas atras.
 
     **(N) A SOLUCAO DA DESJUNCAO QUE NAO MEXE NA MORFOLOGIA JA EXISTIA — o piso de coesao do filler**
-    (`runs/F_floor`, `FILLER_RHO_B_FLOOR = 0.4`): rodado no inicio da investigacao e arquivado sem
+    (`runs/swarm/F_floor`, `FILLER_RHO_B_FLOOR = 0.4`): rodado no inicio da investigacao e arquivado sem
     que eu medisse a morfologia dele. Medido depois:
 
     | | `R99` | dedos | **AR** | ocup no dedo | `fade` na junção | coesao×ocup | `contrast_cs` |
@@ -1844,7 +1853,7 @@ Calibracao pos-Passes A-I.7. **MARCO I.7:** Transicao blob→dendritico confirma
 
     **PONTO DE OPERACAO DA SERIE: M4 — REPROVADO pelo item (M).** Motor acima do baseline (`a_mar` 12.14 vs 11.35, `mean_v` 2.6×), agar cercado 181 vs 532, ocupacao no dedo 0.40 vs 0.23, junção continua, massa 209 e `a_pressure` 3.02 no orcamento. Perde em AR (2.28 vs 5.92) e dedos (7 vs 20). **O C4 continua sendo o baseline do projeto** — a adocao do M4 depende de decidir se solidez e continuidade valem mais que AR, e isso e decisao da usuaria, nao minha.
 68. **METRICA CIRCULAR — a "ponte de conectividade" otimizou a regua que eu mesmo escolhi, e o
-    diagnostico da desjuncao estava errado por um fator de 27×** (2026-08-28, `runs/PONTE_REPROVADO`,
+    diagnostico da desjuncao estava errado por um fator de 27×** (2026-08-28, `runs/swarm/_logs_reprovados/PONTE_REPROVADO`,
     REVERTIDO): medi que o corpo do C4 (`rho_b>0.1`) parte em 26 componentes a partir de t=17.8 e que
     ligar todos os bracos ao nucleo custava **31 particulas** (mediana 2 por braco). Implementei
     recrutamento por caminho minimo (Dijkstra, custo 0 para no que ja e corpo, 1 para recrutar) e o
@@ -1889,7 +1898,7 @@ Calibracao pos-Passes A-I.7. **MARCO I.7:** Transicao blob→dendritico confirma
 
 69. **O ALVO QUANTITATIVO DA DESJUNCAO — ~10 000 portadoras contiguas no envelope estrelado — e nenhuma
     das ~15 rodadas do projeto chegou perto com a morfologia preservada** (2026-08-28, medido em
-    `runs/C4`, `H1_hillK03`, `Y3`, `M4_wake_matriz`, `N2_t50`, `J7`):
+    `runs/swarm/C4`, `H1_hillK03`, `Y3`, `M4_wake_matriz`, `N2_t50`, `J7`):
 
     **(A) A ARITMETICA QUE FECHA O ALVO.** Envelope da colonia (regiao a <1.5h de uma portadora) do C4
     em t=50: **A = 27.62**. Portadoras (`rho_b>=0.1`): **2937**, das quais apenas **167 sao VIVAS** (o
@@ -1939,7 +1948,7 @@ Calibracao pos-Passes A-I.7. **MARCO I.7:** Transicao blob→dendritico confirma
     preenchimento de vaos e qualquer recrutamento que nao multiplique a populacao por ~3.4×.
 
 70. **Hill `K` = 0.3 — o unico lever do sistema de `cs` nunca tocado no projeto: entrega contraste e
-    motor, e nao toca na desjuncao** (H1, 2026-08-28, `runs/H1_hillK03`, alavanca unica sobre o C4):
+    motor, e nao toca na desjuncao** (H1, 2026-08-28, `runs/swarm/H1_hillK03`, alavanca unica sobre o C4):
     `qs = rho_b²/(rho_b² + K²)` estava com `K = 0.1` desde o inicio, o que poe o joelho do quorum
     sensing em **10% da densidade de saturacao** — `qs(0.1) = 0.5`, meia producao com um decimo da
     biomassa. E o que torna a banda sub-quorum quimicamente barulhenta e o que afogou as rotas de
@@ -1969,7 +1978,7 @@ Calibracao pos-Passes A-I.7. **MARCO I.7:** Transicao blob→dendritico confirma
 
 71. **Serie E — `k_src` destrava o gate da colonizacao e o Hill `K` INVERTE de sinal quando o
     nutriente e sustentado; melhor AR do projeto (7.61 com 24 dedos)** (E1-E5, 2026-08-30/31,
-    `runs/E1_ksrc` … `runs/E5_hillK025`): a serie partiu do C4 acrescentando a fonte de nutriente
+    `runs/E1_ksrc` … `runs/swarm/E5_hillK025`): a serie partiu do C4 acrescentando a fonte de nutriente
     validada no N1 (`k_src=0.3`, [T2] Srinivasan — swarming e regime *nutrient-rich*) e mediu o que
     isso abre.
 
@@ -2002,7 +2011,7 @@ Calibracao pos-Passes A-I.7. **MARCO I.7:** Transicao blob→dendritico confirma
 
 72. **O piso de `rho_b` na juncao: a alavanca e CONSTITUTIVA, mas o criterio de QUEM recebe define
     tudo — proximidade produz bainha radial, enclausuramento nao, e o raio tem de escalar com a
-    colonia** (2026-08-31, `runs/E5_hillK025` como base): pedido da usuaria — as particulas de agar
+    colonia** (2026-08-31, `runs/swarm/E5_hillK025` como base): pedido da usuaria — as particulas de agar
     entre nucleo e dendritos ja existem, basta trocar o `rho_b` delas para que a expansao leia como
     conexa. Valor escolhido `RHO_B_FLOOR = 0.1` EXATO, porque o smoothstep da `BiomassEOS` comeca em
     0.1: `fade(0.1) = 0.0000`, entao a particula conta como corpo em qualquer metrica e tem coesao e
@@ -2047,7 +2056,7 @@ Calibracao pos-Passes A-I.7. **MARCO I.7:** Transicao blob→dendritico confirma
     entre rotas que mudam quantas particulas compoem o corpo, reportar o tamanho ABSOLUTO do maior
     componente, nunca so a fracao.**
 
-    **(F) Gatear por VALOR atinge quem nao devia; gatear por FLAG nao** (E7, `runs/E7_piso_inerte`):
+    **(F) Gatear por VALOR atinge quem nao devia; gatear por FLAG nao** (E7, `runs/swarm/E7_piso_inerte`):
     para isentar o piso, gateei `BiomassGrowth` e `BiomassGradient` por `rho_b > 0.01`. O limiar nao
     atinge so o piso — congela as **79** particulas vivas legitimas da banda de traco do E5. O run
     ficou MENOS inerte que o sem gate (desvio de biomassa 3.29% → 6.84%). Trocado por isencao via
@@ -2102,7 +2111,7 @@ Calibracao pos-Passes A-I.7. **MARCO I.7:** Transicao blob→dendritico confirma
     tem uma escala em que ele confunde "dentro" com "entre", e nao ha valor que separe os dois.
 
     **(J) O TOPOLOGICO NO SOLVER RELOCA OS BURACOS EM VEZ DE FECHA-LOS** (E10, 2026-09-01,
-    `runs/E10_topo`): rodado com `FLOOR_FECHA=3.5`, entregou o melhor de toda a serie em buraco
+    `runs/swarm/E10_topo`): rodado com `FLOOR_FECHA=3.5`, entregou o melhor de toda a serie em buraco
     (650 -> 369 dx²), agar engolido (1001 -> **216**, o menor do projeto), dedos (24 -> **26**) e
     motor (`a_mar` **16.00**, o maior ja medido; `contrast_cs` 21.15). **E a usuaria reprovou na
     leitura visual**, corretamente. Comparando os buracos ponto a ponto na mesma grade: apenas
@@ -2149,7 +2158,7 @@ Calibracao pos-Passes A-I.7. **MARCO I.7:** Transicao blob→dendritico confirma
 
 
 73. **A COLONIA NAO EXPANDE — ELA E CONSTRUIDA. Diagnostico do mecanismo por tras do C5**
-    (2026-09-01, medido em `runs/E5_hillK025`): dos 1343 pontos de material nos bracos (`r>2`),
+    (2026-09-01, medido em `runs/swarm/E5_hillK025`): dos 1343 pontos de material nos bracos (`r>2`),
     **1312 (98%) foram INSERIDOS ali** — apenas 31 sao particulas originais, e essas viajaram 52 dx
     de mediana partindo de `r`=0.34. Os tres mecanismos que levam material para fora:
 
@@ -2198,7 +2207,7 @@ Calibracao pos-Passes A-I.7. **MARCO I.7:** Transicao blob→dendritico confirma
     **Rota B — dar pressao ao agar: NAO TESTADA NA FORMA CERTA.** A alavanca e `fade_rep > 0` com
     `fade_att = 0` abaixo de `rho_b=0.1` — ramo **so repulsivo**, que resiste a compressao sem
     puxar a colonia para dentro. A licao #66-C mediu que dar coesao (ramo atrativo) a regiao
-    sub-densa CONTRAI (P3: `R99` 4.62 -> 1.93), mas isso e o ramo errado. O `runs/A2b_agarfade`
+    sub-densa CONTRAI (P3: `R99` 4.62 -> 1.93), mas isso e o ramo errado. O `runs/swarm/_logs_reprovados/A2b_agarfade`
     testou `agar_fade=1.0` com os DOIS ramos e contra criterios anteriores ao C5.
 
     **Rota C — wake continuo: A MAIS BARATA E ATACA O C5 DIRETAMENTE.** Medido no E5: o material
@@ -2215,7 +2224,7 @@ Calibracao pos-Passes A-I.7. **MARCO I.7:** Transicao blob→dendritico confirma
 
     **RESULTADO (2026-09-02): C e B REPROVADAS; as tres rotas convergem em `cs_max`.**
 
-    **Rota C** (`runs/C1_wakeseg`, `C2_freq50`, `C3_freq25`): deposicao dirigida ao longo do
+    **Rota C** (`runs/swarm/C1_wakeseg`, `C2_freq50`, `C3_freq25`): deposicao dirigida ao longo do
     rastro. `C5b` medio (t 35-50) vai de **12.1 para 19.4** — cerca de UM desvio — contra o
     alvo de 70. E `WAKE_FREQ` **nao tem efeito atribuivel** entre 25 e 100. **Erro de metodo
     a nao repetir:** li uma tendencia (cadeia do wake 99 -> 215 -> 467) e depois uma inversao
@@ -2224,13 +2233,13 @@ Calibracao pos-Passes A-I.7. **MARCO I.7:** Transicao blob→dendritico confirma
     caoticamente assim que os parametros mudam. C5 passou a ser reportado como media±desvio
     sobre t ∈ [35,50] (§2.2 e `tools/plot_trajetoria.py`).
 
-    **Rota B** (`runs/B1_agarfade`, `B2_agar_press_drag`): o mecanismo JA existia (`agar_fade`
+    **Rota B** (`runs/swarm/B1_agarfade`, `B2_agar_press_drag`): o mecanismo JA existia (`agar_fade`
     = ramo so repulsivo) e os dois testes anteriores eram invalidos — o A2 rodou com o bug de
     `Group` da EOS, o A2b mediu ocupacao em t~29. **B1** engajou plenamente (`|p|` do agar
     0 -> 0.121 em 21268 particulas, `rho/rho0` max 5.86 -> 3.63) e nao adiantou: `C5b` 9.4%
     contra 11.3% do baseline. **B2** (pressao + `AGAR_DRAG_RATIO`=0.1) move o agar 26× mais,
     mas ele e arrastado JUNTO em vez de sair da frente — AR 7.61 -> **3.13**, dedos 24 -> 15,
-    `a_mar` 12.31 -> **4.02**, `C5b` 2.6%. E o `runs/A1` reproduzido, agora com pressao.
+    `a_mar` 12.31 -> **4.02**, `C5b` 2.6%. E o `runs/swarm/A1` reproduzido, agora com pressao.
 
     **O ACHADO — a adveccao e INVARIANTE: 31 -> 31 -> 34.** Tres regimes radicalmente
     diferentes do meio (rigido sem pressao, rigido com pressao, movel com pressao) e o numero
@@ -2245,7 +2254,7 @@ Calibracao pos-Passes A-I.7. **MARCO I.7:** Transicao blob→dendritico confirma
     Plano completo, com criterios de aceitacao pre-registrados, em
     [docs/PLANO_C5_CONTINUIDADE.md](docs/PLANO_C5_CONTINUIDADE.md).
 
-    **TESTE E11 (`runs/E11_t100`, E5 sem piso ate t=100) — encher a juncao NAO resolve C5,
+    **TESTE E11 (`runs/swarm/E11_t100`, E5 sem piso ate t=100) — encher a juncao NAO resolve C5,
     e revelou um defeito novo.** A juncao fechou por crescimento proprio (`rho_b_p90` da
     banda 0.100 -> 0.194, portadoras 151 -> 444, biomassa +46%) e o corpo conexo cresceu
     **7x** (237 -> 1684 particulas) — **mas parou em r=1.92 com `R99`=5.31**: `C5a` foi de
@@ -2260,7 +2269,7 @@ Calibracao pos-Passes A-I.7. **MARCO I.7:** Transicao blob→dendritico confirma
 
 74. **P5 (`COL_CS_MIN` 0.30 -> 0.10) REPROVADO — elegibilidade nao e conversao: 91% do que
     ela acrescenta para no LIMBO; e o gate de `cs` tem de SUBIR, nao descer** (2026-09-02,
-    `runs/P5_csmin010_REPROVADO`): medido no P2 em t=50, a densidade linear de colonia cai
+    `runs/swarm/P5_csmin010_REPROVADO`): medido no P2 em t=50, a densidade linear de colonia cai
     **27x** do nucleo a ponta (10.7 -> 0.40 particulas por dx de perimetro) com um degrau de
     3.2x em r=2.0. No mesmo raio o gate da colonizacao fechava — de **83%** das candidatas
     elegiveis em r=1.5-2.0 para **14%** em 2.0-2.5, e **zero** alem de 2.5 — enquanto as
@@ -2330,7 +2339,7 @@ Calibracao pos-Passes A-I.7. **MARCO I.7:** Transicao blob→dendritico confirma
     ---
 
     **P6 (gate 0.30 -> 0.40, alvo 0.7*doador, `k_col` 0.20) REPROVADO NA DIRECAO OPOSTA — e
-    e ele que fecha a alavanca** (`runs/P6_base_REPROVADO`): aplicada a prescricao acima. O
+    e ele que fecha a alavanca** (`runs/swarm/P6_base_REPROVADO`): aplicada a prescricao acima. O
     `contrast_cs` foi a **14.2** (o melhor da serie; P2 9.5, P5 5.2) e **todo o resto
     desabou**:
 
@@ -2520,7 +2529,7 @@ Calibracao pos-Passes A-I.7. **MARCO I.7:** Transicao blob→dendritico confirma
     colada a ponta**, a ~15% de R99 atras dela.
 
     **(H) P7 (`WAKE_SPREAD`) REPROVADO — e fecha a hipotese de granularidade** (2026-09-03,
-    `runs/P7_wakespread`): o wake poe `1 + n_extra` particulas TODAS na posicao vagada, em
+    `runs/swarm/P7_wakespread`): o wake poe `1 + n_extra` particulas TODAS na posicao vagada, em
     anel. O P7 fez as MESMAS maes depositarem a MESMA contagem, distribuida ao longo do
     segmento `x_dep -> x`. **Realocacao, nao adicao** — o que o distingue do `WAKE_SEG`
     (licao #65, que ADICIONAVA e custou 25% de AR).
@@ -2542,7 +2551,7 @@ Calibracao pos-Passes A-I.7. **MARCO I.7:** Transicao blob→dendritico confirma
 
 76. **P8 (`r_growth` 0.02 -> 0.06) REPROVADO — TERCEIRA refutacao da mesma alavanca; e as
     metricas de continuidade e largura sao MAXIMIZADAS pelo modo de falha** (2026-09-03,
-    `runs/P8_rgrowth006`, alavanca unica sobre o P5): a hipotese era densificar os portadores
+    `runs/swarm/P8_rgrowth006`, alavanca unica sobre o P5): a hipotese era densificar os portadores
     que ja existem em vez de recrutar novos — medido no P5, os 527 vivos alem de 0.5*R99 tem
     `rho_b` p90 = **0.19**, contra 0.57 do P4 (que anda), e e a cauda densa que gera o
     CONTRASTE que abre o gate da Marangoni (licao #75). Densificar custa ~5x menos `cs` que
@@ -2584,7 +2593,7 @@ Calibracao pos-Passes A-I.7. **MARCO I.7:** Transicao blob→dendritico confirma
     degeneracao para disco.
 
 77. **P9 (crescimento gateado por `|v|`) REPROVADO — localizar NAO salva, e a raiz e que o
-    TETO torna `cs_inf` cego a quantidade de biomassa** (2026-09-03, `runs/P9_motilegrowth`):
+    TETO torna `cs_inf` cego a quantidade de biomassa** (2026-09-03, `runs/swarm/P9_motilegrowth`):
     depois do P8 eu atribui o colapso a UNIFORMIDADE do crescimento (licao #76) e testei a
     correcao obvia: manter `r_growth`=0.02 no corpo e reforcar so onde ha movimento,
 
@@ -2690,7 +2699,7 @@ Calibracao pos-Passes A-I.7. **MARCO I.7:** Transicao blob→dendritico confirma
     `[-7,7]`.
 
 79. **P13 (`AGAR_FADE`=1.0) REPROVADO — pressurizar o meio sub-quorum produz RESISTENCIA,
-    nao escoamento; e o custo cresce com a frente** (2026-09-04, `runs/P13_agarfade`,
+    nao escoamento; e o custo cresce com a frente** (2026-09-04, `runs/swarm/P13_agarfade`,
     alavanca unica sobre o P5, ligada desde t=0):
 
     **Motivacao (diagnostico da usuaria, confirmado por medicao).** Em [T1] Trinschek a
@@ -2957,7 +2966,7 @@ Calibracao pos-Passes A-I.7. **MARCO I.7:** Transicao blob→dendritico confirma
 82. **O pin mecanico `rho_b>=0.8` do §10 e REDUNDANTE — em 5 instantes do P16 ele nunca
     pinou UMA particula que o pin quimico ja nao pinasse; quem congela a colonia (e os
     bracos, ate r=4.67) e o `c_n < 0.6`, que o §7 documenta como 0.4** (medicao 2026-09-09,
-    `runs/P16_massgain3`):
+    `runs/swarm/P16_massgain3`):
 
     | corpo movel (`rho_b>=0.1` ou filler, `is_wake<0.5`) | t=9 | t=31 | t=60 | t=100 |
     |---|---:|---:|---:|---:|
@@ -2995,7 +3004,7 @@ Calibracao pos-Passes A-I.7. **MARCO I.7:** Transicao blob→dendritico confirma
 
 83. **P19 (os DOIS pins desligados + semente azimutal zero) REPROVADO — e a razao NAO e a
     que o §10 previa: nada fragmentou. A colonia PREENCHEU e a interface ALISOU** (2026-09-09,
-    `runs/P19_sempin_REPROVADO`, sobre a base P16):
+    `runs/swarm/P19_sempin_REPROVADO`, sobre a base P16):
 
     **Config:** pin mecanico `rho_b>=0.8` -> 99.0 e quimico `c_n<0.6` -> 0.3 (zero pinadas,
     licao #82), `SEED_AMP` 0.06 -> 0 e `NOISE_AMP` 0.6 -> 0 (nenhuma perturbacao azimutal
@@ -3067,7 +3076,7 @@ Calibracao pos-Passes A-I.7. **MARCO I.7:** Transicao blob→dendritico confirma
 
 84. **O LIMBO E TECIDO CONECTIVO E SUJEIRA AO MESMO TEMPO — e nenhum ajuste de `cs` separa os
     dois, porque a colonizacao recruta por campo local e o campo nao sabe se aquela posicao e
-    juncao ou baia** (P20/P21, 2026-09-10, `runs/P20_gate_errado`):
+    juncao ou baia** (P20/P21, 2026-09-10, `runs/swarm/P20_gate_errado`):
 
     **MOTIVACAO.** A licao #83 fechou a rota do pin. Restava o problema 1 — bracos sem
     espacamento — diagnosticado assim: o `cs` e azimutalmente uniforme (razao baia/dedo
@@ -3328,7 +3337,7 @@ Calibracao pos-Passes A-I.7. **MARCO I.7:** Transicao blob→dendritico confirma
 
 86. **AS VIVAS NAO ESTAO PRESAS — A FRENTE E QUE CORRE 3.6x A FRENTE DA PROLIFERACAO.
     Balanco de forcas reconstruido por particula, e um bug de colisao de nome no `cs`**
-    (2026-09-11, `runs/I3_wake009`, instrumento [tools/diag_forcas.py](tools/diag_forcas.py)):
+    (2026-09-11, `runs/swarm/I3_wake009`, instrumento [tools/diag_forcas.py](tools/diag_forcas.py)):
 
     **(A) A CONTAGEM JA FECHA; A POSICAO NAO.** O "12x" de descompasso (territorio aberto
     contra celulas geradas) foi medido no E11 — config E5, SEM mitose e ganho 1. No I3
@@ -3406,7 +3415,7 @@ Calibracao pos-Passes A-I.7. **MARCO I.7:** Transicao blob→dendritico confirma
     outro significado.**
 
     **MEDIDO NO P2 (2026-09-14, analise preditiva antes de corrigir): a correcao seria inerte.**
-    Viscosidade artificial reconstruida por particula em `runs/P2_t100` (t=51, 75 e 85), com
+    Viscosidade artificial reconstruida por particula em `runs/swarm/P2_t100` (t=51, 75 e 85), com
     `c_ij` = `cs` (como o solver faz) e com `c_ij` = `c0`:
 
     | populacao (t=75) | `cs` p50 | `c0/cs` | `\|a_av\|` atual | `\|a_av\|` com `c0` | `\|a_drag\|` | `\|a_mar\|` |
@@ -3432,7 +3441,7 @@ Calibracao pos-Passes A-I.7. **MARCO I.7:** Transicao blob→dendritico confirma
     com a usuaria.
 
     **(G) SAIDA B TESTADA E REPROVADA — B1-motor (`MOTOR_SCALE`=0.5: `beta` 5->2.5 E `f0`
-    3->1.5 pelo mesmo fator), 2026-09-11, `runs/B1_motor05_REPROVADO`, abortado em R99=1.25
+    3->1.5 pelo mesmo fator), 2026-09-11, `runs/swarm/B1_motor05_REPROVADO`, abortado em R99=1.25
     pelo criterio pre-registrado.** Por que essa alavanca e nao outra: no regime
     superamortecido `u = F/gamma`, entao escalar os dois motores juntos equivale a `gamma`
     uniforme maior sem o custo de `dt`. Arrasto so na ponta foi descartado antes de rodar:
@@ -3511,8 +3520,8 @@ Calibracao pos-Passes A-I.7. **MARCO I.7:** Transicao blob→dendritico confirma
 
 87. **OSM1 — INFLUXO OSMOTICO COMO CONSTRUCAO (absorver o agar vizinho das vivas) REPROVADO:
     absorcao nao cria particula, e o que falta onde a colonia se rompe e PARTICULA** (2026-09-11,
-    `runs/OSM1_osmotico_REPROVADO`, controle `runs/OSM0_semdep`, base E11 reproduzida em
-    `runs/OSM_repro` — 45 colunas bit-a-bit nas iteracoes 0/200/400, inclusive a sequencia do
+    `runs/swarm/OSM1_osmotico_REPROVADO`, controle `runs/swarm/OSM0_semdep`, base E11 reproduzida em
+    `runs/swarm/OSM_repro` — 45 colunas bit-a-bit nas iteracoes 0/200/400, inclusive a sequencia do
     dt): arquitetura B da licao #58 ([T2]: o influxo puxa fluido DO agar para dentro) na forma de
     taxa. Sobre o E11 (`git fe49aba`), wake e insert DESLIGADOS e agar vizinho de viva absorvido
     com probabilidade `1-exp(-OSM_K*D*dt)`, `D = sum_j V_j rho_b_j W_ij` so sobre vivas
@@ -3528,7 +3537,7 @@ Calibracao pos-Passes A-I.7. **MARCO I.7:** Transicao blob→dendritico confirma
     | 1.6 | 0.406 / **0.130** | 26.6% / **2.2%** | 71% / 36% |
     | 2.0 | 0.357 / **0.147** | 21.1% / **1.7%** | 86% / 46% |
 
-    Reprova nos dois criterios pre-registrados (`runs/OSM1_osmotico_REPROVADO/CRITERIOS.md`:
+    Reprova nos dois criterios pre-registrados (`runs/swarm/OSM1_osmotico_REPROVADO/CRITERIOS.md`:
     C5b >= 50%, amplitude >= 0.8x), piorando com R99. Interrompido em t=26.6 (ver D).
 
     **(A) O DIAGNOSTICO: um FOSSO DE VAZIO de 3-5 dx em volta do nucleo.** Varrendo a escala de
@@ -3644,9 +3653,9 @@ Calibracao pos-Passes A-I.7. **MARCO I.7:** Transicao blob→dendritico confirma
     figura ele fragmenta tanto quanto o E11 (5.6 bracos soltos). E o erro que a regra de janela
     do §2.2 existe para evitar, cometido antes da regra.
 
-    **P2P3 (P2 + gate flagelar [0.1, 0.8]) — REPROVADO** (`runs/P2P3`, criterios pre-registrados
-    em `runs/P2P3/CRITERIOS.md`). O P3 tinha o melhor relevo da classe e o P2 a melhor ligacao;
-    a pergunta era se somavam. Nao somam. A segunda realizacao do P2 (`runs/P2_t100`, mesma
+    **P2P3 (P2 + gate flagelar [0.1, 0.8]) — REPROVADO** (`runs/swarm/P2P3`, criterios pre-registrados
+    em `runs/swarm/P2P3/CRITERIOS.md`). O P3 tinha o melhor relevo da classe e o P2 a melhor ligacao;
+    a pergunta era se somavam. Nao somam. A segunda realizacao do P2 (`runs/swarm/P2_t100`, mesma
     config com outra ordem de arredondamento) da o piso de ruido:
 
     | t in [35, 50] | P2 | P2 (2a realizacao) | P2P3 |
@@ -3666,7 +3675,7 @@ Calibracao pos-Passes A-I.7. **MARCO I.7:** Transicao blob→dendritico confirma
     entre realizacoes (bracos soltos 1.3 vs 2.6 no MESMO P2) que torna a janela obrigatoria.
     **O baseline segue P2 puro.**
 
-    **SEGUNDA METADE DO P2 (`runs/P2_t100`, interrompido em t=87.4) — janela util t ≲ 75.**
+    **SEGUNDA METADE DO P2 (`runs/swarm/P2_t100`, interrompido em t=87.4) — janela util t ≲ 75.**
     Ganha do E11 no defeito tardio: o componente do centro fica em ~70% da colonia ate t=77,
     enquanto o do E11 despenca a 83 particulas (1%) em t=80 — o nucleo descolando (licao #73).
     E os bracos seguem finos, longos e ligados ([plots/cmp_E11_P2_tardio.png](plots/cmp_E11_P2_tardio.png)).
@@ -3683,7 +3692,7 @@ Calibracao pos-Passes A-I.7. **MARCO I.7:** Transicao blob→dendritico confirma
     & Aly 2012, MNRAS 425:1068), piso de repulsao na EOS para vivas, ou shifting mais forte na
     banda `rho_b` 0.1-0.5 (Lind 2012 [T8]).
 
-    **DETERMINISMO DEPENDE DO NUMERO DE THREADS (verificado, `runs/_verif_P2_5t`).** O
+    **DETERMINISMO DEPENDE DO NUMERO DE THREADS (verificado, `runs/swarm/_verif_P2_5t`).** O
     `P2_t100` rodou com `OMP_NUM_THREADS=5` e diverge do P2 original (10 threads) a partir da
     iteracao 600, na 4a-5a casa (t 12.7260 vs 12.7259), amplificando-se depois. Uma copia com
     5 threads reproduz o `P2_t100` exatamente nas iteracoes 0-600. Causa provavel: a ordem das
@@ -3694,7 +3703,7 @@ Calibracao pos-Passes A-I.7. **MARCO I.7:** Transicao blob→dendritico confirma
 
 89. **P2W — kernel Wendland C2 (h = 1.92 dx) sobre o P2: resolve a CASCATA de pareamento e
     leva o run a t=100; nao muda a morfologia, nem cedo nem tarde** (2026-09-14,
-    `runs/P2W_t100`, criterios e tabela completa em `runs/P2W_t100/CRITERIOS.md`). Alavanca
+    `runs/swarm/P2W_t100`, criterios e tabela completa em `runs/swarm/P2W_t100/CRITERIOS.md`). Alavanca
     unica e numerica (`KERNEL`/`H_FACTOR` em [main.py](main.py)), motivada pela instabilidade de
     pareamento do spline cubico sob compressao (licao #88; Price 2012; Dehnen & Aly 2012;
     Liu §6.4).
@@ -3726,7 +3735,7 @@ Calibracao pos-Passes A-I.7. **MARCO I.7:** Transicao blob→dendritico confirma
 
 90. **O DISCO TARDIO DO P2 E UM LACO filler-doador -> recruta -> wake -> filler-doador, e e a
     MESMA operacao que liga os bracos ao nucleo** (2026-09-14, analise offline de
-    `runs/P2_t100` contra `runs/E11_t100`, [tools/diag_disco.py](tools/diag_disco.py); indice =
+    `runs/swarm/P2_t100` contra `runs/swarm/E11_t100`, [tools/diag_disco.py](tools/diag_disco.py); indice =
     identidade, desloc. maximo no campo distante 1e-8 dx). Regiao F = baia de t0=51 engolida
     ate o disco de raio `R_min(t1=80)`: **2412 dx² no P2 contra 903 no E11**.
 
@@ -3776,7 +3785,7 @@ Calibracao pos-Passes A-I.7. **MARCO I.7:** Transicao blob→dendritico confirma
 
 91. **P2S (`WAKE_SEG` sobre o P2) NAO engrossa os bracos — o rastro da ponta nao e vazio, e
     AGAR; a largura e fixada pelo RECRUTAMENTO lateral, nao pela deposicao** (2026-09-14,
-    `runs/P2S_wakeseg`, criterios e tabela em `CRITERIOS.md`). Pedido da usuaria: engrossar os
+    `runs/swarm/P2S_wakeseg`, criterios e tabela em `CRITERIOS.md`). Pedido da usuaria: engrossar os
     bracos antes da rugosidade. Medida da largura no campo da figura de tese (arcos contiguos
     num circulo de raio r): P2 = **2.5 dx** em r/R99 = 0.65 e 0.8, mais fino que o suporte do
     kernel (2h = 3.6 dx). Na janela t in [35, 50] o P2S da **2.9 dx** a meia altura (media
@@ -3850,7 +3859,7 @@ Calibracao pos-Passes A-I.7. **MARCO I.7:** Transicao blob→dendritico confirma
 
 93. **P2R (rastro largo: agar a <= 1 dx das vivas da frente vira filler do wake) NAO engrossa
     as pontas — mas e o primeiro mecanismo que deixa os bracos CONTINUOS na colonia
-    renderizada** (2026-09-14, `runs/P2R_rastro`, `RASTRO_W` = 1.0 dx, `RASTRO_R_MIN` = 0.7,
+    renderizada** (2026-09-14, `runs/swarm/P2R_rastro`, `RASTRO_W` = 1.0 dx, `RASTRO_R_MIN` = 0.7,
     tabela em `CRITERIOS.md`, medido ja com o renderizador corrigido). Motivacao (perfil
     transversal, licao #91): o braco do P2 e 80% filler do wake e 1-2% viva — o rastro de 1-2
     vivas —, e o agar dos lados tem `cs` 0.10-0.17, abaixo do gate de colonizacao (0.3).
@@ -3874,7 +3883,7 @@ Calibracao pos-Passes A-I.7. **MARCO I.7:** Transicao blob→dendritico confirma
 
 94. **RASTRO LARGO — P2R2 engrossa mas serpenteia, P2R3 endireita mas corta, P2R4 (conversao
     ao longo do SEGMENTO percorrido) entrega bracos retos, 2x mais largos que o P2 e continuos**
-    (2026-09-14, `runs/P2R2_rastro2`, `P2R3_rastro_lateral`, `P2R4_rastro_segmento`, criterios e
+    (2026-09-14, `runs/swarm/P2R2_rastro2`, `P2R3_rastro_lateral`, `P2R4_rastro_segmento`, criterios e
     tabelas nos `CRITERIOS.md`; renderizador final, janela t in [35, 50]). Mesmo mecanismo da
     #93 (agar vira filler do wake com o `rho_b` do lider), mudando QUAL agar:
 
@@ -3909,7 +3918,7 @@ Calibracao pos-Passes A-I.7. **MARCO I.7:** Transicao blob→dendritico confirma
     fundas; o disco tardio da #90 nao foi reavaliado alem de t=50). `RASTRO_SEG` fica no codigo,
     desligado por padrao; o baseline segue P2 ate decisao da usuaria.
 
-    **(D) P2R5 — `RASTRO_W` 2 -> 3 dx sobre o P2R4 (2026-09-15, `runs/P2R5_rastro_w3`): a largura
+    **(D) P2R5 — `RASTRO_W` 2 -> 3 dx sobre o P2R4 (2026-09-15, `runs/swarm/P2R5_rastro_w3`): a largura
     responde linearmente ao alcance, o numero de bracos quase nao.** Largura p50 3.4 -> **5.5 dx**
     em 0.8 R99 (predicao 5.0-5.6), bracos 19.6 -> 18.0 (0.8 R99) e 26.4 -> 21.8 (0.65 R99),
     retos (1.01, 4°), `Rmin` 1.17 estavel desde t≈25. Custos: amplitude 0.241 -> **0.168**
@@ -3935,7 +3944,7 @@ Calibracao pos-Passes A-I.7. **MARCO I.7:** Transicao blob→dendritico confirma
     (0 = desligado); a correcao da mesma chamada ficou atras de `RASTRO_BAIA_CHAMADA` (True no
     codigo; o P2R6 e o P2R8 rodaram com False, a versao original).
 
-    **(F) P2R8 — dendritos novos continuos (2026-09-15, `runs/P2R8_lider_mov`, config escolhida
+    **(F) P2R8 — dendritos novos continuos (2026-09-15, `runs/swarm/P2R8_lider_mov`, config escolhida
     pela usuaria: P2R6 + `RASTRO_R_MOV`=0.4).** Dendritos que nascem por dentro (0.5-0.6 R99) ficavam
     abaixo do limiar de 0.7 R99 da conversao e eram construidos so pelo wake (tracejado). Separar
     lider por MOVIMENTO em vez de raio funciona porque os grupos se separam por uma ordem de
@@ -3945,7 +3954,7 @@ Calibracao pos-Passes A-I.7. **MARCO I.7:** Transicao blob→dendritico confirma
     **0.0**, base preservada (baias abertas 33.8, frestas 8.6), largura 5.5 dx, tortuosidade 1.00.
     **Todos os criterios pre-registrados aprovados; baseline candidato: P2R8.**
 
-    **(G) P2R9 — piso de `rho_b` = 0.4 no filler novo (2026-09-15, `runs/P2R9_piso_filler`,
+    **(G) P2R9 — piso de `rho_b` = 0.4 no filler novo (2026-09-15, `runs/swarm/P2R9_piso_filler`,
     `FILLER_RHO_B_FLOOR`): a base fica coesa, e o nucleo pinado descola no contato.** A base do
     P2R8 foi construida cedo por lideres a `rho_b` ≈ 0.13 e herdou esse valor: 6% do filler da base
     com `fade` < 0.5 (as manchas roxas no viewer). Com o piso: 0%, forma igual (0 pedacos, 5.4 dx,
@@ -3966,7 +3975,7 @@ Calibracao pos-Passes A-I.7. **MARCO I.7:** Transicao blob→dendritico confirma
     gate reabre o laco do disco (#90) — conducao pelo filler e uma delas.**
 
     **(I) P2R11 — conducao pelo filler mais lenta (`FILLER_CS_D`=0.02, 1/4 do agar, 2026-09-15,
-    `runs/P2R11_filler_conduz_lento`): o painel (d) continua como o de Trinschek e o laco quase nao
+    `runs/swarm/P2R11_filler_conduz_lento`): o painel (d) continua como o de Trinschek e o laco quase nao
     reabre.** Previsto por queda exponencial do nucleo calibrada no P2R10 (`L = sqrt(D/0.075)`):
     acertou todos os itens dentro da faixa — agar da base 0.29 -> 0.15, filler 0.29 (0.2-0.4 R99) e
     0.10 (0.4-0.6 R99), gate da base acima de 0.3 em t≈36 67% -> 7%, bracos em 0.8 R99 18, R99 4.68.
@@ -3977,7 +3986,7 @@ Calibracao pos-Passes A-I.7. **MARCO I.7:** Transicao blob→dendritico confirma
     o criterio depender do Rmin.**
 
     **P2R12 (`FILLER_CS_D`=0.01) fecha a rota do D: o tamanho do nucleo NAO e proporcional a
-    conducao** (2026-09-15, `runs/P2R12_filler_conduz_d001`). Cortar D pela metade mexeu o Rmin so
+    conducao** (2026-09-15, `runs/swarm/P2R12_filler_conduz_d001`). Cortar D pela metade mexeu o Rmin so
     ~0.1 (1.44 -> 1.34 pela media da janela, contra 1.05 do P2R9) e custou 18% do `c_s` do filler no
     meio dos bracos (0.098 -> 0.080, no limite do criterio). Causa medida: **o gate da colonizacao
     na base esta 100% aberto ate t≈22 nos TRES runs, inclusive no P2R9 que nao conduz nada** —
@@ -4042,7 +4051,7 @@ Calibracao pos-Passes A-I.7. **MARCO I.7:** Transicao blob→dendritico confirma
 
 96. **O `c_s` e integrado EXPLICITAMENTE e o `dt` adaptativo do PySPH nao tem criterio difusivo — o
     baseline opera a 1.4x do limite, e o teto de `cs_max` estava escondendo isso** (P2R13, 2026-09-16,
-    `runs/P2R13_filler_D_interno_REPROVADO`): subir a difusividade de `c_s` entre pares filler-filler
+    `runs/swarm/P2R13_filler_D_interno_REPROVADO`): subir a difusividade de `c_s` entre pares filler-filler
     de 0.08 para 0.25 fez o `max_cs` saltar de 0.494 (o teto) para **5.05 na iteracao 200** e 13 em
     t=15, com `a_mar` em 124-249 e a colonia sendo arrancada (`n_fast` 1 -> 5124). Nao e fisica: e o
     limite explicito `dt <= h^2/(4D)`, que com `h` = 1.8 dx vale 0.029 s em `D_ext` = 0.08 e
@@ -4059,7 +4068,7 @@ Calibracao pos-Passes A-I.7. **MARCO I.7:** Transicao blob→dendritico confirma
 
 97. **PROTEGER o surfactante dentro da matriz levanta o campo como a literatura pede — e a conta
     vem da frente: a troca e MONOTONICA e o acoplamento que a fecha e a colonizacao ler o proprio
-    `c_s`** (P2R14, 2026-09-16, `runs/P2R14_filler_lambda`): o comprimento de conducao ao longo do
+    `c_s`** (P2R14, 2026-09-16, `runs/swarm/P2R14_filler_lambda`): o comprimento de conducao ao longo do
     braco e `L = sqrt(D / lambda_filler)`; com o numerador travado pela licao #96, a alavanca livre e
     o DENOMINADOR, e ela nao tem custo de estabilidade (o sumidouro e local, `lambda*dt` ~ 2e-4).
     Fundamentacao: a matriz de EPS protege o ramnolipideo da degradacao que ele sofre no agar livre —
@@ -4089,7 +4098,7 @@ Calibracao pos-Passes A-I.7. **MARCO I.7:** Transicao blob→dendritico confirma
 
 98. **CADA DEDO E O RASTRO DE UMA CELULA VIVA ISOLADA — por isso nenhuma alavanca de CAMPO muda a
     contagem de dedos, e o AR nao fecha** (P2R15 + medicao dos lideres, 2026-09-16,
-    `runs/P2R15_lambda_agar`):
+    `runs/swarm/P2R15_lambda_agar`):
 
     **(A) A hipotese do comprimento de onda (§2.4-C) esta REFUTADA.** `AGAR_CS_LAMBDA` 0.5 -> 0.125
     dobra `L_D_ext` (1.03 -> 2.07) e triplica o `c_s` do agar (base 0.045 -> 0.132), e o passo entre
@@ -4178,7 +4187,7 @@ Calibracao pos-Passes A-I.7. **MARCO I.7:** Transicao blob→dendritico confirma
 
 100. **O CAMPO `rho_b_grown` NAO segue a literatura — o perfil tem o SINAL INVERTIDO, e o que ele
     registra e o `rho_b` do lider que passou, nao uma densidade** (2026-09-16, pedido da usuaria;
-    medido em `runs/P2R9_piso_filler` e `runs/P2R16_w5`, t=50). A licao #53 dizia que `rho_b` e
+    medido em `runs/swarm/P2R9_piso_filler` e `runs/swarm/P2R16_w5`, t=50). A licao #53 dizia que `rho_b` e
     normalizado e "nao existe valor de literatura para comparar". Isso continua certo para o VALOR;
     a FORMA do perfil, o SINAL do gradiente e a LARGURA RELATIVA da transicao sao adimensionais e
     comparaveis — e os tres desviam.
@@ -4235,7 +4244,7 @@ Calibracao pos-Passes A-I.7. **MARCO I.7:** Transicao blob→dendritico confirma
     densidade — para "onde ha celula" use a densidade areal de vivas, que e o analogo real.
 
 101. **P2R17 (W=5 + filler conduzindo) — a hipotese do campo apagado esta REFUTADA, e a colonia
-    entra na faixa da literatura pelo mecanismo ERRADO** (2026-09-16, `runs/P2R17_w5_conduz`,
+    entra na faixa da literatura pelo mecanismo ERRADO** (2026-09-16, `runs/swarm/P2R17_w5_conduz`,
     tabela completa no `CRITERIOS.md`): o P2R16 (`RASTRO_W` 3 -> 5) engrossou o braco (ciclo 0.47 ->
     0.56, largura 3.6 -> 4.4 dx) e **cobrou o motor** (`a_mar_bio_p95` 1.60 -> 0.44) junto com o
     campo (`c_s` do corpo 0.36 -> 0.19). A hipotese era que as duas coisas fossem a mesma: cada
@@ -4292,7 +4301,7 @@ Calibracao pos-Passes A-I.7. **MARCO I.7:** Transicao blob→dendritico confirma
     contra as particulas ou contra o viewer (licao #92) ANTES de ranquear por ela.**
 
 102. **P2R18 — UM MECANISMO VALIDADO PODE VIRAR NO-OP QUANDO OUTRAS ALAVANCAS MUDAM, SEM AVISO. O
-    teste que expoe isso custa 2 minutos e eu nao fiz** (2026-09-16, `runs/P2R18_v_mov_NOOP`):
+    teste que expoe isso custa 2 minutos e eu nao fiz** (2026-09-16, `runs/swarm/P2R18_v_mov_NOOP`):
     `RASTRO_V_MOV`=0.02 sobre o P2R16 saiu **bit-a-bit identico** — `max|dif| = 0` em 70 106
     particulas nos 8 campos, e o `log.csv` igual linha a linha.
 
@@ -4331,7 +4340,7 @@ Calibracao pos-Passes A-I.7. **MARCO I.7:** Transicao blob→dendritico confirma
 
 103. **P2R19 (`RASTRO_PONTA`=1.0, calota semicircular atras do lider) REPROVADO — a ponta fica
     PONTIAGUDA, o braco inteiro afina em fuso, e a COLONIZACAO MORRE em t≈32. Mecanismo nao
-    estabelecido** (2026-09-16, `runs/P2R19_ponta`, tabelas no `CRITERIOS.md`). Teste de efeito da
+    estabelecido** (2026-09-16, `runs/swarm/P2R19_ponta`, tabelas no `CRITERIOS.md`). Teste de efeito da
     #102 feito antes (diverge a partir da iteracao 400).
 
     **(A) A linha de base de forma de ponta depende da FASE do frame.** O valor pre-registrado
@@ -4361,7 +4370,7 @@ Calibracao pos-Passes A-I.7. **MARCO I.7:** Transicao blob→dendritico confirma
 104. **A COLONIZACAO DO P2R16 VIVE NO FIO DA NAVALHA, EM BOLSOES DE AGAR NO MEIO DA COLONIA — e
     qualquer coisa que feche as baias a meia altura a mata. Diagnostico do P2R19** (2026-09-17,
     runs instrumentados ate t=36 so com prints, bit-a-bit identicos a P2R16 e P2R19; tabelas em
-    `runs/P2R19_ponta/CRITERIOS.md`).
+    `runs/swarm/P2R19_ponta/CRITERIOS.md`).
 
     **(A) Onde o recrutamento acontece (medido offline nos frames).** O agar a <= 2h da colonia quase
     nunca passa de `cs` = 0.3 num frame; o maximo no P2R16 fica em **0.277 -> 0.294 -> 0.298 -> 0.301**,
@@ -4398,7 +4407,7 @@ Calibracao pos-Passes A-I.7. **MARCO I.7:** Transicao blob→dendritico confirma
     MESMO parametro geometrico** (`a`) enquanto a calota for aplicada a todo lider.
 
     **(E) P2R20 — calota so no lider mais externo de cada grupo (`RASTRO_PONTA_LINK`=6 dx)**
-    (2026-09-17, `runs/P2R20_ponta_grupo`). **Salva a colonizacao** (limbo 36-100 em todos os frames
+    (2026-09-17, `runs/swarm/P2R20_ponta_grupo`). **Salva a colonizacao** (limbo 36-100 em todos os frames
     apos t=32, vivas 508 -> 612; P2R19: 0 e 525 congeladas), lideres externos 21-22, bracos 16-19,
     agar 0.5-0.7 R99 102, motor `a_mar_bio_p95` **0.79** (P2R16 0.44), ponta u=2 3.6. **Reprova** em
     corpo u=5 8.3 (limite 9.0) e R99 4.39 (limite 4.4). O corpo afina igual com e sem pontas extras
@@ -4665,7 +4674,7 @@ Resultado: pulsacoes episodicas (n_fast pico=114 em t=1.5s via perturbacao inici
   mecanismos das series reprovadas que ficavam "preservados desligados" (lista no topo do §7).
   `OsmoticForce` foi MANTIDA por ser o Objetivo 2 do §1. O codigo removido esta no commit
   `a2d6dfd`; religar qualquer um deles e reimplementar a partir de la, nao trocar constante.
-- **Nao sugerir implementar rugosidade (Pass L) enquanto a morfologia nao reproduzir `reference.jpg`.** Rugosidade e extensao fisica, nao remedio para motor insuficiente ou selecao competitiva ausente. Se Marangoni + Flagelar + EOS nao geram dendritos finos separados (`AR >= 1:5`), a causa-raiz esta em um desses mecanismos — investigar e refinar antes de adicionar nova fisica.
+- **[SUSPENSA em 2026-09-17, decisao da usuaria — ver §12]** ~~Nao sugerir implementar rugosidade (Pass L) enquanto a morfologia nao reproduzir `reference.jpg`.~~ Rugosidade e extensao fisica, nao remedio para motor insuficiente ou selecao competitiva ausente. Se Marangoni + Flagelar + EOS nao geram dendritos finos separados (`AR >= 1:5`), a causa-raiz esta em um desses mecanismos — investigar e refinar antes de adicionar nova fisica.
 - **Nao mudar parametros de surfactante (`σ`, `k_consume`, `D_ext`, `λ_ext`) sem verificar criterios duplos §2.4.** Bloqueio mecanico (A) resolvido por K.17. Bloqueio quimico (B) ATIVO — alavanca permitida atual: `k_consume` (lever direta sobre sumidouro). Nao mexer em `D_ext` e `λ_ext` simultaneamente (lição K.18-K.19). Nao reduzir `λ_ext` abaixo de `λ_int` enquanto motile_boost ativo (destroi Pass J).
 - **Nao sugerir Pass L (rugosidade)** enquanto morfologia nao reproduzir `reference.jpg` (dendritos AR ≥ 1:5, baias estacionarias, tip-splitting visivel). Bloqueio C (Mullins-Sekerka geometrico) provavelmente requer abordagem apos B resolvido.
 - **Nao remover hard pinning mecanico `rho_b>=0.8`** (K.17). Confirmado nao negociavel por K.25a (falha catastrofica) e M-B.9a (fragmentacao distribuida quando substituido por drag forte, lição §22). Pin cinematico e estruturalmente protetor — coesao SPH atual `B_tension≈0.0028` nao resiste ao diferencial de v_term ~ 0.1 entre core e tip sem o pin.
@@ -5666,7 +5675,18 @@ Fechamento da linha do "vacuo dos dendritos". Confirmou-se que o problema era **
 
 ---
 
-### Pass L — Superficies rugosas (Objetivo 1) — **BLOQUEADO ate Pass M**
+### Pass L — Superficies rugosas (Objetivo 1) — **DESBLOQUEADO em 2026-09-17**
+
+> **PASS L DESBLOQUEADO (2026-09-17, decisao da usuaria; plano de 2026-09-14 em
+> [docs/PLANO_RUGOSIDADE.md](docs/PLANO_RUGOSIDADE.md)).** Os criterios do §2.2 NAO estao todos
+> atingidos — nao ha tip-splitting, e o baseline vira disco depois de t≈60 (licao #92). A rugosidade
+> entra como **extensao fisica a ser caracterizada**, nao como validacao da morfologia de referencia:
+> toda comparacao e **rugoso x liso com a MESMA semente e o mesmo numero de threads**, nunca rugoso x
+> `reference.jpg`. Baseline da serie: **P2R23**. Forma: rede triangular de pilares no plano (nao
+> paredes onduladas), com fluxo zero de `cs` e `c_n` nos pilares e forca de contato de Monaghan &
+> Kajtar (2009). O hook `guard_pass_l.py` segue ativo; o codigo novo usa a escotilha
+> `# pass-l-aprovado: <motivo>` que ele preve, um trecho por vez.
+
 
 > ⚠️ **PRE-REQUISITO ATUALIZADO (2026-05-01):** Pass L agora requer **Pass M (substrato consumivel) implementado e validado primeiro**. So apos a simulacao reproduzir a morfologia de [reference.jpg](reference.jpg) com **dendritos finos AR≥1:5 + agar limpo entre eles** (Pass M criterio), iniciar Pass L. Ver §1 Objetivo 1, §2.2 e §10 Proibicoes.
 >

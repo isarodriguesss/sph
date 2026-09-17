@@ -13,7 +13,7 @@ Três geradores, cada um respondendo a uma pergunta diferente.
 ## 1. `expansao.png` — dinâmica da expansão
 
 ```bash
-python tools/plot_expansion.py runs/C4_t100 --window 5 55
+python tools/plot_expansion.py runs/swarm/C4_t100 --window 5 55
 ```
 
 A `--window` marca a faixa em que a rodada é confiável (antes do nutriente esgotar).
@@ -87,7 +87,7 @@ A queda após a linha vermelha é o congelamento por falta de nutriente.
 ## 2. `campos.png` — os três escalares, como campo contínuo
 
 ```bash
-python tools/plot_fields.py runs/C4_t100 --times 15 40 55 99 [--n 420]
+python tools/plot_fields.py runs/swarm/C4_t100 --times 15 40 55 99 [--n 420]
 ```
 
 Linhas = instantes, colunas = os três campos. Escalas de cor **fixas** entre
@@ -161,7 +161,7 @@ existe — falta combustível.
 ## 3. `comparativo.png` — qual rodada é melhor
 
 ```bash
-python tools/compare_frames.py runs/C1 runs/C2 runs/C4
+python tools/compare_frames.py runs/swarm/C1 runs/swarm/C2 runs/swarm/C4
 ```
 
 Linhas = rodadas, colunas = 4 diagnósticos. Primeira linha traz as duas referências

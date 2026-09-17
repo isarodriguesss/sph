@@ -1,10 +1,10 @@
 # Validação do modelo — testes, referências e o que cada um significa
 
-Rodada de referência: **`runs/C4_t100`** (baseline C4, domínio `[-7,7]` com 261², t=100 s).
+Rodada de referência: **`runs/swarm/C4_t100`** (baseline C4, domínio `[-7,7]` com 261², t=100 s).
 Reproduzir com:
 
 ```bash
-python tools/validate_model.py runs/C4_t100
+python tools/validate_model.py runs/swarm/C4_t100
 ```
 
 Cada teste abaixo cita a referência da literatura, o valor esperado e o medido.

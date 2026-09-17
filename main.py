@@ -1,4 +1,6 @@
 import csv
+import json
+import os
 import numpy as np
 from scipy.sparse.csgraph import connected_components
 from scipy.spatial import cKDTree
@@ -101,6 +103,14 @@ FILLER_CS_D = 0.0
 FILLER_CS_D_INTERNO = 0.0
 FILLER_CS_LAMBDA = 0.5
 AGAR_CS_LAMBDA = 0.125
+
+# pass-l-aprovado: Pass L (rugosidade) desbloqueado em 2026-09-17 — CLAUDE.md §12 e
+# docs/PLANO_RUGOSIDADE.md. Rede triangular de pilares no plano; geometria reancorada no P2R23.
+use_pilares = False
+PILAR_A = 10.0  # diametro do pilar em dx (~ largura do braco: 9-10.5 dx no P2R23)
+PILAR_LAMBDA = 28.0  # espacamento da rede triangular em dx (~1.5 contatos por braco ate t=50)
+PILAR_R_EXCL = 1.2  # nenhum centro dentro deste raio (nao perturbar inoculo nem juncao)
+PILAR_ROT = 0.0  # rotacao da rede, em graus
 
 
 LOG_FILE = "log.csv"
@@ -318,12 +328,68 @@ class SwarmApp(Application):
             elif pa.name == "solid":
                 pa.add_property("p")
 
+        if use_pilares:
+            fluid_solid.append(self._faz_pilares(fluid_solid[0]))
+
         return fluid_solid
+
+    def _faz_pilares(self, fluid):
+        """Rede triangular de pilares: os proprios pontos da grade viram parede estatica.
+
+        pass-l-aprovado: Pass L desbloqueado (CLAUDE.md §12). Mesma rede, mesma massa dx^2,
+        entao a densidade vista pelos vizinhos nao muda (plano, secao 2).
+        """
+        lam = PILAR_LAMBDA * dx
+        rp = 0.5 * PILAR_A * dx
+        ang = np.radians(PILAR_ROT)
+        n = int(np.ceil(2.0 * max(abs(x_min_domain), x_max_domain) / lam)) + 2
+        i, j = np.meshgrid(np.arange(-n, n + 1), np.arange(-n, n + 1))
+        cx = lam * (i + 0.5 * j).ravel()
+        cy = lam * (np.sqrt(3.0) / 2.0) * j.ravel()
+        cx, cy = (cx * np.cos(ang) - cy * np.sin(ang), cx * np.sin(ang) + cy * np.cos(ang))
+        borda = 2.0 * dx
+        dentro_dom = (
+            (cx > x_min_domain + rp + borda)
+            & (cx < x_max_domain - rp - borda)
+            & (cy > y_min_domain + rp + borda)
+            & (cy < y_max_domain - rp - borda)
+        )
+        fora_inoculo = np.hypot(cx, cy) >= PILAR_R_EXCL
+        cx, cy = cx[dentro_dom & fora_inoculo], cy[dentro_dom & fora_inoculo]
+
+        tree = cKDTree(np.column_stack([fluid.x, fluid.y]))
+        idx = np.unique(np.concatenate(tree.query_ball_point(np.column_stack([cx, cy]), rp)))
+        idx = np.asarray(idx, dtype=int)
+        pilar = fluid.extract_particles(idx)
+        pilar.set_name("pilar")
+        pilar.u[:] = 0.0
+        pilar.v[:] = 0.0
+        pilar.add_output_arrays(["m", "rho"])
+        fluid.remove_particles(idx)
+
+        out = os.path.join(self.output_dir, "pilares.json")
+        os.makedirs(self.output_dir, exist_ok=True)
+        with open(out, "w") as fp:
+            json.dump(
+                {
+                    "centros": np.column_stack([cx, cy]).tolist(),
+                    "raio": rp,
+                    "lambda": lam,
+                    "rotacao_graus": PILAR_ROT,
+                    "r_exclusao": PILAR_R_EXCL,
+                    "n_particulas": int(len(idx)),
+                },
+                fp,
+            )
+        print(f"pilares: {len(cx)} centros, {len(idx)} particulas, raio {rp / dx:.1f} dx, "
+              f"lambda {lam / dx:.0f} dx, area {100 * len(idx) / (len(idx) + len(fluid.x)):.1f}%")
+        return pilar
 
     def create_scheme(self):
         return MyBiomassScheme(
             fluids=["fluid"],
             solids=["solid"],
+            pilares=["pilar"] if use_pilares else (),
             dim=2,
             mu=mu,
             gamma=gamma,

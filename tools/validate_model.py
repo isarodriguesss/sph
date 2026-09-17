@@ -1,6 +1,6 @@
 """Bateria de validacao do modelo com ancoras na literatura.
 
-Uso:  python tools/validate_model.py runs/C4_t100 [--window 5 55]
+Uso:  python tools/validate_model.py runs/swarm/C4_t100 [--window 5 55]
 
 Cada teste cita a referencia e o valor esperado. Nao ha "passa/falha" cego:
 onde o modelo diverge, o relatorio diz por quanto e em que regime.
@@ -275,7 +275,7 @@ def main(argv):
         else:
             runs.append(argv[i])
             i += 1
-    for run in runs or ["runs/C4_t100"]:
+    for run in runs or ["runs/swarm/C4_t100"]:
         report(run, win)
 
 

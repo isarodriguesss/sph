@@ -1,6 +1,6 @@
 """Compara RUNS com as REFERENCIAS do §2.2 medindo os dois com o MESMO algoritmo.
 
-    python tools/lit_rank.py runs/P2R10_filler_conduz runs/P2R11_filler_conduz_lento ...
+    python tools/lit_rank.py runs/swarm/P2R10_filler_conduz runs/swarm/P2R11_filler_conduz_lento ...
 
 As referencias entram como IMAGEM: assets/reference_result.png painel (b) de Trinschek
 (mapa de h = colonia, e mapa de Gamma, que e invertido pela propria barra de cores da figura,

@@ -5,7 +5,7 @@ fecha vaos de ate N*dx (padrao 3.5) e inunda a partir de FORA — o que a inunda
 alcanca e buraco, e e desenhado como colonia. Baia e ligada ao exterior por construcao,
 entao NUNCA e preenchida; nao ha raio de busca para vazar.
 
-E pos-processamento puro: nao toca no solver. Medido no solver (runs/E10_topo) o mesmo
+E pos-processamento puro: nao toca no solver. Medido no solver (runs/swarm/E10_topo) o mesmo
 mecanismo custava `a_pressure` mediana 2.64 -> 3.24 e `mean_v` a menor da serie; aqui
 custa zero. E a licao #38 — vacuo VISUAL se resolve na renderizacao, nunca adicionando
 particula ao solver.
@@ -19,7 +19,7 @@ As classes separam o piso (`is_env`) da matriz (`is_filler`) e da biomassa viva,
 importa porque toda metrica normalizada por "quem e colonia" muda de significado quando
 uma rota cria portadoras (licao #62).
 
-    python tools/plot_piso.py runs/E5_hillK025 . [saida.png] [t]
+    python tools/plot_piso.py runs/swarm/E5_hillK025 . [saida.png] [t]
 """
 import glob
 import sys

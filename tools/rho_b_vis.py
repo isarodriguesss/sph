@@ -34,7 +34,7 @@ MODOS (parametro `modo`):
 
 A escolha entre os dois nao e tecnica, e de qual figura se quer: envelope ou dendrito.
 
-    python tools/rho_b_vis.py runs/C4 [saida.png] [modo]
+    python tools/rho_b_vis.py runs/swarm/C4 [saida.png] [modo]
 """
 import glob
 import sys
@@ -128,7 +128,7 @@ def preencher(pa, h_mult=1.0, modo="iterativo"):
     return vis, R
 
 
-def main(run="runs/C4", out="plots/rho_b_vis.png", modo="iterativo"):
+def main(run="runs/swarm/C4", out="plots/rho_b_vis.png", modo="iterativo"):
     f = sorted(glob.glob(f"{run}/main_output/*.hdf5"))[-1]
     d = load(f)
     pa = d["arrays"]["fluid"]
@@ -164,4 +164,4 @@ def main(run="runs/C4", out="plots/rho_b_vis.png", modo="iterativo"):
 
 
 if __name__ == "__main__":
-    main(*(sys.argv[1:4] or ["runs/C4", "plots/rho_b_vis.png", "iterativo"]))
+    main(*(sys.argv[1:4] or ["runs/swarm/C4", "plots/rho_b_vis.png", "iterativo"]))

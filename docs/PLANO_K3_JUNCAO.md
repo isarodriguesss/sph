@@ -12,7 +12,7 @@ Estabelecido 2026-08-13, depois de medir o frame `main_01600.hdf5` (t≈21.6 s) 
 C4 em curso. Sucede o [PLANO_JUNCAO.md](PLANO_JUNCAO.md), cujo desfecho (série J,
 `k_col` com relaxação-Shepard) foi **revertido** — ver lições #48 a #50 do CLAUDE.md.
 
-Baseline: **`runs/C4`**. Janela de avaliação: **t = 48 s** (lição #47 — além de t≈55
+Baseline: **`runs/swarm/C4`**. Janela de avaliação: **t = 48 s** (lição #47 — além de t≈55
 o nutriente esgota e a colônia congela; medir fora da janela mede fome, não morfologia).
 
 Regras válidas em todos os passos: **uma alavanca por passo** (§2.3), **predição
@@ -152,7 +152,7 @@ a faixa dinâmica (núcleo `cs` = 14.3, `a_mar` = 116).
 ### Passo 0 — Baseline C4 até t=50 ✅ (2026-08-13)
 
 Run completo em t = 50.000 (frame `main_03129`; o `log.csv` para em t=47.8 porque
-`print_freq=200` e a última iteração é 3129). Wall time 2378 s. Arquivado em `runs/C4`.
+`print_freq=200` e a última iteração é 3129). Wall time 2378 s. Arquivado em `runs/swarm/C4`.
 
 **Valores de referência — toda comparação da série sai daqui:**
 
@@ -343,10 +343,10 @@ Se M1 reprovar, o ponto de operação é 0.03 e a limitação é a lei de produ�
 
 ```bash
 tools/archive_run.sh K3
-python tools/compare_runs.py runs/C4 runs/K3
-python tools/compare_frames.py runs/C4 runs/K3
-python tools/diag_juncao.py runs/C4 runs/K3 --t 48
-python tools/diag_recrut.py runs/C4 runs/K3 --t 48
+python tools/compare_runs.py runs/swarm/C4 runs/K3
+python tools/compare_frames.py runs/swarm/C4 runs/K3
+python tools/diag_juncao.py runs/swarm/C4 runs/K3 --t 48
+python tools/diag_recrut.py runs/swarm/C4 runs/K3 --t 48
 python tools/validate_model.py runs/K3
 ```
 

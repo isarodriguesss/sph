@@ -9,8 +9,8 @@ que a FISICA enxerga.
 Circulos de referencia: vermelho em `r=0.35` (borda do nucleo denso), ciano em `r=0.65`
 (onde a biomassa viva do C4 vai a zero) e branco tracejado em `R99`.
 
-    python tools/plot_coesao.py runs/C4 [saida.png] [t1,t2,...]
-    python tools/plot_coesao.py runs/C4 out.png 12.9,29.1,50
+    python tools/plot_coesao.py runs/swarm/C4 [saida.png] [t1,t2,...]
+    python tools/plot_coesao.py runs/swarm/C4 out.png 12.9,29.1,50
 """
 import glob
 import sys
@@ -101,7 +101,7 @@ def painel(runs, out="plots/coesao.png", alvos=(12.9, 29.1, 50.0), zoom=2.2):
 
 if __name__ == "__main__":
     args = sys.argv[1:]
-    runs = [args[0]] if args else ["runs/C4"]
+    runs = [args[0]] if args else ["runs/swarm/C4"]
     out = args[1] if len(args) > 1 else "plots/coesao.png"
     alvos = tuple(float(v) for v in args[2].split(",")) if len(args) > 2 else (12.9, 29.1, 50.0)
     painel(runs, out, alvos)

@@ -1,6 +1,6 @@
 """De onde vem o material que enche as baias depois de t=50 (o "disco tardio" do P2).
 
-    python tools/diag_disco.py runs/P2_t100 runs/E11_t100 [--t0 50] [--t1 80]
+    python tools/diag_disco.py runs/swarm/P2_t100 runs/swarm/E11_t100 [--t0 50] [--t1 80]
 
 Regiao F = baia em t0 (fora da borda renderizada de t0) que esta DENTRO do disco de raio
 R_min(t1). Cada particula de colonia (rho_b >= 0.1 ou filler) em F no instante t1 e

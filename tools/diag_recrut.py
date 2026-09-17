@@ -1,6 +1,6 @@
 """Diagnostico do ALVO DE RECRUTAMENTO de biomassa (Passo 0.1 do PLANO_K3_JUNCAO).
 
-Uso:  python tools/diag_recrut.py runs/C4 [runs/K3 ...] [--t 48]
+Uso:  python tools/diag_recrut.py runs/swarm/C4 [runs/K3 ...] [--t 48]
       python tools/diag_recrut.py .              # rodada corrente (main_output/ na raiz)
 
 Complementa `diag_juncao.py`, que mede o DEFEITO (vale `V` na crista) e o MOTOR

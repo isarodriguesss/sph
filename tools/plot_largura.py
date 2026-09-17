@@ -8,7 +8,7 @@ O painel de velocidade POR CLASSE e o que fecha o diagnostico: a biomassa viva
 carrega o motor e acelera para fora, o limbo e passivo e so e arrastado. Onde a
 razao entre as duas dispara, o limbo estagna e o material que vem atras empilha.
 
-    python tools/plot_largura.py runs/P5_csmin010_REPROVADO [saida.png]
+    python tools/plot_largura.py runs/swarm/P5_csmin010_REPROVADO [saida.png]
 """
 import glob
 import sys
@@ -23,7 +23,7 @@ from scipy.ndimage import distance_transform_edt
 from scipy.spatial import cKDTree
 
 DX = 0.0538
-run = sys.argv[1] if len(sys.argv) > 1 else "runs/P5_csmin010_REPROVADO"
+run = sys.argv[1] if len(sys.argv) > 1 else "runs/swarm/P5_csmin010_REPROVADO"
 saida = sys.argv[2] if len(sys.argv) > 2 else "plots/largura.png"
 
 b = None

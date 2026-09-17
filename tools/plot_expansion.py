@@ -1,6 +1,6 @@
 """Figura de expansao da colonia — 4 vistas complementares.
 
-Uso:  python tools/plot_expansion.py runs/C4_t100 [--window 5 55] [--out FIG.png]
+Uso:  python tools/plot_expansion.py runs/swarm/C4_t100 [--window 5 55] [--out FIG.png]
 
 (a) R(t) em log-log com ajustes de lei de potencia e as inclinacoes de referencia
     da literatura sobrepostas ([T2] alpha=1 nutrient-rich, [T3] alpha=0.45).
@@ -90,7 +90,7 @@ def main(argv):
         else:
             runs.append(argv[i])
             i += 1
-    run = runs[0] if runs else "runs/C4_t100"
+    run = runs[0] if runs else "runs/swarm/C4_t100"
 
     series, rows = load(run)
     T, R, P = [], [], []

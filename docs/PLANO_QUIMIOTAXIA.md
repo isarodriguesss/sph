@@ -47,7 +47,7 @@
 > discriminante precisava incluir uma medida de expansão (`R99`), e curvatura medida
 > no estado final não prediz a dinâmica a partir do estado inicial.
 
-Estabelecido 2026-08-12. Baseline: **`runs/C4`**. Janela de leitura: **t ≤ 50 s**.
+Estabelecido 2026-08-12. Baseline: **`runs/swarm/C4`**. Janela de leitura: **t ≤ 50 s**.
 
 Ataca a descontinuidade documentada nas lições #48–#53: as partículas da borda do
 inóculo nascem em `ρ_b = 0` exato (underflow da cauda quártica além de r≈1.25–1.88)
@@ -289,11 +289,11 @@ bactérias se espalham **sobre** o ágar. Reescrita maior que X5.
 ```bash
 make run
 tools/archive_run.sh X1
-python tools/validate_model.py runs/X1                 # ancoras [T1][T2][T3][T6][T7]
-python tools/compare_runs.py runs/C4 runs/X1           # C1/C2 nas DUAS definicoes
-python tools/diag_juncao.py runs/C4 runs/X1 --t 48 --out runs/juncao_X1.png
-python tools/plot_envelope.py runs/C4 runs/X1 --times 15 30 48 --out runs/env_X1.png
-python tools/plot_fields.py runs/X1 --times 15 30 48 --out runs/campos_X1.png
+python tools/validate_model.py runs/swarm/_logs_reprovados/X1                 # ancoras [T1][T2][T3][T6][T7]
+python tools/compare_runs.py runs/swarm/C4 runs/swarm/_logs_reprovados/X1           # C1/C2 nas DUAS definicoes
+python tools/diag_juncao.py runs/swarm/C4 runs/swarm/_logs_reprovados/X1 --t 48 --out runs/juncao_X1.png
+python tools/plot_envelope.py runs/swarm/C4 runs/swarm/_logs_reprovados/X1 --times 15 30 48 --out runs/env_X1.png
+python tools/plot_fields.py runs/swarm/_logs_reprovados/X1 --times 15 30 48 --out runs/campos_X1.png
 ```
 
 Cada passo compara contra **o passo anterior E contra o C4**. Registro na §9 com

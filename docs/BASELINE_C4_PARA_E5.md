@@ -1,11 +1,11 @@
 # Do C4 ao E5 — o que mudou no baseline
 
-> **Estabelecido 2026-09-01.** O `runs/C4` foi o baseline do projeto de 2026-08-07 até
+> **Estabelecido 2026-09-01.** O `runs/swarm/C4` foi o baseline do projeto de 2026-08-07 até
 > aqui. A série E o substitui. Este documento lista **o que mudou, por quê, e o efeito
 > medido** de cada mudança — inclusive uma que não é calibração, mas correção de bug.
 >
 > Configuração final: `k_src=0.3`, `HILL_K=0.25`, `sigma=11.1`, `k_col=0.03`, com a
-> `BiomassEOS` em `Group` próprio. Rodadas: `runs/E5_hillK025` (t=50) e `runs/E11_t100`
+> `BiomassEOS` em `Group` próprio. Rodadas: `runs/swarm/E5_hillK025` (t=50) e `runs/swarm/E11_t100`
 > (mesma config, t=100).
 
 **Índice.** [Resumo](#resumo-das-mudancas) · [O bug da EOS](#1-correcao-de-bug--a-eos-nunca-repelia) ·

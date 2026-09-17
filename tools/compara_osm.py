@@ -6,7 +6,7 @@ COLONIA = rho_b>=0.1 ou filler ou phi_osm>0 (o absorvido e fase passiva, [T2]); 
 C5 em media e desvio sobre t in [35, 50]. "Agar limpo" = fracao de agar puro (rho_b<1e-6,
 nao filler, nao absorvido) no anel 0.5-0.9 R99, onde ficam as baias.
 
-    python tools/compara_osm.py runs/E11_t100 runs/OSM0_semdep runs/OSM1_osmotico
+    python tools/compara_osm.py runs/swarm/E11_t100 runs/swarm/OSM0_semdep runs/OSM1_osmotico
 """
 import glob
 import os

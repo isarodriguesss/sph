@@ -41,7 +41,7 @@ def a_visc_art(d, sel):
     return out
 
 
-for run, tt in (("runs/P2_t100", 50), ("runs/P2_t100", 75), ("runs/P2_t100", 85)):
+for run, tt in (("runs/swarm/P2_t100", 50), ("runs/swarm/P2_t100", 75), ("runs/swarm/P2_t100", 85)):
     t, d = DF.carrega(run, tt)
     rb, isf, isw = d["rho_b_grown"], d["is_filler"], d["is_wake"]
     r = np.hypot(d["x"], d["y"])

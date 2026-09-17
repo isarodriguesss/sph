@@ -11,7 +11,7 @@
 > válidas como diagnóstico; a **Frente 0** e a seção de **acoplamento** as reordenam e
 > corrigem duas afirmações — leia essas duas primeiro se estiver decidindo o que fazer.
 
-Todas as medições vêm de `runs/C4` (baseline validado, t=0→50) e `runs/K3`, lidas
+Todas as medições vêm de `runs/swarm/C4` (baseline validado, t=0→50) e `runs/K3`, lidas
 direto do HDF5. Referências da literatura conforme catalogadas em CLAUDE.md §3.0.
 
 **Índice.** [Frente 0 — ágar invadido](#frente-0--o-ágar-invadido-a-população-que-polui-tudo)
@@ -31,7 +31,7 @@ direto do HDF5. Referências da literatura conforme catalogadas em CLAUDE.md §3
 
 **SÉRIE D REVERTIDA (2026-08-14, decisão da usuária).** O baseline **permanece `C4`** e o
 código está bit-idêntico a ele. As medições e lições (#60–#64) continuam válidas como
-conhecimento; os runs estão em `runs/D1`, `D2`, `D3a`, `D4`, `D4_t100`, `D3b_REPROVADO`,
+conhecimento; os runs estão em `runs/swarm/D1`, `D2`, `D3a`, `D4`, `D4_t100`, `D3b_REPROVADO`,
 `D5_REPROVADO`, `D6`. **Trabalho retomado pela Frente 1 (inóculo).**
 
 Comparação D4 × C4 que precedeu a decisão (t equiparado): até t≈50 o C4 é ~20% maior com
@@ -210,7 +210,7 @@ iterações. Para cada partícula com `ρ_b>0.05` que acumulou deslocamento `≥
 última deposição, ele deposita **um cluster** (1 partícula na posição *antiga* `x_dep`,
 mais até 6 num anel de raio 0.75·dx) e zera o acumulador.
 
-Medido em `runs/C4`, ao longo do run:
+Medido em `runs/swarm/C4`, ao longo do run:
 
 | t | dt | intervalo do wake (100 it) | desloc. p99 | desloc. máx |
 |---:|---:|---:|---:|---:|
@@ -245,7 +245,7 @@ cicatriza tarde.
 
 ### 2.4 Soluções propostas
 
-**S2.1 — ❌ REPROVADA (B1, 2026-08-14, `runs/B1_REPROVADO`, revertida).** Implementada e
+**S2.1 — ❌ REPROVADA (B1, 2026-08-14, `runs/swarm/_logs_reprovados/B1_REPROVADO`, revertida).** Implementada e
 medida: pico de `void_07` 26.4%→24.7% (alvo <15%), razão fantasma/viva 91.8→**122.4**
 (alvo <50, piorou) e **AR 10.48→7.83**. A massa quase não mudou (+0.2%) mas a distribuição
 sim — o wake engrossou o braço em vez de encher o rastro, exatamente como a lição #45

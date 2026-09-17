@@ -1,6 +1,6 @@
 """Figura de tese de UM run, no formato do painel (b) de Trinschek et al. 2018 [T1].
 
-    python plots/fig_tese.py runs/E11_t100 [--t 50] [--tempos 10 20 30 40 50]
+    python plots/fig_tese.py runs/swarm/E11_t100 [--t 50] [--tempos 10 20 30 40 50]
                              [--out plots/fig_E11] [--limbo] [--fecha 0] [--n 700]
 
 Mesma disposicao e mesmas cores de Trinschek: (a) colonia no instante final, oliva sobre

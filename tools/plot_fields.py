@@ -1,6 +1,6 @@
 """Expansao vista pelos tres campos escalares — CAMPO CONTINUO, nao pontos.
 
-Uso:  python tools/plot_fields.py runs/C4_t100 [--times 15 40 55 99]
+Uso:  python tools/plot_fields.py runs/swarm/C4_t100 [--times 15 40 55 99]
                                                [--out FIG.png] [--n 420]
 
 Os campos sao reconstruidos por interpolacao SPH Shepard-normalizada
@@ -139,7 +139,7 @@ def main(argv):
         else:
             runs.append(argv[i])
             i += 1
-    run = runs[0] if runs else "runs/C4_t100"
+    run = runs[0] if runs else "runs/swarm/C4_t100"
     series = load(run)
 
     nr, nc = len(times), len(FIELDS)

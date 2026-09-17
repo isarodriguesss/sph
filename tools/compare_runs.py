@@ -1,6 +1,6 @@
 """Compara rotas sob o CRITERIO OBRIGATORIO DE VALIDACAO (estabelecido 2026-08-06).
 
-Uso:  python tools/compare_runs.py runs/S0 runs/S1 ...
+Uso:  python tools/compare_runs.py runs/swarm/S0 runs/swarm/S1 ...
 
 FUNDAMENTACAO (Violeau §3.4 — Particao da Unidade; Liu §3.3 — consistencia):
 A representacao SPH de um fluido exige COBERTURA ESPACIAL CONTINUA. A particao da

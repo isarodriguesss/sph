@@ -1,6 +1,6 @@
 """Diagnostico do VALE DE BIOMASSA na juncao nucleo-braco.
 
-Uso:  python tools/diag_juncao.py runs/C4 runs/K2 [--t 48] [--out FIG.png]
+Uso:  python tools/diag_juncao.py runs/swarm/C4 runs/swarm/_logs_reprovados/K2 [--t 48] [--out FIG.png]
 
 O defeito nao e vacuo de PARTICULA (C1/C2 de §2.5 ja estao satisfeitos: void15
 0.16%, sigma_a estavel). E um vale no campo escalar `rho_b`: a biomassa vale ~1.0

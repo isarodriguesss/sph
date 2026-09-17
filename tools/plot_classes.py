@@ -31,7 +31,7 @@ def classes(pa):
     return np.where(fil, 3, np.where(rb >= 0.1, 1, np.where(rb >= 1e-12, 2, 0)))
 
 
-def main(run="runs/C4", out="plots/classes.png", alvos=(0, 4.4, 8.7, 12.9, 21.5, 29.1, 38.3, 50.0)):
+def main(run="runs/swarm/C4", out="plots/classes.png", alvos=(0, 4.4, 8.7, 12.9, 21.5, 29.1, 38.3, 50.0)):
     fs = sorted(glob.glob(f"{run}/main_output/*.hdf5"))
     ts = [load(f)["solver_data"]["t"] for f in fs]
     ks = [int(np.argmin([abs(t - a) for t in ts])) for a in alvos]
@@ -84,4 +84,4 @@ def main(run="runs/C4", out="plots/classes.png", alvos=(0, 4.4, 8.7, 12.9, 21.5,
 
 
 if __name__ == "__main__":
-    main(*(sys.argv[1:3] or ["runs/C4", "plots/classes.png"]))
+    main(*(sys.argv[1:3] or ["runs/swarm/C4", "plots/classes.png"]))

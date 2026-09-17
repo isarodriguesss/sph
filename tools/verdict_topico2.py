@@ -1,6 +1,6 @@
 """Veredito das rotas contra o topico 2 (licao #66): agar engolido nao vira colonia.
 
-    python tools/verdict_topico2.py runs/E1_eosfix runs/C4 [outro...]
+    python tools/verdict_topico2.py runs/swarm/E1_eosfix runs/swarm/C4 [outro...]
 
 Imprime, no ultimo frame de cada run, as metricas pre-registradas: fracao de area
 da colonia ocupada por agar morto, R99, coesao efetiva na junção, e os guardrails
@@ -79,4 +79,4 @@ def main(runs):
 
 
 if __name__ == "__main__":
-    main(sys.argv[1:] or ["runs/C4", "runs/E1_eosfix"])
+    main(sys.argv[1:] or ["runs/swarm/C4", "runs/swarm/E1_eosfix"])

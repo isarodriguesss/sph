@@ -21,7 +21,7 @@ run_view:
 plot:
 	python plots/plot.py
 
-RUN ?= runs/E11_t100
+RUN ?= runs/swarm/E11_t100
 T ?= 50
 fig:
 	python plots/fig_tese.py $(RUN) --t $(T)

@@ -1,6 +1,6 @@
 """Painel (a) da figura de tese para varios runs lado a lado, mesma escala e mesmas cores.
 
-    python plots/cmp_colonia.py runs/P2_fillerdonor runs/P2S_wakeseg [--t 50] [--L 5]
+    python plots/cmp_colonia.py runs/swarm/P2_fillerdonor runs/swarm/P2S_wakeseg [--t 50] [--L 5]
                                 [--nomes P2 P2S] [--out plots/cmp_colonia_P2_P2S]
 """
 

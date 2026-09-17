@@ -11,7 +11,7 @@
 > J1 (pin `c_n<0.6`→`0.4`) e J2 (`D_n`) **nunca foram rodados** e seguem em aberto —
 > nenhum dos dois toca o zero absorvente, mas J1 continua valendo como higiene da §7.
 
-Estabelecido 2026-08-11. Baseline: **`runs/C4`** (§7, config `SHIFT_CAP=0.0006`,
+Estabelecido 2026-08-11. Baseline: **`runs/swarm/C4`** (§7, config `SHIFT_CAP=0.0006`,
 `D_n=0.05`, domínio `[-7,7]` 261²). Janela de avaliação: **t = 48 s** (§ lição #47 —
 além de t≈55 o nutriente esgota e a colônia congela; comparar fora dessa janela mede
 fome, não morfologia).
@@ -21,7 +21,7 @@ fome, não morfologia).
 ## 0. Correção de registro (feita antes de qualquer coisa)
 
 `main_output/` e `log.csv` na raiz **não eram C4 — eram a rodada K2** (`k_col=0.3`,
-reprovada). Confirmado por igualdade até o último decimal com `runs/K2` em `t`,
+reprovada). Confirmado por igualdade até o último decimal com `runs/swarm/_logs_reprovados/K2` em `t`,
 `mean_v`, `a_marangoni`, `mass_total` e `biomass_total`. Toda medição feita sobre
 esse diretório descrevia K2, não o baseline.
 
@@ -32,7 +32,7 @@ Consequência prática: **antes de qualquer rodada nova, limpar `main_output/`.*
 
 ## 1. O que o baseline C4 realmente mostra
 
-Medido por `tools/diag_juncao.py` sobre `runs/C4/main_output` em t=48 s
+Medido por `tools/diag_juncao.py` sobre `runs/swarm/C4/main_output` em t=48 s
 (figura: `runs/juncao_baseline.png`).
 
 | | C4 (baseline) | K2 (`k_col=0.3`, reprovada) |
@@ -184,13 +184,13 @@ make run
 tools/archive_run.sh J1
 
 # 3. métrica primária do problema + figura comparativa
-python tools/diag_juncao.py runs/C4 runs/J1 --t 48 --out runs/juncao_J1.png
+python tools/diag_juncao.py runs/swarm/C4 runs/J1 --t 48 --out runs/juncao_J1.png
 
 # 4. critérios C1/C2 e guardrails do projeto (§2.5)
-python tools/compare_runs.py runs/C4 runs/J1
+python tools/compare_runs.py runs/swarm/C4 runs/J1
 
 # 5. leitura visual — árbitro final (§11)
-python tools/compare_frames.py --t 48 runs/C4 runs/J1
+python tools/compare_frames.py --t 48 runs/swarm/C4 runs/J1
 python tools/plot_fields.py runs/J1
 ```
 
@@ -206,7 +206,7 @@ medido (§2.3). Discrepância > 2× é investigada antes do passo seguinte.
 
 | proposta | por que não | evidência |
 |---|---|---|
-| `k_col` 0.03 → 0.3 | na junção `deficit = local − ρ_b ≤ 0` **e** gate `c_n` = 0 → contribuição zero; só age na frente, onde achata a crista | `runs/K2`: `a_mar` 3.15→0.13, `n_bio` 167→606, REPROVA em C2 |
+| `k_col` 0.03 → 0.3 | na junção `deficit = local − ρ_b ≤ 0` **e** gate `c_n` = 0 → contribuição zero; só age na frente, onde achata a crista | `runs/swarm/_logs_reprovados/K2`: `a_mar` 3.15→0.13, `n_bio` 167→606, REPROVA em C2 |
 | `BiomassDiffusion` (`D_b`) | único termo bilateral; o maior gradiente com gate de produto ativo é núcleo(1.0)↔vale(0.12) → o fluxo só pode drenar o núcleo | [main.py:166](../main.py#L166): `rho_b` 1.0→0.48, `n_pinned` 43→**0** |
 | inóculo `p=4 → 2` com R maior | suaviza a inclinação → biomassa +2.5× → `cs` uniforme → gradiente some | [particles.py:34-38](../src/particles.py#L34-L38): `a_mar` 2.30→0.75, morfologia Circular |
 | as três juntas | perde atribuição (§2.3/§10) | — |

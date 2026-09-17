@@ -115,6 +115,7 @@ class MyBiomassScheme(Scheme):
         filler_cs_D_interno=0.0,
         filler_cs_lambda=0.5,
         agar_cs_lambda=0.5,
+        pilares=(),  # pass-l-aprovado: Pass L desbloqueado em 2026-09-17 (CLAUDE.md §12)
     ):
         self.mu = mu
         self.gamma = gamma
@@ -151,11 +152,15 @@ class MyBiomassScheme(Scheme):
         self.filler_cs_D_interno = filler_cs_D_interno
         self.filler_cs_lambda = filler_cs_lambda
         self.agar_cs_lambda = agar_cs_lambda
+        self.pilares = list(pilares)
         super(MyBiomassScheme, self).__init__(fluids, solids, dim=dim)
 
     def get_equations(self):
+        # pass-l-aprovado: pilares entram na densidade, no sigma_a e na viscosidade (plano secao 3);
+        # com `pilares` vazio a lista e ["fluid"], identica ao baseline liso.
+        src_par = ["fluid"] + self.pilares
         equations_pre = Group(
-            equations=[SummationDensity(dest="fluid", sources=["fluid"])],
+            equations=[SummationDensity(dest="fluid", sources=src_par)],
             real=False,
         )
 
@@ -170,7 +175,7 @@ class MyBiomassScheme(Scheme):
         )
 
         equations_kernel_sum = Group(
-            equations=[KernelSum(dest="fluid", sources=["fluid"])],
+            equations=[KernelSum(dest="fluid", sources=src_par)],
             real=False,
         )
 
@@ -201,7 +206,7 @@ class MyBiomassScheme(Scheme):
                 ),
                 BiomassGradient(dest="fluid", sources=["fluid"]),
                 MarangoniForce(dest="fluid", sources=["fluid"], beta=self.beta),
-                ViscousForce(dest="fluid", sources=["fluid"], mu=self.mu),
+                ViscousForce(dest="fluid", sources=src_par, mu=self.mu),
                 LinearDrag(
                     dest="fluid",
                     sources=None,

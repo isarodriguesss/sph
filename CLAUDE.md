@@ -245,10 +245,10 @@ O alvo do projeto **nao e escolher** entre "ter buracos" e "ter particulas mal s
 
 **Figura de tese:** [plots/fig_tese.py](plots/fig_tese.py) (`make fig RUN=runs/X T=50`) — 2x2 com
 a disposicao e as CORES do painel (b) de Trinschek (decisao da usuaria, 2026-09-14): (a) colonia
-como campo continuo oliva sobre azul-claro (Shepard, h=dx) com buracos FECHADOS de ate 3.5 dx
-preenchidos so na renderizacao (licao #72-K), (b) borda externa em 5 instantes, contornos pretos,
+como a REGIAO SEM AGAR (mais de 0.8 dx da particula de agar mais proxima: colonia + limbo + vazio),
+oliva sobre azul-claro sem tom intermediario (`--contorno` restaura a borda clara, pedida pela usuaria em 2026-09-15), nenhum buraco preenchido (decisao da usuaria, licao #92) exceto a particula de agar ISOLADA (sem outra de agar a < 2 dx, `--iso`), que nao e desenhada — buraco de uma particula, abaixo do suporte do kernel (decisao da usuaria, 2026-09-15), (b) borda externa em 5 instantes, contornos pretos,
 (c) raios maximo (vermelho) e minimo (azul-petroleo) x t, com os instantes de (b) marcados,
-(d) `c_s` azul-branco-vermelho sem filler, com o contorno da colonia. Unica diferenca deliberada
+(d) `c_s` azul-branco-vermelho sem filler, com o contorno da colonia; onde nao ha particula nao-filler no suporte do kernel (zona so de filler mais larga que 2h — base dos bracos do P2R8) o ponto recebe o `c_s` da nao-filler mais proxima, em vez do piso 1e-3 que pintava manchas azuis falsas (decisao da usuaria, 2026-09-15). Unica diferenca deliberada
 da referencia: `c_s` em escala LOG fixa [1e-3, 0.5] (Trinschek usa linear) — em linear o halo
 some. Testados e descartados para o painel (c): campo de `c_n` e quimografo da frente. Colonia =
 `rho_b>=0.1` ou filler (§2.2); `--limbo` inclui o limbo. Escalas fixas, entao figuras de runs
@@ -656,6 +656,30 @@ conda install mpi4py -c conda-forge
 > realizacao, nao a referencia exata; comparacoes com ele valem no nivel de ruido entre
 > realizacoes, como ja se faz com as de thread diferente.
 >
+> **BASELINE = P2R21 (2026-09-17, decisao da usuaria).** `main.py` e `src/` estao BIT-A-BIT
+> identicos ao snapshot `runs/P2R21_ponta_recobre` (verificado por diff). E o P2 mais a serie do
+> rastro: `RASTRO_W`=5, `RASTRO_SEG`=True (conversao ao longo do segmento percorrido), `RASTRO_BAIA`=2,
+> `RASTRO_R_MOV`=0.4 (lider por movimento), `FILLER_RHO_B_FLOOR`=0.4, `AGAR_CS_LAMBDA`=0.125, e a calota
+> so no lider mais externo de cada grupo com recobrimento (`RASTRO_PONTA`=1.0, `RASTRO_PONTA_LINK`=6.0,
+> `RASTRO_PONTA_RECOBRE`=True). O filler NAO conduz `c_s` (`FILLER_CS_CONDUZ`=0).
+>
+> Contra as reguas da literatura (licoes #95/#99, medido em t=50): nucleo 0.32 R (alvo 0.36), baia
+> 0.31 R (0.34), area/disco 0.43 (0.35-0.39), 20 dedos, AR 11.4 (faixa 3.8-11.2), ciclo 0.72 (0.36-1.25),
+> largura 5.4 dx, halo L 0.16 R (0.18), `R99` 4.45, dR/dt 0.090. **2o no ranking geral e 2o no corte de
+> forma+ciclo**, atras do P2R17 — que ganha por ter campo de `c_s` medido e AR 10.4, mas com `R99` 4.11 e
+> nucleo 0.39 R, ou seja mexendo no denominador das razoes.
+>
+> **Duas ressalvas herdadas, que a promocao NAO resolve:** (a) o painel (d) do P2R21 e valor CONGELADO do
+> filler — 31.4% da area da colonia nao tem grau de liberdade de `c_s` (licao #39 e o diagnostico de
+> 2026-09-17); so uma rodada com `FILLER_CS_CONDUZ` da campo de verdade no corpo, ao custo conhecido de
+> abrir o gate da base (licoes #94-H, #97, #101). (b) motor `a_mar_bio_p95` 0.37, contra 0.79 do P2R20 e
+> 0.44 do P2R16 — a causa esta medida na licao #104 (mais pontas ativas fecham as baias a meia altura e
+> somem os bolsoes onde o `c_s` do agar encosta no gate da colonizacao).
+>
+> **A ponta e o corpo do P2R21 sao melhores do que os frames mostram** (licao #105): os frames sao
+> gravados no atraso maximo do rastro; logo apos a conversao a ponta reproduz a calota do teste-ouro
+> (u1/u2/u3 5.3/7.4/8.5 contra 2.9/4.5/6.6 no frame) e o corpo vai de u5 8.8 para 9.6.
+
 > **BASELINE = P2 = E11 + `COL_FILLER_DONOR=1` (2026-09-11, decisao da usuaria, licao #88).**
 > Reproduz `runs/P2_fillerdonor` BIT-A-BIT (45 colunas + `t` nas iteracoes 0 e 200,
 > `runs/_verif_P2`). E o unico da serie P que liga os bracos ao nucleo sem sair da classe
@@ -3723,6 +3747,649 @@ Calibracao pos-Passes A-I.7. **MARCO I.7:** Transicao blob→dendritico confirma
     tardio e a subida do `cs` na baia; qualquer alavanca de gate/doador/wake corta tambem a
     ligacao. **Janela morfologica do P2: t ≲ 55** (em t=55 F ja esta 30% coberta e `R_min`
     salta 1.64 -> 1.95); a janela numerica segue t ≲ 75.
+
+91. **P2S (`WAKE_SEG` sobre o P2) NAO engrossa os bracos — o rastro da ponta nao e vazio, e
+    AGAR; a largura e fixada pelo RECRUTAMENTO lateral, nao pela deposicao** (2026-09-14,
+    `runs/P2S_wakeseg`, criterios e tabela em `CRITERIOS.md`). Pedido da usuaria: engrossar os
+    bracos antes da rugosidade. Medida da largura no campo da figura de tese (arcos contiguos
+    num circulo de raio r): P2 = **2.5 dx** em r/R99 = 0.65 e 0.8, mais fino que o suporte do
+    kernel (2h = 3.6 dx). Na janela t in [35, 50] o P2S da **2.9 dx** a meia altura (media
+    4.3 -> 5.6, cauda +60%) e **2.4 dx** nas pontas (inalterado). Objetivo reprovado.
+
+    **Por que a licao #65 nao se repetiu:** o `livre()` so aceita ponto sem vizinho a 0.7 dx, e
+    a ponta anda por dentro do agar, que a colonia atravessa sem deslocar (licao #58). O
+    segmento `x_dep -> x` ja esta ocupado; o wake so encheu vazio real e somou **+9%** ate t=50
+    (2942 contra 2706). O teto `WAKE_MAX` nao era o limite (7 de 27 chamadas nos dois runs).
+
+    **Ganhos colaterais, sem custo:** C5b 17.0/12.8 -> **25.7%** (janela), vazio > 1 dx menor
+    todo o run, amplitude 0.93x, 40 dedos, e o **disco tardio ATRASADO** — `R_min(t=50)`
+    1.81/1.53 -> **1.34**. Mecanismo do atraso nao medido.
+
+    **Consequencia:** para engrossar o braco e preciso recrutar mais agar LATERAL, e o
+    engrossamento lateral e exatamente o que fecha as fendas perto do nucleo (licao #90).
+    Engrossar pelo recrutamento antecipa o disco; so escaparia uma alavanca que recrute na
+    PONTA e nao na base. `WAKE_SEG` fica no codigo, desligado por padrao.
+
+    **CORRIGIDO PELA LICAO #92:** o "disco atrasado" (R_min 1.34 contra 1.81) era artefato do
+    renderizador. Medido de novo: P2S 1.26 contra P2 1.23 — igual. A largura tambem foi
+    re-medida: nas pontas 2.2 (P2S) contra 2.5/2.4 (P2); a meia altura 1.8 contra 1.9/1.7.
+
+92. **O RENDERIZADOR DA FIGURA DE TESE COMIA BAIAS — 22-37% da area da colonia; toda medida
+    de `R_min`, largura e "bracos soltos" feita com `plots/fig_tese.campo` antes de 2026-09-14
+    esta contaminada** (apontado pela usuaria comparando com o viewer do PySPH). O `campo`
+    aplicava `binary_closing` com disco de raio `fecha` = 3.5 dx e depois `binary_fill_holes`.
+    O docstring prometia "baia e ligada ao exterior e nunca e preenchida", mas o FECHAMENTO,
+    sozinho, enche qualquer concavidade mais estreita que 2*`fecha` = 7 dx, aberta ou nao — ou
+    seja, o fundo de toda baia estreita. Area comida em t=50: P2 23%, P2S 26%, P2R 26%, E11 34%
+    (37% em t=80).
+
+    **Correcao:** (1) ponte pequena, fechamento de 1.0 dx, que costura as falhas ENTRE
+    particulas de um braco sem tocar baia; (2) so buracos CERCADOS pelo corpo e inteiramente
+    vedados pelo disco de 3.5 dx sao preenchidos. Escolhido por varredura contra o scatter de
+    particulas (`plots/varre_render_P2R.png`, `varre_render_P2.png`, zoom em
+    `plots/zoom_bracos_P2.png`): sem ponte o P2R sai em 29 pedacos; com 1.0 dx em 4 e baias
+    intactas (area 18.1 contra 17.5 sem ponte e 23.1 no antigo); com 1.5 dx ja enche pontas de
+    baia.
+
+    **O que muda nas conclusoes:**
+    - **#88 (P2 como baseline): a vantagem sobrevive, menor.** Bracos soltos / fora do corpo:
+      E11 14.4 / 28.7% contra P2 9.3 / 14.8% (antes: 5.2 contra 1.3). O "braco ligado" do P2
+      era em parte a costura de 7 dx do renderizador: no zoom, o braco do P2 e um colar de
+      grumos de filler separados por vazio e agar (licao #73). O viewer mostra uma faixa
+      continua porque o rastro abre um canal no agar.
+    - **#90 (disco tardio): o fenomeno e real, os numeros mudam.** `R_min` do P2 t=51 -> 60 ->
+      70 -> 80: 1.36 -> 1.48 -> 2.03 -> 2.49 (antes 1.69 -> 2.07 -> 2.30 -> 2.68); E11 1.04 ->
+      1.26 -> 1.27 -> 1.48. O disco comeca entre t=60 e 70, nao em t≈55: **janela morfologica
+      do P2: t ≲ 60.** A decomposicao do material de F e de particulas e continua valida, mas F
+      foi definida com a borda antiga (incluia fendas que o fechamento enchia).
+    - **#91 (P2S):** o disco atrasado era artefato (ver a nota la).
+    - **#89 (P2W):** relevo/Rmax e agar limpo foram medidos com o renderizador antigo — nao
+      re-medidos.
+
+    **Regra:** toda metrica derivada de uma imagem processada deve ser conferida contra as
+    PARTICULAS antes de virar conclusao, e toda operacao morfologica (fechamento, dilatacao)
+    tem de dizer o que faz com concavidades abertas, nao so com buracos. O docstring descrevia
+    a intencao, nao o que o codigo fazia.
+
+    **Renderizador FINAL (mesmo dia, decisao da usuaria apos comparar com o viewer):** o painel
+    (a) passou a ser a REGIAO SEM AGAR — ponto a mais de 0.8 dx da particula de agar (`rho_b`=0,
+    nao filler) mais proxima; entram colonia, limbo e vazio. Nenhum buraco preenchido (todo
+    buraco contem agar, e o preenchimento unia bracos vizinhos), nenhuma ponte (a ponte no agar
+    separa bracos mas corta bracos estreitos em contas — licao #72-J de novo), paleta de duas
+    cores (o creme intermediario desenhava um halo branco na borda). Dois achados no caminho:
+    (1) o "fundo de baia" escuro no viewer e colonia de `rho_b` 0.1-0.25 (filler convertido e
+    recrutas), que a viridis pinta quase da cor do agar; (2) os numeros de `R_min`/largura/soltos
+    acima (versao com ponte de 1 dx) mudam de novo nesta regua — P2 em t=50: `R_min` 1.77, porque
+    o corpo agora inclui o limbo. Re-medicao completa pendente.
+
+93. **P2R (rastro largo: agar a <= 1 dx das vivas da frente vira filler do wake) NAO engrossa
+    as pontas — mas e o primeiro mecanismo que deixa os bracos CONTINUOS na colonia
+    renderizada** (2026-09-14, `runs/P2R_rastro`, `RASTRO_W` = 1.0 dx, `RASTRO_R_MIN` = 0.7,
+    tabela em `CRITERIOS.md`, medido ja com o renderizador corrigido). Motivacao (perfil
+    transversal, licao #91): o braco do P2 e 80% filler do wake e 1-2% viva — o rastro de 1-2
+    vivas —, e o agar dos lados tem `cs` 0.10-0.17, abaixo do gate de colonizacao (0.3).
+
+    **Largura nas pontas 2.5 dx, igual ao P2** (objetivo >= 3.1: reprovado); a meia altura
+    +15-25%. **Bracos soltos 9.3 -> 0.3 e material fora do corpo 14.8% -> 0.4%**, 25.8 bracos
+    em r/R99=0.65 contra 16.5, expansao mais rapida (R99 4.48 contra 3.99, dR/dt 0.090 contra
+    0.078), amplitude 0.92x, dedos 33 contra 36. Custos: vivas -25% (903 contra 1206 — o agar
+    convertido deixa de ser recrutavel), `frac(sigma_a<0.85)` 6% -> 12%, C5b de particulas
+    17 -> 9.6.
+
+    **Por que nao alarga:** com W = 1 dx a conversao pega o agar A FRENTE do lider e as falhas
+    do proprio rastro; o canal que a ponta abre ja tem ~2 dx. O efeito e de continuidade, nao
+    de espessura. O proximo passo natural e W = 2 dx (alcanca o agar dos lados do canal).
+    `RASTRO_W` fica no codigo, desligado por padrao.
+
+    **CORRIGIDO PELA LICAO #94:** a "continuidade" do P2R era do renderizador intermediario
+    (ponte de 1 dx). No renderizador final o P2R tem **25.7 pedacos soltos** por quadro (P2 35.0):
+    com disco de 1 dx e passo do lider de 2.6 dx por chamada, sobra um vao de ~0.6 dx de agar
+    atravessando o braco a cada chamada.
+
+94. **RASTRO LARGO — P2R2 engrossa mas serpenteia, P2R3 endireita mas corta, P2R4 (conversao
+    ao longo do SEGMENTO percorrido) entrega bracos retos, 2x mais largos que o P2 e continuos**
+    (2026-09-14, `runs/P2R2_rastro2`, `P2R3_rastro_lateral`, `P2R4_rastro_segmento`, criterios e
+    tabelas nos `CRITERIOS.md`; renderizador final, janela t in [35, 50]). Mesmo mecanismo da
+    #93 (agar vira filler do wake com o `rho_b` do lider), mudando QUAL agar:
+
+    | | regra | tortuosidade / cos | largura 0.65 / 0.8 (dx) | pedacos soltos | amplitude |
+    |---|---|---:|---:|---:|---:|
+    | P2 | — | ~1.02 / 0.98 | 1.6 / 2.1 | 35.0 | 0.312 |
+    | P2R | disco 1 dx | ~1.02 / 0.99 | 2.2 / 2.7 | 25.7 | 0.286 |
+    | P2R2 | disco 2 dx | **1.22 / 0.82** | 4.3 / 3.9 | 0.5 | **0.163** |
+    | P2R3 | disco 2 dx menos cone frontal ±60° | 1.03 / 0.97 | 3.2 / 3.3 | **14.4** | 0.255 |
+    | **P2R4** | agar a <= 2 dx do segmento percorrido, so atras da posicao atual | **1.01 / 0.97** | **3.2 / 3.4** | **0.4** | 0.241 |
+
+    **(A) Converter A FRENTE do lider o faz serpentear.** No P2R2 71% do agar a < 2 dx do lider
+    estava a frente: a ponta avanca sobre filler que ela mesma criou, que nao entra no gradiente de
+    `cs`, e perde o rumo (mudanca de direcao 25° por quadro, lacos). Excluir a frente endireita.
+
+    **(B) Excluir a frente com um CONE deixa uma cunha sem conversao a cada chamada.** A conversao
+    roda a cada `WAKE_FREQ`=100 iteracoes e o lider anda 2.9 dx (p90 3.5) nesse intervalo. O agar
+    logo a frente dele cai no cone na chamada k e, na k+1, ja esta a mais de 2 dx; medido no
+    P2R3, o agar do corredor fica 0.73 dx a frente das posicoes de chamada, 47% dentro da cunha.
+    Onde a cunha atravessa a largura do braco, o painel (a) corta. **Regra: qualquer conversao
+    feita numa POSICAO a cada N passos deixa lacunas se o passo por chamada exceder o alcance —
+    converter ao longo do SEGMENTO percorrido e continuo por construcao.**
+
+    **(C) `x_dep` nao e "posicao na chamada anterior".** So e reiniciado para quem deposita wake
+    e congela quando o orcamento do wake acaba. O P2R4 guarda as posicoes da propria chamada
+    anterior (indices estaveis: insercoes entram no fim).
+
+    **P2R4 — aprovado em retidao, largura, continuidade visual, numerica e §11; reprovado no
+    limite em amplitude (0.77x o P2, limite 0.8x) e na contagem de agar do corredor (13 contra 8,
+    queda de 57% sobre o P2R3, sem cortar o painel).** Custos comuns a serie: vivas ~600 contra
+    1206 do P2 (agar convertido deixa de ser recrutavel) e `Rmin` 1.25 contra 1.77 (baias mais
+    fundas; o disco tardio da #90 nao foi reavaliado alem de t=50). `RASTRO_SEG` fica no codigo,
+    desligado por padrao; o baseline segue P2 ate decisao da usuaria.
+
+    **(D) P2R5 — `RASTRO_W` 2 -> 3 dx sobre o P2R4 (2026-09-15, `runs/P2R5_rastro_w3`): a largura
+    responde linearmente ao alcance, o numero de bracos quase nao.** Largura p50 3.4 -> **5.5 dx**
+    em 0.8 R99 (predicao 5.0-5.6), bracos 19.6 -> 18.0 (0.8 R99) e 26.4 -> 21.8 (0.65 R99),
+    retos (1.01, 4°), `Rmin` 1.17 estavel desde t≈25. Custos: amplitude 0.241 -> **0.168**
+    (0.54x o P2, reprova o limite 0.6x), agar limpo nas baias 65% -> 42%, 1.7 pedacos soltos
+    pequenos por quadro. **A predicao de fusao na base (dilatacao estatica do P2R4) errou:** o
+    `Rmin` nao subiu — dilatar a colonia final nao reproduz a dinamica, porque a base foi
+    construida quando a colonia era menor e as baias la eram outras (mesma classe da licao #54).
+    Engrossar por esta alavanca troca relevo por largura na proporcao geometrica; reduzir o
+    numero de bracos exige outra alavanca, ainda nao identificada.
+
+    **(E) GUARDA DE BAIA (P2R6 G=2 dx, P2R7 G=4 dx corrigida, 2026-09-15): o agar que o rastro
+    NAO converte na base e recrutado pela colonizacao — a baia da base fecha de um jeito ou de
+    outro.** Com W=3 as baias da base viraram frestas de 1-2 dx (regioes marcadas pela usuaria):
+    a borda delas era 89% agar convertido. A guarda (so converter agar sem material vizinho a
+    <= G dx) com G=2 manteve 2 fileiras — fresta por construcao — e era cega a conversoes da mesma
+    chamada (46% dos pares dos dois lados das frestas); corrigida e com G=4, a borda convertida
+    caiu a 49%, mas o agar preservado foi recrutado (38% da borda, vivas 598 -> 1703): nucleo virou
+    disco de raio ~2.2, baias abertas na base 30.3 -> 6.7, bracos externos 18 -> 14.5. E o laco
+    da licao #90 (filler-doador -> recruta): no P2R5 ele nao tinha o que recrutar porque o
+    rastro ja tinha transformado esse agar em filler. **Regra: sob `COL_FILLER_DONOR`=1, proteger
+    agar da conversao na base nao abre a baia — so troca o mecanismo que a fecha.** Abrir as baias
+    da base exige tambem impedir o recrutamento do agar protegido. `RASTRO_BAIA` fica no codigo
+    (0 = desligado); a correcao da mesma chamada ficou atras de `RASTRO_BAIA_CHAMADA` (True no
+    codigo; o P2R6 e o P2R8 rodaram com False, a versao original).
+
+    **(F) P2R8 — dendritos novos continuos (2026-09-15, `runs/P2R8_lider_mov`, config escolhida
+    pela usuaria: P2R6 + `RASTRO_R_MOV`=0.4).** Dendritos que nascem por dentro (0.5-0.6 R99) ficavam
+    abaixo do limiar de 0.7 R99 da conversao e eram construidos so pelo wake (tracejado). Separar
+    lider por MOVIMENTO em vez de raio funciona porque os grupos se separam por uma ordem de
+    grandeza no passo por chamada: corpo 0.1 dx, dendritos novos 0.66 dx, frente 1.6-2.6 dx. Entram
+    como lideres as vivas entre 0.4 e 0.7 R99 que andaram >= 0.5 dx para fora desde a chamada
+    anterior. Resultado: passos internos atravessando agar 12/90 -> **3/83**, pedacos soltos 1.3 ->
+    **0.0**, base preservada (baias abertas 33.8, frestas 8.6), largura 5.5 dx, tortuosidade 1.00.
+    **Todos os criterios pre-registrados aprovados; baseline candidato: P2R8.**
+
+    **(G) P2R9 — piso de `rho_b` = 0.4 no filler novo (2026-09-15, `runs/P2R9_piso_filler`,
+    `FILLER_RHO_B_FLOOR`): a base fica coesa, e o nucleo pinado descola no contato.** A base do
+    P2R8 foi construida cedo por lideres a `rho_b` ≈ 0.13 e herdou esse valor: 6% do filler da base
+    com `fade` < 0.5 (as manchas roxas no viewer). Com o piso: 0%, forma igual (0 pedacos, 5.4 dx,
+    20 bracos em 0.8 R99), sem disco (vivas 622, baias abertas 34.2, bolsas 1.4 -> 0.3). Custo fora
+    dos criterios: C5 a 1.05 dx cai de ~10% para ~1% — o componente do centro vira so o nucleo
+    pinado (76 particulas), separado por uma fresta de ~1.1 dx; a 1.4 dx os dois se equivalem. O
+    filler agora tem pressao e e empurrado para longe do nucleo imovel (licao #73, antecipada).
+
+    **(H) P2R10 — filler conduz `c_s` (difusao e decaimento de agar, sem produzir e sem
+    Marangoni; `FILLER_CS_CONDUZ`, 2026-09-15): o painel (d) fica como o de Trinschek, e a colonia
+    vira disco pelo laco da #90.** Motivo: o painel de surfactante tinha `c_s` ~0.05 nos bracos
+    contra Γ ≈ Γmax na referencia, porque 95% da colonia e filler quimicamente inerte. Com a
+    conducao, o `c_s` do filler cai monotono do nucleo (0.47) as pontas (0.09) e o painel fica
+    continuo. Mas o `c_s` do nucleo chega ao agar da base (0.045 -> 0.29; 67% acima do gate
+    `COL_CS_MIN`=0.3 em t≈36, contra 5%): a colonizacao recruta a base, Rmin 1.17 -> 1.64, bracos
+    em 0.8 R99 20 -> 16, R99 −9% (o agar a frente das pontas tambem sobe, `a_mar_bio_p95` −16%).
+    **Regra: sob `COL_FILLER_DONOR`=1, qualquer mudanca que suba o `c_s` do agar da base acima do
+    gate reabre o laco do disco (#90) — conducao pelo filler e uma delas.**
+
+    **(I) P2R11 — conducao pelo filler mais lenta (`FILLER_CS_D`=0.02, 1/4 do agar, 2026-09-15,
+    `runs/P2R11_filler_conduz_lento`): o painel (d) continua como o de Trinschek e o laco quase nao
+    reabre.** Previsto por queda exponencial do nucleo calibrada no P2R10 (`L = sqrt(D/0.075)`):
+    acertou todos os itens dentro da faixa — agar da base 0.29 -> 0.15, filler 0.29 (0.2-0.4 R99) e
+    0.10 (0.4-0.6 R99), gate da base acima de 0.3 em t≈36 67% -> 7%, bracos em 0.8 R99 18, R99 4.68.
+    Custo residual: nucleo intermediario (Rmin 1.36-1.55 conforme a regua, P2R9 1.05-1.17) e 3.2
+    bolsas de agar fechadas na base (P2R9 0.3) — o gate da base fica aberto ate t≈24 contra t≈19 do
+    P2R9; frac(`c_s` > 0.45) nas vivas 0.77 (limite 0.8). **As tres reguas de Rmin (`rank_runs`,
+    media de `largura_final`, `cmp_colonia`) discordam em ate 0.2 no P2R11 — reportar as tres quando
+    o criterio depender do Rmin.**
+
+    **P2R12 (`FILLER_CS_D`=0.01) fecha a rota do D: o tamanho do nucleo NAO e proporcional a
+    conducao** (2026-09-15, `runs/P2R12_filler_conduz_d001`). Cortar D pela metade mexeu o Rmin so
+    ~0.1 (1.44 -> 1.34 pela media da janela, contra 1.05 do P2R9) e custou 18% do `c_s` do filler no
+    meio dos bracos (0.098 -> 0.080, no limite do criterio). Causa medida: **o gate da colonizacao
+    na base esta 100% aberto ate t≈22 nos TRES runs, inclusive no P2R9 que nao conduz nada** —
+    enquanto a colonia e pequena o `c_s` das proprias vivas alcanca a base. A conducao so adia o
+    fechamento de ~21-29 (P2R9) para ~22-29 (P2R12) e ~24-31 (P2R11). Logo `FILLER_CS_D` nao e a
+    alavanca para devolver o nucleo do P2R9; abaixo de 0.01 o filler encosta no fundo de 0.05 do
+    agar (perde o painel) sem recuperar o nucleo. **Erro de predicao a registrar:** previ que o
+    criterio do painel reprovaria (0.05-0.07) e ele passou (0.080); e previ Rmin 1.2-1.3 quando deu
+    1.34-1.40 — a extrapolacao exponencial acerta o CAMPO e nao acerta o que depende do laco da
+    colonizacao.
+
+95. **AS REFERENCIAS DO §2.2 MEDIDAS EM NUMERO — e o ranking contra elas inverte dois criterios
+    internos** (2026-09-16, [tools/lit_rank.py](tools/lit_rank.py)): ate aqui as duas referencias
+    eram usadas como criterio VISUAL. Elas foram medidas como imagem, com o mesmo algoritmo que
+    mede os runs — inclusive o mapa de Gamma do painel (b) de Trinschek, invertido pela propria
+    barra de cores da figura, o que devolve Gamma na unidade do artigo (`Gamma_max` = 0.5, o mesmo
+    numero do nosso `cs_max`).
+
+    | alvo (adimensional) | Trinschek (b) | PA14 painel C | PA14 painel A |
+    |---|---:|---:|---:|
+    | nucleo solido / Rmax | **0.36** | **0.36** | 0.06 (mascara contaminada pelo prato) |
+    | fundo da baia (Rmin/Rmax) | 0.34 | 0.34 | 0.48 (idem) |
+    | dedos | 9 | 15 | 12 (visual ~18) |
+    | area / disco de Rmax | 0.39 | 0.35 | 0.64 (idem) |
+    | AR do dedo | 6.5 | 11.2 | 8.5 |
+    | **Gamma no corpo / Gamma_max** | **0.99** | — | — |
+    | **Gamma nas baias / Gamma_max** | **0.95** | — | — |
+    | Gamma em 0.9 Rmax / na ponta | 0.71 / 0.54 | — | — |
+    | r(50% do teto) / Rmax | 1.03 | — | — |
+    | decaimento fora da colonia L / Rmax | 0.18 | — | — |
+
+    **(A) O DEFEITO QUIMICO E DE NIVEL, NAO DE DIFUSAO.** Em Trinschek Gamma satura em ~Gamma_max
+    sobre TODA a pegada da colonia, **baias inclusive** (0.95), e so cai na borda externa. Nos
+    nossos runs o `c_s` do corpo vale 0.16-0.47 do teto e o das baias 0.11-0.21, e a mediana
+    azimutal ja cruza metade do teto em **0.50 Rmax** (Trinschek: 1.03). Ja o comprimento de
+    decaimento fora da colonia e **0.12-0.15 Rmax** contra 0.18 da referencia — mesma ordem, e
+    coerente com o `L_D_ext` = sqrt(`D_ext`/`lambda_ext`) = 1.03 = 0.21 Rmax do §7. **`D_ext` esta
+    calibrado; o que falta e o nivel dentro da colonia.** Causa estrutural: 94-95% da nossa colonia
+    e filler, quimicamente transparente (licao #39) — em Trinschek nao existe essa fase, o filme E
+    a colonia. Por isso so os runs que conduzem `c_s` pelo filler tem campo definido no corpo; nos
+    demais (P2, P2R8, P2R9) o numero do painel e extrapolacao da vizinha viva ou valor congelado,
+    **nao e uma concentracao**.
+
+    **(B) DOIS CRITERIOS INTERNOS NAO TINHAM BASE NA LITERATURA.** (1) O limite "Rmin <= 1.4" que
+    reprovou o P2R10 foi escolhido para preservar o nucleo do P2R9; medido contra as referencias, o
+    nucleo do **P2R10 (0.38 Rmax) e o alvo** (0.36) e o do P2R9 (0.23) e pequeno demais. (2) A
+    contagem de dedos: a faixa das referencias e 9-15 (Trinschek 9, PA14 C 15, PA14 A ~18) e os
+    runs da serie do rastro dao 19-23 — **acima**, nao abaixo. O que continua longe em todos e o
+    **AR** (15-23 contra 6.5-11): nossos bracos sao finos demais para o raio, e nenhuma alavanca
+    testada mudou isso.
+
+    **(C) RANKING (distancia ponderada a faixa da literatura; campo 0.40, forma 0.35, nucleo 0.25):
+    P2R10 (0.31) > P2R12 (0.45) ≈ P2R11 (0.46) > P2R8 (0.54) ≈ P2R9 (0.55).** O P2 baseline pontua
+    0.27 SO porque o campo dele e o artefato do item (A); pela forma ele e o pior do conjunto
+    (7 dedos, area/disco 0.24, AR 17.8). **O P2R10 e o melhor em todos os tres eixos pedidos** —
+    nucleo 0.38 (alvo 0.36), area/disco 0.39 (alvo 0.35-0.39), AR 15.4 (o menor da serie) e campo no
+    corpo 0.47 (o maior fisicamente valido, ainda metade do alvo).
+
+    **Ressalva de medicao:** as referencias sao fotos de 150 px (PA14) e um painel de figura
+    (Trinschek); trocar o criterio de segmentacao move os numeros em ate ~20%, e a mascara do painel
+    A inclui um setor claro do prato. Usar as faixas, nunca o valor isolado.
+
+96. **O `c_s` e integrado EXPLICITAMENTE e o `dt` adaptativo do PySPH nao tem criterio difusivo — o
+    baseline opera a 1.4x do limite, e o teto de `cs_max` estava escondendo isso** (P2R13, 2026-09-16,
+    `runs/P2R13_filler_D_interno_REPROVADO`): subir a difusividade de `c_s` entre pares filler-filler
+    de 0.08 para 0.25 fez o `max_cs` saltar de 0.494 (o teto) para **5.05 na iteracao 200** e 13 em
+    t=15, com `a_mar` em 124-249 e a colonia sendo arrancada (`n_fast` 1 -> 5124). Nao e fisica: e o
+    limite explicito `dt <= h^2/(4D)`, que com `h` = 1.8 dx vale 0.029 s em `D_ext` = 0.08 e
+    **0.0094 s em `D` = 0.25**, contra um `dt` de 0.017-0.022 s no baseline.
+
+    **Por que nunca apareceu:** o fator `(1 - cs/cs_max)` da producao e um limitador nao-linear —
+    quem produz nao consegue passar do teto por muito tempo. O filler que CONDUZ nao produz, entao
+    nao tem teto nenhum: o unico freio e o sumidouro. Ao ligar a conducao (P2R10+) criou-se pela
+    primeira vez uma populacao sem limitador, e o limite difusivo passou a ser o que manda.
+    **Regra: qualquer aumento de `D` de um campo explicito tem de ser checado contra `h^2/(4D)` vs o
+    `dt` TIPICO do run (nao o inicial), e o sintoma de violacao e `max_cs` acima do teto ja na
+    primeira dezena de passos** — pre-registrar isso como criterio de aborto precoce sai de graca.
+    Acima de `D` ~ 0.10 e preciso limitar o `dt` (custo ~3x em iteracoes).
+
+97. **PROTEGER o surfactante dentro da matriz levanta o campo como a literatura pede — e a conta
+    vem da frente: a troca e MONOTONICA e o acoplamento que a fecha e a colonizacao ler o proprio
+    `c_s`** (P2R14, 2026-09-16, `runs/P2R14_filler_lambda`): o comprimento de conducao ao longo do
+    braco e `L = sqrt(D / lambda_filler)`; com o numerador travado pela licao #96, a alavanca livre e
+    o DENOMINADOR, e ela nao tem custo de estabilidade (o sumidouro e local, `lambda*dt` ~ 2e-4).
+    Fundamentacao: a matriz de EPS protege o ramnolipideo da degradacao que ele sofre no agar livre —
+    o mesmo argumento do Pass J e do §7. `FILLER_CS_LAMBDA` 0.5 -> 0.25 (parametro novo; 0.5
+    reproduz o anterior).
+
+    | sem conducao (P2R9) -> conduz (P2R10) -> protegido (P2R14) | | | |
+    |---|---:|---:|---:|
+    | `c_s` do corpo / teto (alvo 0.99) | 0.16 | 0.47 | **0.63** |
+    | `c_s` das baias / teto (alvo 0.95) | 0.11 | 0.21 | **0.28** |
+    | `a_mar_bio_p95` (mediana t>30) | 2.05 | 1.72 | **1.40** |
+    | `R99` / `dR/dt` | 4.74 / 0.096 | 4.31 / 0.089 | **3.89 / 0.057** |
+    | nucleo / Rmax (alvo 0.36) | 0.23 | 0.38 | **0.42** |
+    | gate da base acima de `COL_CS_MIN` em t≈36 | 5% | 67% | **95%** |
+    | iter/t (P2 = 56) | 62 | 81 | **137** |
+
+    Monotonico nas sete linhas. **Mecanismo unico:** todo `c_s` posto dentro da colonia vaza para o
+    agar (em 0.4-0.6 R99 o agar vai de 0.049 a 0.243 nos tres runs), e o agar mais rico (a) enfraquece
+    o gradiente na frente — dai `a_mar`, `R99` e `dR/dt` — e (b) abre o gate da colonizacao, que
+    engorda o nucleo (licao #90). **A `BiomassColonization` le exatamente o campo que a rota quer
+    levantar; esse acoplamento, e nao a quimica, e o limite.** Enquanto `COL_CS_MIN` for um limiar
+    ABSOLUTO sobre `c_s`, subir o campo e engordar o nucleo sao a mesma operacao.
+
+    **Ponto de operacao:** o P2R14 e o melhor campo ja medido (painel (d) com a cara do painel (b) de
+    Trinschek) e REPROVA em `R99` (3.89 < 4.1), em area/disco (0.43, faixa 0.35-0.39) e no custo
+    (2.2x o P2). O **P2R10 continua sendo o melhor conjunto contra a literatura** (licao #95).
+
+98. **CADA DEDO E O RASTRO DE UMA CELULA VIVA ISOLADA — por isso nenhuma alavanca de CAMPO muda a
+    contagem de dedos, e o AR nao fecha** (P2R15 + medicao dos lideres, 2026-09-16,
+    `runs/P2R15_lambda_agar`):
+
+    **(A) A hipotese do comprimento de onda (§2.4-C) esta REFUTADA.** `AGAR_CS_LAMBDA` 0.5 -> 0.125
+    dobra `L_D_ext` (1.03 -> 2.07) e triplica o `c_s` do agar (base 0.045 -> 0.132), e o passo entre
+    bracos **nao se move**: 0.157 -> 0.151 Rmax em 0.6 R99 (24 -> 25 bracos) e 0.248 -> 0.236 em
+    0.75 R99 (19 -> 20). O criterio pre-registrado era <= 16 bracos.
+
+    **(B) A causa, medida no mesmo dia:** os lideres do rastro sao **19-28 celulas vivas isoladas**,
+    em 18-21 grupos de 1.1-1.4 celulas, com o vizinho mais proximo a **14-21 dx** — e **nenhum** tem
+    companheiro dentro de 3h (5.4 dx), que e o alcance de TODA forca do modelo (EOS, viscosidade,
+    pressao). Os dedos medidos sao 19-24. **Dedo = lider.** Nao existe onda a ser alongada nem
+    mecanismo que agrupe lideres; a contagem de dedos e a contagem de celulas vivas na frente
+    (~30, licao #86-A). Nas referencias cada dedo e uma ponta MULTICELULAR — e essa e a diferenca
+    estrutural por tras do AR (15-23 contra 6.5-11.2).
+
+    **(C) Corolario aritmetico que fecha a alavanca `RASTRO_W`:** largura = ciclo x passo, e o passo
+    e 2*pi*0.6/n. Com n = 20 dedos, alcancar a largura da literatura (0.10-0.19 Rmax) exige ciclo de
+    **0.53 a 1.0**, contra a faixa 0.32-0.46. Medido na serie W (P2R4 W=2 -> P2R5 W=3, t=50):
+    largura 3.5 -> 5.9 dx e ciclo 0.24 -> 0.34, ou seja +2.4 dx e +0.10 por unidade de W. Extrapolando:
+    W=4 da largura 0.085 R com ciclo 0.44 e area/disco 0.39 (AR ~14); W=5 da largura 0.11 R (na faixa)
+    com ciclo 0.54 e area/disco 0.45 (fora). **Com 20 dedos nao existe W que satisfaca largura e
+    ciclo ao mesmo tempo.**
+
+    **(D) O filtro de separacao angular nos lideres tambem nao serve** (analise preditiva, nenhuma
+    rodada gasta): os lideres suprimidos continuam andando e depositando wake, que e **22% do
+    material do braco** (o rastro e 78% — medido por identidade em `runs/P2R9`), entao virariam
+    bracos finos de ~2.5 dx (a largura do P2) em vez de sumirem; no painel (a), que marca a regiao
+    SEM agar, eles continuam visiveis. Previsao: ciclo 0.36 -> 0.26 (abaixo da faixa) e populacao
+    BIMODAL. E o criterio fisicamente honesto ("so lidera quem esta em grupo") suprimiria **100%**
+    dos lideres, pelo item (B).
+
+    **(E) O QUE A ALAVANCA DO AGAR ENTREGA DE FATO — e nao e pouco:** `c_s` do corpo 0.16 -> **0.36**
+    do teto e das baias 0.11 -> **0.25**, halo `L` 0.12 -> 0.15 Rmax, area/disco 0.33 -> **0.38**
+    (dentro da faixa), **sem conduzir nada pelo filler** e mantendo o nucleo em 0.27 (P2R10 0.38,
+    P2R14 0.42) e `R99` em 4.57. Custo: motor 2.05 -> 1.67, gate da base 6% -> 15%, iter/t 62 -> 69.
+    **`AGAR_CS_LAMBDA` e uma alavanca de CAMPO barata, nao de comprimento de onda** — e e a unica que
+    melhora o campo deixando o nucleo ABAIXO do alvo da literatura.
+
+    **Ranking atualizado (licao #95):** P2R14 (0.262) > P2R10 (0.308) > **P2R15 (0.407)** > P2R12
+    (0.453) > P2R11 (0.463) > P2R9 (0.554).
+
+99. **LITERATURA EXTERNA (alem de [T1]-[T10]) — o alvo nao e "Gamma saturado no corpo", e o passo
+    entre bracos e a LARGURA; e a contagem de dedos nao e um numero fixo** (2026-09-16, quatro
+    fontes novas). As referencias do §2.2 sao UMA foto e UM painel de modelo; estas dao medida
+    direta em milimetros.
+
+    **[T11] Deng, de Vargas Roditi, van Ditmarsch & Xavier 2014, *New J. Phys.* 16, 015006** —
+    morfometria de PA14 mais modelo ecologico: bracos **2-5 mm de largura**, espacamento entre
+    bracos vizinhos **mediana 5.5 mm / moda 4 mm**, pontos de ramificacao a ~1 cm. O modelo tem
+    duas escalas: cooperacao `d1` = 1.2 mm e **repulsao `d2` = 4 mm** (razao 0.3), e o espacamento
+    **emerge da repulsao mediada pelo biossurfactante** — ou seja, o passo E a escala de repulsao.
+    **Consequencia: o numero de dedos nao e uma constante — e `2 pi R` / 4-5.5 mm.** O "9-15" da
+    licao #95 era o valor daquelas imagens naquele raio, nao um invariante. O invariante e a razao
+    largura/passo: **2-5 / 4-5.5 = 0.36-1.25, mediana ~0.64**. O nosso ciclo de trabalho e
+    0.36-0.42 — na ponta BAIXA da faixa.
+
+    **[T12] bioRxiv 445015 (two-component systems, PA14, 0.6% agar, 24 h)** — morfometria media do
+    tipo selvagem: comprimento do tendril **16.85 mm**, largura **4.4 mm**, angulo 54 graus.
+    **AR ≈ 3.8** — ainda MENOR que os 6.5-11.2 que eu extrai das imagens, e muito abaixo do nosso
+    12 (largura por arco) / 18-23 (largura por EDT). **O AR e o maior desvio do projeto, e o deficit
+    e de LARGURA, nao de comprimento.**
+
+    **[T13] bioRxiv 2022.06.29.498166 (long-range alteration)** — o ramnolipideo gera uma frente de
+    inchamento do gel que anda **10 mm em 6 h (~1 mm/h)**, com ~8 um de altura, muito alem da
+    colonia. O halo A FRENTE e a assinatura experimental robusta do surfactante.
+
+    **[T14] Microbiol. Spectrum 2025, MSI de metabolitos** — os dois ramnolipideos predominantes
+    ficam **"delineando os tendrils e o espaco alem deles"** e se estendem MUITO alem da regiao
+    colonizada; nao sao uniformes sobre a colonia.
+
+    **(A) ISSO CORRIGE O ALVO QUIMICO DA LICAO #95.** O "Gamma ≈ Gamma_max em toda a pegada,
+    baias inclusive (0.95)" e uma propriedade do MODELO de Trinschek (Gamma e produzido pelo filme e
+    advectado com ele), **nao um dado experimental**. A medida direta ([T14]) diz o contrario:
+    surfactante concentrado nos tendrils e sobretudo NO AGAR ALEM deles. Ou seja, **o nosso campo
+    — alto perto das vivas e com halo — ja e mais parecido com o experimento do que com o T1**, e a
+    rota do P2R14 (encher o interior) anda para LONGE do dado experimental, pagando nucleo, raio e
+    motor. **Prioridade quimica correta: o HALO (`AGAR_CS_LAMBDA`), nao o nivel interno.**
+
+    **(B) A ARITMETICA QUE ORDENA O RESTO.** Com `AR = (1 - nucleo) * n / (ciclo * 2 pi * 0.6)`:
+    com os nossos n = 25 e nucleo 0.27, ciclo 0.41 da AR 11.8 (medido: 11.8 — a formula fecha),
+    ciclo 0.61 daria **AR 7.9** e ciclo 0.71 daria **6.8**. Para AR 4 com n = 25 seria preciso
+    ciclo 1.2 (impossivel). **O piso de AR alcancavel sem mudar a contagem (licao #98) e ~7**, e
+    chega-se la subindo o ciclo para 0.6-0.7 — que [T11] mostra ser um valor de colonia real.
+
+    **Prioridade revista: (1) largura/ciclo (`RASTRO_W` 5-6), (2) halo (`AGAR_CS_LAMBDA`),
+    (3) nivel interno do campo — este ultimo despriorizado por [T14].**
+
+100. **O CAMPO `rho_b_grown` NAO segue a literatura — o perfil tem o SINAL INVERTIDO, e o que ele
+    registra e o `rho_b` do lider que passou, nao uma densidade** (2026-09-16, pedido da usuaria;
+    medido em `runs/P2R9_piso_filler` e `runs/P2R16_w5`, t=50). A licao #53 dizia que `rho_b` e
+    normalizado e "nao existe valor de literatura para comparar". Isso continua certo para o VALOR;
+    a FORMA do perfil, o SINAL do gradiente e a LARGURA RELATIVA da transicao sao adimensionais e
+    comparaveis — e os tres desviam.
+
+    **O que a literatura diz.** [T2] Srinivasan (teoria multifase, a nossa referencia): interior em
+    **plato uniforme `phi ≈ phi_0 = 0.5`** — a capacidade de suporte, onde o crescimento logistico
+    `g1 = g0*h*phi*(1 - h*phi/(H*phi_0))` trava sozinho — e na frente uma **crista capilar de
+    largura `W = 195 ± 35 um`**, com espessura e densidade local MAIORES; fora dela, monocamada;
+    perfil auto-similar a `V = 2 mm/h`. Fontes experimentais de fase I/II: densidade **aumenta
+    gradualmente da borda para o interior**, fica PLANA alem de algumas centenas de um, e a
+    motilidade se perde por completo **junto ao ponto de inoculacao**. (Ha conflito real entre
+    especies — B. subtilis/E. coli monocamada x PA ondas multicamada —, entao so uso o que e comum:
+    plato no interior + transicao estreita na frente + maximo imovel no inoculo.)
+
+    **O que o modelo produz** (mediana por faixa de `r/R99`, corpo = colonia + filler):
+
+    | r/R99 | 0-0.1 | 0.1-0.4 | 0.4-0.6 | 0.6-0.8 | 0.8-0.95 | 0.95-1.05 |
+    |---|---:|---:|---:|---:|---:|---:|
+    | P2R9 | 0.400 | 0.400 | 0.441 | 0.493 | 0.518 | **0.549** |
+    | P2R16 | 0.400 | 0.400 | 0.447 | 0.502 | 0.535 | **0.569** |
+
+    Densidade areal de **celulas vivas** (P2R16, particulas por dx²): 0.370 (nucleo) -> 0.23 ->
+    0.041 -> 0.0077 -> 0.0015 -> **0.0007** em 0.75-0.9 R99. Fracao viva do corpo: 37% -> 19% ->
+    4% -> 1% -> **0.2%**.
+
+    **(A) O nivel do plato bate por COINCIDENCIA e nao e biomassa.** 0.40-0.46 contra `phi_0`=0.5,
+    mas o nosso 0.400 e o `FILLER_RHO_B_FLOOR` que IMPOMOS por razao mecanica (dar `fade` a EOS,
+    licao #94-G). Em [T2] o plato e a capacidade de suporte alcancada por divisao; aqui e uma
+    constante do `main.py`, e 94-95% do corpo e filler, que nao cresce.
+
+    **(B) O SINAL do gradiente radial esta invertido.** A literatura da perfil plano ou subindo para
+    DENTRO, com maximo no inoculo; o nosso corpo sobe para FORA (0.400 -> 0.569). Causa: o filler
+    herda `max(rho_b da mae, 0.4)` no instante da deposicao e os lideres da frente tem `rho_b` alto
+    (p50 0.54 nos bracos) — **o campo e um registro historico do lider que passou ali, nao uma
+    densidade.** Qualquer leitura de `rho_b` como "onde a colonia e densa" e invalida fora do nucleo.
+
+    **(C) A queda de celulas vivas nao tem contraparte nenhuma:** fator ~500 do centro ao braco.
+    Num swarm real a colonia INTEIRA e celula.
+
+    **(D) A transicao na borda e ordens de grandeza larga.** Medida: **6.2 dx = 0.070 R99** (90%->10%
+    de corpo), identica nos dois runs. Ancorando a escala pela largura de braco de [T11] (2-5 mm
+    <-> 5.6-8.7 dx) sai `dx ≈ 0.4-0.6 mm` e R99 ≈ 35-50 mm (plausivel para uma placa), logo a nossa
+    transicao vale ~2.5-3.7 mm contra `W = 195 ± 35 um` — **13-19x larga** —, e a crista multicamada
+    de [T2] valeria **0.3-0.5 dx, abaixo da nossa resolucao**. O SINAL, porem, esta certo: o corpo
+    de fato adensa em direcao a frente, como a crista capilar preve.
+
+    **O que E reproduzido:** a estrutura de tres zonas da licao #53 e o inoculo imovel — nucleo
+    `rho_b>=0.8` com 44 particulas PINADAS (`u=v=0`) exatamente no ponto de inoculacao, swarmers em
+    `[0.1,0.6)` (541-616) e baias `<0.1`. "Perda completa de motilidade junto ao ponto de inoculacao"
+    e literalmente o pin do K.17.
+
+    **Regra:** `rho_b` e comparavel a literatura pela FORMA (plato, sinal do gradiente, largura
+    relativa da transicao), nunca pelo valor; e fora do nucleo ele mede historia de deposicao, nao
+    densidade — para "onde ha celula" use a densidade areal de vivas, que e o analogo real.
+
+101. **P2R17 (W=5 + filler conduzindo) — a hipotese do campo apagado esta REFUTADA, e a colonia
+    entra na faixa da literatura pelo mecanismo ERRADO** (2026-09-16, `runs/P2R17_w5_conduz`,
+    tabela completa no `CRITERIOS.md`): o P2R16 (`RASTRO_W` 3 -> 5) engrossou o braco (ciclo 0.47 ->
+    0.56, largura 3.6 -> 4.4 dx) e **cobrou o motor** (`a_mar_bio_p95` 1.60 -> 0.44) junto com o
+    campo (`c_s` do corpo 0.36 -> 0.19). A hipotese era que as duas coisas fossem a mesma: cada
+    particula de agar que o rastro converte deixa de carregar `c_s` (congelada e transparente,
+    licao #39), entao pintar mais largo apagaria o campo em volta do braco e com ele o gradiente.
+
+    **O campo voltou e o motor NAO:** `c_s` do corpo 0.19 -> **0.49** (previsao 0.45-0.60, acertou) e
+    `a_mar_bio_p95` 0.44 -> **0.60**, contra o limite pre-registrado de 1.0 e os 1.60 do P2R15. O
+    proprio criterio dizia "se ficar abaixo de 0.9, a perda do P2R16 nao era do campo apagado".
+    **A perda de motor e da LARGURA em si** — mais agar convertido deixa menos recrutavel (vivas
+    783 -> 696 -> 659) e distribui o gradiente sobre um braco 2x mais largo.
+
+    **O que a conducao mudou, medido por EDT** (regua da licao #75-A, sobre a mascara rasterizada —
+    ver a correcao de regua abaixo):
+
+    | t=50 | largura 0.3R | **largura 0.6R / 0.75R** | ciclo 0.6R | Rmax | dedos | nucleo solido |
+    |---|---:|---:|---:|---:|---:|---:|
+    | P2R15 (W=3) | 19.0 dx | **2.8 / 3.0 dx** | 0.46 | 4.68 | 21 | 0.27 R |
+    | P2R16 (W=5) | 18.8 dx | **5.0 / 5.0 dx** | 0.60 | 4.78 | 18 | 0.29 R |
+    | **P2R17 (W=5 + conduz)** | **22.5 dx** | **5.0 / 5.0 dx** | 0.48 | **4.22** | 15 | **0.39 R** |
+
+    **A largura do braco e IDENTICA a do P2R16 (5.0 dx nos dois) — a conducao NAO afinou nada.** O
+    que ela fez foi (a) engrossar o MIOLO em 20% (18.8 -> 22.5 dx em 0.3R; nucleo solido 0.29 ->
+    0.39 Rmax) e (b) encolher o raio 12% (4.78 -> 4.22). Mecanismo ja documentado (licoes #90 e
+    #94-H): o `c_s` conduzido chega ao agar da base, abre o gate da colonizacao e o nucleo come a
+    base. **Confirmado pela terceira vez: sob `COL_FILLER_DONOR`=1, toda alavanca que sobe o `c_s`
+    do agar da base reabre o laco do disco.** O ciclo em 0.6R cai (0.60 -> 0.48) apenas porque `R`
+    encolheu — em 0.75R ele e igual (0.31 vs 0.32).
+
+    **O ACHADO, apesar da reprovacao:** contra as reguas das licoes #95/#99 este e o melhor conjunto
+    morfologico do projeto — **nucleo 0.39 (alvo 0.36), baia 0.38 (0.34), dedos 15 (faixa 9-15),
+    area/disco 0.38 (0.35-0.39), AR 10.4 (6.5-11.2) e halo `L`/Rmax 0.18 (0.18, exato)** — cinco
+    eixos dentro da faixa ou a menos de 12%. **Mas chegou la porque o NUCLEO cresceu e o RAIO caiu**,
+    com a largura do braco parada em 5 dx; nao foi a geometria do braco que acertou o alvo.
+
+    **REGRA:** quando uma rodada entra na faixa da literatura, verificar QUAL variavel se moveu —
+    `nucleo/Rmax`, `AR`, `area/disco` e `largura/Rmax` sao razoes, e mexer no DENOMINADOR produz os
+    mesmos numeros que acertar o numerador. Cruzar sempre com medidas ABSOLUTAS (largura em dx,
+    Rmax em unidades do dominio).
+
+    **ERRO DE REGUA — a fatia fina de particulas mede fragmentacao de amostragem, nao geometria
+    (apontado pela usuaria ao comparar com o viewer).** A v1 do ciclo/largura amostrava particulas em
+    `|r - R| < 0.6 dx` e contava arcos ocupados em 720 bins. Em 0.6 Rmax isso pega **172 particulas
+    para 720 bins**: ocupacao crua 0.17 e **93 "bracos"** onde a imagem tem ~14. O ciclo saia 0.39 e
+    a largura `ciclo*2*pi*R/n` = 2.6 dx — **metade da real**. Varrendo a tolerancia (0.6 / 1.0 / 1.5 /
+    2.5 dx) a contagem vai de 93 a 73 e a ocupacao de 0.17 a 0.43: **o resultado era funcao da regua,
+    nao do run**. A forma correta e rasterizar a mascara e usar a EDT (licao #75-A), que nao depende
+    de fatia nem de contagem de arcos — implementada em [tools/ciclo_largura.py](tools/ciclo_largura.py).
+
+    **Duas regras deste erro:** (1) o teste barato que o expoe e **contar quantas particulas caem na
+    amostra** — 172 pontos nao suportam 720 bins; sempre reportar o N da amostra junto da metrica.
+    (2) Eu persisti a regua ERRADA em `tools/` como "correcao do erro de metodo" e ela passou a
+    parecer confiavel por estar num arquivo. **Persistir a regua nao a valida — validar e conferir
+    contra as particulas ou contra o viewer (licao #92) ANTES de ranquear por ela.**
+
+102. **P2R18 — UM MECANISMO VALIDADO PODE VIRAR NO-OP QUANDO OUTRAS ALAVANCAS MUDAM, SEM AVISO. O
+    teste que expoe isso custa 2 minutos e eu nao fiz** (2026-09-16, `runs/P2R18_v_mov_NOOP`):
+    `RASTRO_V_MOV`=0.02 sobre o P2R16 saiu **bit-a-bit identico** — `max|dif| = 0` em 70 106
+    particulas nos 8 campos, e o `log.csv` igual linha a linha.
+
+    **Nao era erro de configuracao.** Instrumentando o ramo do criterio (print, run curto a t=12), a
+    selecao de lideres de fato DIFERE: em t=11.79 o criterio antigo elegeria **17** e o de velocidade
+    elege **7** — 10 lideres a mais — e o estado nao muda em nada. **Teste decisivo:** rodar com
+    `RASTRO_R_MOV` = 0, ou seja lideres internos DESLIGADOS por completo, tambem da bit-a-bit
+    identico (iteracoes 200/400/600, filler 146/478/731 nos dois).
+
+    **Na base P2R16 os lideres internos sao INERTES** — nao convertem agar que os externos ja nao
+    convertam. Duas causas medidas: (a) `RASTRO_W`=5 faz o rastro dos externos cobrir 10 dx de
+    largura, e a banda 0.4-0.7 R99 cai dentro do que eles ja converteram; (b) a guarda de baia
+    (`RASTRO_BAIA`=2.0) barra **100%** do agar vizinho aos candidatos internos ate t≈21 (47-52%
+    depois). O mecanismo foi validado no P2R8 (licao #94-F, com `RASTRO_W`=3) e **neutralizado pelas
+    duas alavancas adicionadas depois dele**.
+
+    **A instrumentacao tambem confirmou o defeito que motivava a alavanca** (limiar efetivo do
+    criterio de passo variando de 0.26 a 0.82 dx entre chamadas) — ou seja o diagnostico estava
+    certo e a alavanca estava certa; **o que estava errado era supor que ela ainda tinha o que
+    fazer nesta base.**
+
+    **REGRA (o erro de metodo):** antes de pre-registrar predicoes e gastar uma rodada, **testar se a
+    alavanca tem EFEITO na base escolhida** — rodar ~600 iteracoes com e sem ela e comparar o estado.
+    Custa ~2 min contra os ~30 min da rodada. Eu escrevi predicoes detalhadas (lideres 30-78 -> 5-20,
+    bracos 17 -> 13-15, ciclo 0.60 -> 0.48-0.55) para um parametro que nao movia um bit.
+
+    **COROLARIO para o roadmap:** todo mecanismo herdado de uma config anterior (`RASTRO_R_MOV`,
+    `RASTRO_BAIA`, `RASTRO_COS_FRENTE`, `WAKE_SEG`, `RASTRO_HIST`) pode estar inerte na config atual.
+    **Antes de calibrar qualquer um deles, medir a selecao EXCLUSIVA dele** — a mesma regra da licao
+    #82 (o pin mecanico com selecao exclusiva zero), agora por outro caminho.
+
+    **Consequencia direta:** o alvo original (reduzir os bracos que nascem em 0.4-0.7 R99) **nao e
+    atingivel por esta alavanca nesta base**. Os bracos novos dali nao vem da conversao de agar pelos
+    lideres internos; candidatos a investigar antes de propor a proxima rodada sao o **wake** (mae
+    precisa so de `rho_b` >= `WAKE_RHO_B_MIN` = 0.05) e a **colonizacao**.
+
+103. **P2R19 (`RASTRO_PONTA`=1.0, calota semicircular atras do lider) REPROVADO — a ponta fica
+    PONTIAGUDA, o braco inteiro afina em fuso, e a COLONIZACAO MORRE em t≈32. Mecanismo nao
+    estabelecido** (2026-09-16, `runs/P2R19_ponta`, tabelas no `CRITERIOS.md`). Teste de efeito da
+    #102 feito antes (diverge a partir da iteracao 400).
+
+    **(A) A linha de base de forma de ponta depende da FASE do frame.** O valor pre-registrado
+    (largura a 2 dx da ponta = 9.0 dx) veio do frame final do P2R16, iteracao 2878, fora de fase com
+    as chamadas do rastro (`WAKE_FREQ`=100). Nos frames multiplos de 200 o mesmo run da 2.5 a 9.0.
+    **Regra: medida de forma local (ponta, perfil) so compara frames na MESMA fase do ciclo de
+    conversao, agregando janela; o frame final de um run quase nunca esta em fase.**
+
+    **(B) Em fase, iter 1600-2800:** u=2 7.1 -> **3.3**, u=3 9.2 -> **4.8** (semicirculo previa 8.0 e
+    9.2), corpo u=5 **9.7 -> 8.0**, largura por braco por EDT 4.3 -> 3.8 dx, bracos em 0.5R 17 -> 23,
+    `a_mar_bio_p95` 0.44 -> 0.35. O afilamento **nao foi transitorio** como calculei ("duas chamadas
+    depois a faixa recebe largura plena") — a conta esta errada em algum ponto nao identificado.
+
+    **(C) A colonizacao para em t≈32:** limbo 19 -> 2 -> **0** e fica em zero; vivas congeladas em
+    **525** por 18 s (P2R16: limbo 135-146 com 30-50 novos por frame, vivas 519 -> 696). Nenhum
+    agar e recrutado no fim do run, e isso basta para o motor mais fraco.
+
+    **(D) Hipotese testada e REFUTADA:** a guarda de baia (`RASTRO_BAIA`=2.0) impediria a
+    reconversao da faixa lateral que a calota deixa. Mas ela bloqueia fracao parecida do agar dos
+    bracos nos dois runs (43-49% contra 49-55%). **Nao ha mecanismo medido** para o afilamento
+    continuo nem para a morte da colonizacao.
+
+    **Proximo passo recomendado (nao rodado):** instrumentar ~t=35 com um diagnostico por chamada no
+    `_rastro_segmento` (agar selecionado vs convertido, com e sem calota) e na `BiomassColonization`
+    (quantas receptoras passam no gate de `cs`, e quantas tem doador), antes de qualquer nova rodada.
+
+104. **A COLONIZACAO DO P2R16 VIVE NO FIO DA NAVALHA, EM BOLSOES DE AGAR NO MEIO DA COLONIA — e
+    qualquer coisa que feche as baias a meia altura a mata. Diagnostico do P2R19** (2026-09-17,
+    runs instrumentados ate t=36 so com prints, bit-a-bit identicos a P2R16 e P2R19; tabelas em
+    `runs/P2R19_ponta/CRITERIOS.md`).
+
+    **(A) Onde o recrutamento acontece (medido offline nos frames).** O agar a <= 2h da colonia quase
+    nunca passa de `cs` = 0.3 num frame; o maximo no P2R16 fica em **0.277 -> 0.294 -> 0.298 -> 0.301**,
+    encostado no gate `COL_CS_MIN`=0.3, e cruza por instantes entre frames (30-50 limbos novos por
+    frame). Esse agar quente fica em **0.57-0.63 R99**, em bolsoes encostados no filler e em 50-70
+    celulas vivas. **O recrutamento do P2R16 inteiro depende de ~0.01 de folga no `cs` desses bolsoes.**
+
+    **(B) O que a calota mudou.** Nao foi conversao: os lideres internos sao inertes nos dois runs
+    (conversao exclusiva 58 contra 0) e o rastro quase nao converte abaixo de 0.7 R99 (2% contra 0%);
+    a conversao total e parecida (6626 contra 6973). **Foi o numero de pontas ativas: lideres
+    externos estabilizam em 19-20 no P2R16 e 25-27 no P2R19 (+30%)**, divergindo entre t≈10 e 17. Com
+    mais rastros vizinhos, as baias fecham enquanto a faixa ainda e frente: o agar na faixa 0.5-0.7
+    R99 vai a **0 / 0 / 1 / 21** (iter 1000-1600) contra **28 / 88 / 143 / 212**. Sem os bolsoes, so
+    sobra agar junto a frente com `cs` p99 <= 0.25, o gate nunca abre, limbo 0, vivas congeladas.
+
+    **(C) Duas hipoteses refutadas por medicao:** (1) lideres internos convertendo os bolsoes — sao
+    inertes; (2) lider com corte plano isolado pelo proprio filler, desacelerando e saindo da frente —
+    a velocidade radial das celulas da frente e parecida nos dois runs, e o P2R16 ate e mais rapido
+    apos t≈17. **Por que a calota mantem mais pontas vivas segue sem mecanismo.**
+
+    **(D) MECANISMO DO +30% DE PONTAS — resolvido por rastreio de identidade (2026-09-17).** Quem
+    deixa de ser lider nao e pinado (0-3) nem perde `rho_b`: PARA (avanca 0-18% do crescimento do
+    R99), e so entre t≈10 e 17 (depois o conjunto e fechado). P2R16 perde 33 de 53, P2R19 18 de 47.
+    **Quem para e sempre CO-LIDER atras da ponta do proprio grupo, com 0% de agar vizinho**
+    (`rho_b` 0.19-0.21, `v_r` 0.010-0.028); quem fica e a mais externa, com 67-75% de agar vizinho
+    (`rho_b` 0.35-0.37, `v_r` 0.06-0.07). No P2R16 as que param estao **4.6 dx** atras da ponta; no
+    P2R19, **7.0 dx**. O corte plano converte todo agar a <= w do segmento ate o lider e cerca as
+    co-lideres; a calota poupa o agar lateral nos primeiros `a` = 5 dx atras da ponta, e as
+    co-lideres dentro dessa zona seguem vivas. Hipotese de perda do flagelo (`rho_b` > 0.6) refutada.
+
+    **Cadeia completa, medida elo a elo:** calota poupa agar lateral a < `a` -> co-lideres nao sao
+    cercadas -> +30% de pontas -> baias a meia altura fecham na frente -> somem os bolsoes onde o
+    `cs` chega ao gate -> colonizacao morre. **O arredondamento da ponta e a poda das co-lideres sao o
+    MESMO parametro geometrico** (`a`) enquanto a calota for aplicada a todo lider.
+
+    **(E) P2R20 — calota so no lider mais externo de cada grupo (`RASTRO_PONTA_LINK`=6 dx)**
+    (2026-09-17, `runs/P2R20_ponta_grupo`). **Salva a colonizacao** (limbo 36-100 em todos os frames
+    apos t=32, vivas 508 -> 612; P2R19: 0 e 525 congeladas), lideres externos 21-22, bracos 16-19,
+    agar 0.5-0.7 R99 102, motor `a_mar_bio_p95` **0.79** (P2R16 0.44), ponta u=2 3.6. **Reprova** em
+    corpo u=5 8.3 (limite 9.0) e R99 4.39 (limite 4.4). O corpo afina igual com e sem pontas extras
+    (P2R19 8.0, P2R20 8.3) -> o afinamento e da CALOTA.
+
+    **(F) Causa do afinamento, confirmada por teste geometrico puro:** cada segmento converte largura
+    plena so entre `p0` e `p1`; atras de `p0` cobre apenas um disco de raio `w`. A zona poupada pela
+    calota fica logo atras do `p0` seguinte e **nunca e reposta**. Largura estacionaria do corpo com
+    calota: 8.59 / 9.25 / 9.45 dx para passos de 1.5 / 2.9 / 4.0 dx (min `sqrt(3)/2*2w` = 8.65) — passo
+    menor afina mais. **Estendendo o `clip` de `t` ate `-a/L` so nos lideres com calota o corpo volta a
+    10.00 em qualquer passo e a ponta vira semicirculo exato (6.0/8.0/9.2/10.0).** Minha conta de
+    "afinamento transitorio" (licao #103) supunha que o segmento seguinte repunha a faixa; nao repoe.
+
+    **REGRA:** sob `COL_FILLER_DONOR`=1 e gate absoluto `COL_CS_MIN`=0.3, a colonizacao da base P2R
+    depende da GEOMETRIA das baias a meia altura, nao da quimica da frente. Qualquer alavanca de forma
+    (ponta, largura, numero de bracos) tem de reportar junto o agar na faixa 0.5-0.7 R99 e o limbo
+    novo por frame — sao os sinais precoces de que o recrutamento vai morrer.
 
 75. **A LARGURA DO BRACO: cintura em r/R99=0.65, barriga em 0.83, razao 2.1x — e a barriga
     ACOMPANHA A FRENTE. Quatro alavancas refutadas por medicao antes de rodar, e o

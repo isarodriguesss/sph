@@ -82,8 +82,8 @@ def main():
         far = np.hypot(d0["x"], d0["y"]) > 6.0
         desloc = np.hypot(d1["x"][:n0][far] - d0["x"][far], d1["y"][:n0][far] - d0["y"][far])
 
-        g, _, b0, _ = FT.campo(FT.carrega(perto(fr, a.t0)), L, N, False, 3.5)
-        _, _, b1, _ = FT.campo(FT.carrega(perto(fr, a.t1)), L, N, False, 3.5)
+        g, _, b0, _ = FT.campo(FT.carrega(perto(fr, a.t0)), L, N, False)
+        _, _, b1, _ = FT.campo(FT.carrega(perto(fr, a.t1)), L, N, False)
         R0max, R0min = FT.raios(g, b0)
         R1max, R1min = FT.raios(g, b1)
         GX, GY = np.meshgrid(g, g)

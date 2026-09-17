@@ -31,7 +31,7 @@ T_FIM = 50.5
 
 def soltos(f, n=500, L=5.0):
     d = FT.carrega(f)
-    g, img, borda, _ = FT.campo(d, L, n, False, 3.5)
+    g, img, borda, _ = FT.campo(d, L, n, False)
     lab, _ = ndi.label(img > 0.5)
     cel = g[1] - g[0]
     c = len(g) // 2
@@ -96,7 +96,7 @@ def painel(runs, out, ncol=6):
     for a, run in zip(ax.ravel(), runs):
         fr = [p for p in FT.frames(run) if p[0] <= T_FIM]
         t, f = fr[-1]
-        g, img, _, _ = FT.campo(FT.carrega(f), 5.0, 400, False, 3.5)
+        g, img, _, _ = FT.campo(FT.carrega(f), 5.0, 400, False)
         a.imshow(img, origin="lower", extent=[-5, 5, -5, 5], cmap=FT.CMAP_COL, vmin=0, vmax=1)
         a.set_title(f"{os.path.basename(run.rstrip('/'))[:22]}  t={t:.0f}", fontsize=7)
     fig.savefig(out, dpi=130)

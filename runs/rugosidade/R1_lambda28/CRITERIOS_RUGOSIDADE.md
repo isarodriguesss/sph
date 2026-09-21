@@ -80,14 +80,6 @@ de fluido, então só grandezas **por área** ou mascaradas.
   de um pilar; quantos deixam de ser líder após o contato (rastreio de identidade da lição #104);
   desfecho classificado em **desvio / divisão / parada**.
 
-**INVALIDADAS para a série (constatado em R1, 2026-09-21) — núcleo sólido, `R_min`/baía e a
-largura EDT em 0.3R.** Elas medem `PILAR_R_EXCL`, não a colônia. A zona de exclusão é um disco
-sem pilar de raio **1.238** no centro; em R1 o "núcleo sólido" saiu em 0.29 × Rmax = **1.151** —
-ou seja o contorno que a métrica encontra é a borda interna da rede de pilares, e ele se move
-quando `PILAR_R_EXCL` ou `Rmax` mudam, não quando o núcleo biológico muda. É a armadilha da
-lição #101 (entrar na faixa da literatura mexendo no **denominador**) com um denominador novo.
-Não usar nenhuma das três para comparar doses enquanto houver zona de exclusão.
-
 ## 5. Vigilância do confundidor químico — o risco principal
 
 O `c_s` máximo no ágar vizinho ao corpo do P2R23 é **exatamente 0.300**, encostado no gate
@@ -105,15 +97,10 @@ limite.
 |---|---:|---|
 | `frac(c_s > 0.45)` nas vivas | 0.007 | subiu? o campo está saturando |
 | frac. do ágar a < 2h do corpo acima de `COL_CS_MIN` | 0.0000 | **> 0.02 = gate aberto** |
-| `biomass_arms` / `biomass_total` | 0.317 | **caiu? é disco** (material foi para o núcleo) |
+| `R_min` / núcleo sólido | 0.39 R | cresceu? é disco, não bloqueio |
 
-> A terceira sentinela era `R_min` / núcleo sólido (0.39 R), **trocada em 2026-09-21** pela razão
-> `biomass_arms`/`biomass_total` — o núcleo sólido foi invalidado pela seção 4. A razão é imune ao
-> orçamento de partículas (a rodada rugosa nasce com menos fluido) e não precisa de máscara:
-> se a colônia vira disco, o material se concentra em `rho_b` alto e a razão cai.
-
-**Regra de interpretação, pré-registrada:** se `dR/dt` cair **e** o gate abrir **e** a razão
-`biomass_arms`/`biomass_total` cair, a conclusão **não pode** ser "a rugosidade atrapalha o swarm" — é "a rugosidade abriu o
+**Regra de interpretação, pré-registrada:** se `dR/dt` cair **e** o gate abrir **e** o núcleo
+crescer, a conclusão **não pode** ser "a rugosidade atrapalha o swarm" — é "a rugosidade abriu o
 gate da colonização". Nesse caso a série tem de ser repetida com `COL_CS_MIN` reescalado, e a
 regra da lição #78-b se aplica: o invariante ao reescalar um limiar absoluto é a **fração da
 população que ele seleciona**, nunca a razão ao pico.
@@ -191,89 +178,3 @@ o código é **bit-a-bit idêntico** ao anterior (`runs/swarm/_verif_mask_novo` 
 
 **Instrumentação — FEITA em 2026-09-18:** colunas `n_pen`, `n_pen_sup`, `n_contato`, `a_rep_max`,
 `a_rep_med` no FIM do `LOG_HEADER` (47 → 52 colunas), mais os arrays `ax_rep`/`ay_rep` acumulados por `ForcaContornoPilar` e **descontados** do resíduo `a_press_max`/`a_press_med` (plano §4: senão a coluna de pressão viraria a coluna de contato). `n_pen` também é impresso a cada quadro no console, com alerta, para o critério de aborto 2 ser verificável em tempo de execução e não só no CSV.
-
----
-
-## 10. R1 — Λ = 28 dx, φ = 11.6% — EXECUTADO em 2026-09-21
-
-`runs/rugosidade/R1_lambda28`, 2863 iterações, 1429 s, 16 frames, t = 50, SEED = 20260806,
-10 threads. Fluido 61 127 partículas (68 121 − 6 994 de pilar). 92 pilares de `A` = 10 dx.
-
-### 10.1 Aborto — os cinco critérios passam
-
-| critério | limite | medido |
-|---|---|---|
-| 1. `n_pen` (fluido dentro do corpo do pilar) | qualquer > 0 | **0 em todos os 16 frames** |
-| 2. `max_cs` > teto | > 0.5 já na iteração 200 | 0.4939 |
-| 3. `max_v` | > 1.0 | 0.429 |
-| 4. massa | runaway | +3.2% |
-| 5. colapso de `dt` | ≫ 62 iter/t | 57.3 iter/t |
-
-A força de contato de Monaghan & Kajtar segura: `a_rep_max` chega a 2.9, mesma ordem de `f0` = 3.0,
-e nenhuma partícula cruza meio `dx` para dentro do sólido. `n_pen_sup` (centro além da superfície
-nominal, ainda fora do corpo) sobe monotonicamente 0 → 43 — é a compressão elástica esperada do
-kernel de contato, não penetração.
-
-### 10.2 Primário — a expansão quase não muda
-
-| | liso (P2R23) | R1 | Δ |
-|---|---:|---:|---:|
-| `R99`(t=50) | 4.067 | 3.852 | **−5.3%** |
-| `dR/dt` em t ∈ [25,50] | 0.0756 | 0.0733 | **−3.1%** |
-
-A predição pré-registrada era −5% a −15% em `dR/dt`. O medido (−3.1%) fica **abaixo da banda** e
-plausivelmente dentro do ruído entre realizações. **Na dose mais baixa, a rugosidade não atrapalha
-a expansão de forma destacável do ruído** — o que é exatamente por que a evidência da série é a
-**monotonicidade R1→R3**, e não este par isolado (seção 7).
-
-### 10.3 Sentinelas químicas — não dispararam, e o campo MELHOROU
-
-| sentinela | liso | R1 | leitura |
-|---|---:|---:|---|
-| frac. do ágar a < 2h acima de `COL_CS_MIN` | 0.0000 | **0.0000** | gate fechado |
-| máx. `c_s` no ágar vizinho | 0.300 | **0.300** | idêntico, ainda exatamente no gate |
-| `frac(c_s > 0.45)` nas vivas | 0.0065 | 0.0174 | subiu, longe de saturar |
-| `biomass_arms`/`biomass_total` | 0.317 | **0.519** | **subiu** — não é disco |
-
-E o campo foi na direção da literatura: `c_s` no corpo 0.44 → **0.62**, nas baias 0.25 → **0.34**,
-halo `L` 0.17 → **0.18 R — o alvo exato de [T11]/[T14]**. O confundidor que motivou a seção 5 não
-se materializou em φ = 11.6%; ele continua sendo o risco a vigiar em R3 (φ = 35%).
-
-### 10.4 O resultado estrutural, que não estava previsto
-
-| | liso | R1 |
-|---|---:|---:|
-| portadores na banda de swarmer (`rho_b` ∈ [0.1,0.5)) | 469 | **1053** |
-| `biomass_arms` | 0.209 | **0.503** |
-| `biomass_total` | 0.658 | **0.970** |
-| largura EDT em 0.6R | 5.4 dx | **7.3 dx** |
-| ciclo em 0.6R | 0.61 | 0.78 |
-| dedos | 15 | 14 |
-| AR | 9.9 | 7.7 |
-| `a_mar_bio_p95` | 0.78 | 0.56 |
-| `void_15` (mascarado) / `mean_sig_all` | 0.0002 / 0.998 | 0.0000 / **1.001** |
-
-R1 tem **2.25× mais portadores na banda ativa e 2.4× mais biomassa nos braços**, contra um
-orçamento de partículas **10.3% menor** — a direção é o oposto do que o orçamento explicaria, e
-`arms_mask` é uma banda de **densidade** (`rho_b` ∈ [0.1,0.5)), não uma região radial, então não há
-o confundidor de `R99` menor. O suporte de kernel fica perfeito (`mean_sig_all` = 1.001).
-
-**Leitura:** em φ = 11.6% os pilares não bloqueiam — eles **retêm**. Braços 35% mais largos, mais
-densos, com motor mais fraco por partícula (`a_mar_bio_p95` −28%) e a mesma velocidade de frente.
-Material que no liso avançaria e deixaria rastro fino, aqui fica. Isso é consistente com o
-pré-passo (100% dos braços interceptam ≥ 1 pilar, 1.50 contatos/braço): o contato existe em todos
-os braços e o efeito dele, nesta dose, é de espessamento, não de parada.
-
-**Não generalizar para as doses altas.** Espessar o braço em φ baixo e bloquear em φ alto são
-compatíveis; é justamente a curva que R2 e R3 têm de resolver. E o sinal a vigiar mudou: se o
-espessamento continuar em R2/R3, a colônia caminha para disco por via **mecânica** (retenção), que
-as sentinelas da seção 5 — todas químicas, exceto a razão nova — não detectam.
-
-### 10.5 Defeito de instrumentação corrigido
-
-`a_rep_med` saiu em 5.2e-42 porque era a mediana sobre `d_sup < dx`, conjunto de ~2285 partículas
-dominado por ágar estático que sente força **exatamente zero** (o kernel de contato tem alcance
-1 dx). Corrigido para a mediana sobre `a_rep > 0`. `n_contato` foi **mantido geométrico** de
-propósito, para R1 seguir comparável com R2-R4 — `ax_rep` não vai para o HDF5, então o valor de R1
-não pode ser recomputado offline. **`a_rep_med` só é válido a partir de R2**; `n_pen`, `n_pen_sup`,
-`n_contato` e `a_rep_max` valem desde R1.

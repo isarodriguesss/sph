@@ -174,7 +174,7 @@ LOG_HEADER = [
     "n_pen_sup",  # fluido com centro a < R_p (cruzou a superficie nominal)
     "n_contato",  # fluido a < 1 dx de uma particula de pilar
     "a_rep_max",  # |a| da forca de contato: maximo
-    "a_rep_med",  # e mediana, sobre quem sente forca (a_rep>0); valido a partir de R2
+    "a_rep_med",  # e mediana, sobre os em contato
 ]
 
 
@@ -539,11 +539,7 @@ class SwarmApp(Application):
             n_contato = int(np.sum(contato))
             a_rep = np.hypot(fluid.ax_rep, fluid.ay_rep)
             a_rep_max = float(np.max(a_rep))
-            # a mediana e sobre quem SENTE forca, nao sobre quem esta a < dx: o kernel de
-            # contato tem alcance 1 dx, entao `contato` inclui ~2400 particulas de agar
-            # estatico com forca exatamente zero e a mediana geometrica daria ~0 (R1).
-            ativo = a_rep > 0.0
-            a_rep_med = float(np.median(a_rep[ativo])) if np.any(ativo) else 0.0
+            a_rep_med = float(np.median(a_rep[contato])) if n_contato else 0.0
 
         # filler tem cs congelado: fora das estatisticas de cs (licao #39)
         cs_viva = fluid.cs[viva] if np.any(viva) else fluid.cs

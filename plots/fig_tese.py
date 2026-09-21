@@ -21,6 +21,7 @@ recebe o `c_s` da nao-filler mais proxima (decisao da usuaria, 2026-09-15) — e
 
 import argparse
 import glob
+import json
 import os
 
 import h5py
@@ -61,11 +62,27 @@ def frames(run):
     return out
 
 
+def carrega_pilares(f):
+    """Geometria dos pilares (centros, raio) gravada por main.py ao lado do HDF5.
+
+    pass-l-aprovado: devolve None quando o run e liso, e ai tudo a jusante fica identico
+    ao comportamento anterior — nenhum dos consumidores de `campo` precisa mudar.
+    """
+    p = os.path.join(os.path.dirname(f), "pilares.json")
+    if not os.path.exists(p):
+        return None
+    with open(p) as fp:
+        j = json.load(fp)
+    c = np.asarray(j["centros"], float)
+    return (c, float(j["raio"])) if len(c) else None
+
+
 def carrega(f):
     with h5py.File(f, "r") as h:
         a = h["particles"]["fluid"]["arrays"]
         d = {k: np.asarray(a[k], float) for k in
              ("x", "y", "m", "rho", "rho_b_grown", "is_filler", "cs")}
+    d["pilar"] = carrega_pilares(f)
     return d
 
 
@@ -136,6 +153,13 @@ def campo(d, L, n, limbo, fecha=0.0, r_agar=0.8, ponte_agar=0.0, area_min=4.0,
         area = ndi.sum(mask_agar, lab, index=np.arange(1, n_lab + 1)) * cel * cel
         mask_agar = (lab > 0) & (area >= migalha * DX * DX)[lab - 1]
     corpo = ~mask_agar
+    # pass-l-aprovado: o pilar removeu o agar dali em t=0, entao "sem agar" o marcaria como
+    # COLONIA — o solido tem de ser perfurado da mascara antes de qualquer contagem de area,
+    # largura (EDT) ou componente conexa. `borda` nao muda: fill_holes fecha o furo interno.
+    if d.get("pilar") is not None:
+        c_pil, rp_pil = d["pilar"]
+        d_pil, _ = cKDTree(c_pil).query(pts)
+        corpo &= d_pil.reshape(n, n) > rp_pil
     lab, n_lab = ndi.label(corpo)
     if n_lab:
         area = ndi.sum(corpo, lab, index=np.arange(1, n_lab + 1)) * cel * cel

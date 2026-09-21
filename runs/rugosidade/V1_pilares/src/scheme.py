@@ -275,13 +275,9 @@ class MyBiomassScheme(Scheme):
             groups.append(
                 Group(
                     equations=[
-                        # pass-l-aprovado: o pilar TEM de ser fonte do shifting — senao o
-                        # -grad C so-fluido aponta para dentro do solido e o cap (0.0006*h)
-                        # acumula ~3 dx ate t=50, alem do alcance da forca de contato (1 dx).
-                        # Com `pilares` vazio, src_par == ["fluid"]: identico ao baseline.
                         ParticleShift(
                             dest="fluid",
-                            sources=src_par,
+                            sources=["fluid"],
                             shift_coeff=self.shift_coeff,
                             shift_cap=self.shift_cap,
                             rho_b_min=self.shift_rho_b_min,

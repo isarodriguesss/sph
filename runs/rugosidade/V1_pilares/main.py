@@ -52,7 +52,7 @@ k_col = 0.03
 COL_CS_MIN = 0.3
 COL_FILLER_DONOR = 1.0  # P2: filler conta como doador. 0.0 = E11.
 
-total_sim_time = 11.3
+total_sim_time = 20.0
 print_freq = 200
 
 NOISE_AMP = 0.6
@@ -106,7 +106,7 @@ AGAR_CS_LAMBDA = 0.125
 
 # pass-l-aprovado: Pass L (rugosidade) desbloqueado em 2026-09-17 — CLAUDE.md §12 e
 # docs/PLANO_RUGOSIDADE.md. Rede triangular de pilares no plano; geometria reancorada no P2R23.
-use_pilares = False
+use_pilares = True
 PILAR_A = 10.0  # diametro do pilar em dx (~ largura do braco: 9-10.5 dx no P2R23)
 PILAR_LAMBDA = 28.0  # espacamento da rede triangular em dx (~1.5 contatos por braco ate t=50)
 PILAR_R_EXCL = 1.2  # nenhum centro dentro deste raio (nao perturbar inoculo nem juncao)
@@ -164,17 +164,6 @@ LOG_HEADER = [
     "n_junc_bio",
     "a_press_max",  # |au - Marangoni - arrasto - flagelo - viscosa|: pressao EOS + visc. artificial
     "a_press_med",  # mediana do mesmo termo na colonia (rho_b >= 0.1 ou filler)
-    # pass-l-aprovado: rugosidade (plano secao 6). Zeradas quando use_pilares=False.
-    "n_pen",  # fluido com centro a < R_p - 0.5 dx de um centro de pilar — criterio de aborto 2
-    # `n_pen` e a definicao PRE-REGISTRADA (docs/CRITERIOS_RUGOSIDADE.md §6, plano §6) e fica
-    # como esta. Mas ela le 0 em TODOS os frames do V1, que rodou sem a guarda de deposicao e
-    # tinha 6 particulas dentro do raio nominal (5 filler, d/R_p entre 0.971 e 0.998): elas
-    # ficam nos vaos do anel de superficie, a mais de R_p - 0.5 dx do centro. `n_pen_sup` e o
-    # indicador precoce que teria pego aquele vazamento; `n_pen` segue sendo o aborto.
-    "n_pen_sup",  # fluido com centro a < R_p (cruzou a superficie nominal)
-    "n_contato",  # fluido a < 1 dx de uma particula de pilar
-    "a_rep_max",  # |a| da forca de contato: maximo
-    "a_rep_med",  # e mediana, sobre os em contato
 ]
 
 
@@ -193,14 +182,8 @@ def kernel_w(r, h):
     return w
 
 
-# pass-l-aprovado: mascara de pilar na metrica areal — Pass L desbloqueado em 2026-09-17
-# (CLAUDE.md §1/§12); a area do pilar e solida e nao pode contar como vazio da colonia.
-def void_fraction(x, y, rho_b, dx, thresholds=(0.7, 1.0, 1.5), n_grid=200,
-                  pilar_c=None, pilar_rp=0.0):
-    """Fracao da area da colonia sem particula a menos de thr*dx (criterio C1, §2.5).
-
-    Sem pilares (`pilar_c=None`) o resultado e identico ao anterior.
-    """
+def void_fraction(x, y, rho_b, dx, thresholds=(0.7, 1.0, 1.5), n_grid=200):
+    """Fracao da area da colonia sem particula a menos de thr*dx (criterio C1, §2.5)."""
     colony = rho_b > 0.1
     if int(np.sum(colony)) < 10:
         return {t: 0.0 for t in thresholds}
@@ -216,9 +199,6 @@ def void_fraction(x, y, rho_b, dx, thresholds=(0.7, 1.0, 1.5), n_grid=200,
         & (np.abs(GX) <= x_max_domain)
         & (np.abs(GY) <= y_max_domain)
     )
-    if pilar_c is not None and len(pilar_c) > 0:
-        d_pil, _ = cKDTree(pilar_c).query(np.column_stack([GX.ravel(), GY.ravel()]))
-        inside &= d_pil.reshape(GX.shape) > pilar_rp
     if not np.any(inside):
         return {t: 0.0 for t in thresholds}
     d, _ = cKDTree(np.column_stack([x, y])).query(
@@ -262,11 +242,6 @@ class SwarmApp(Application):
         self._rastro_hist = []
         self._col_tree = None
         self._rastro_ponta = None
-        # pass-l-aprovado: geometria dos pilares, usada pelas mascaras de metrica e pelas
-        # guardas de deposicao. Fica None quando use_pilares=False (comportamento anterior).
-        self._pilar_c = None
-        self._pilar_rp = 0.0
-        self._pilar_pts = None
 
     def create_particles(self):
         fluid_solid = create_initial_state(
@@ -303,11 +278,6 @@ class SwarmApp(Application):
                     "ay_flag",
                     "ax_vis",
                     "ay_vis",
-                    # pass-l-aprovado: instrumentacao da forca de contato (plano secao 6).
-                    # Zeradas por ForcaContornoPilar.initialize; com use_pilares=False a
-                    # equacao nao entra no scheme e os arrays ficam identicamente nulos.
-                    "ax_rep",
-                    "ay_rep",
                     "grad_rho_b_x",
                     "grad_rho_b_y",
                     "grad_rho_b_mag",
@@ -397,14 +367,6 @@ class SwarmApp(Application):
         pilar.u[:] = 0.0
         pilar.v[:] = 0.0
         pilar.add_output_arrays(["m", "rho"])
-        # pass-l-aprovado: duas representacoes da mesma geometria — o disco analitico
-        # (centro, raio) para as mascaras de metrica, e o conjunto de particulas para as
-        # guardas de deposicao, que reusam o mesmo teste de proximidade do fluido.
-        self._pilar_c = np.column_stack([cx, cy])
-        self._pilar_rp = rp
-        self._pilar_pts = cKDTree(
-            np.column_stack([np.asarray(pilar.x), np.asarray(pilar.y)])
-        )
         fluid.remove_particles(idx)
 
         out = os.path.join(self.output_dir, "pilares.json")
@@ -514,32 +476,10 @@ class SwarmApp(Application):
         a_pressure = np.max(np.sqrt(ax_p**2 + ay_p**2))
         a_flag = np.max(np.abs(fluid.au_flag))
         # `a_pressure` (historica) inclui o flagelo e a viscosa; esta e so a pressao da EOS
-        a_press = np.hypot(
-            ax_p - fluid.ax_flag - fluid.ax_vis - fluid.ax_rep,
-            ay_p - fluid.ay_flag - fluid.ay_vis - fluid.ay_rep,
-        )
+        a_press = np.hypot(ax_p - fluid.ax_flag - fluid.ax_vis, ay_p - fluid.ay_flag - fluid.ay_vis)
         corpo = (rb >= 0.1) | (fluid.is_filler > 0.5)
         a_press_max = float(np.max(a_press))
         a_press_med = float(np.median(a_press[corpo])) if np.any(corpo) else 0.0
-
-        # pass-l-aprovado: instrumentacao da rugosidade (plano secao 6). `n_pen` e o criterio
-        # de aborto 2 dos criterios pre-registrados: fluido dentro do corpo solido do pilar.
-        n_pen = 0
-        n_pen_sup = 0
-        n_contato = 0
-        a_rep_max = 0.0
-        a_rep_med = 0.0
-        if self._pilar_c is not None and self._pilar_pts is not None:
-            xy = np.column_stack([fluid.x, fluid.y])
-            d_centro, _ = cKDTree(self._pilar_c).query(xy)
-            n_pen = int(np.sum(d_centro < self._pilar_rp - 0.5 * dx))
-            n_pen_sup = int(np.sum(d_centro < self._pilar_rp))
-            d_sup, _ = self._pilar_pts.query(xy)
-            contato = d_sup < dx
-            n_contato = int(np.sum(contato))
-            a_rep = np.hypot(fluid.ax_rep, fluid.ay_rep)
-            a_rep_max = float(np.max(a_rep))
-            a_rep_med = float(np.median(a_rep[contato])) if n_contato else 0.0
 
         # filler tem cs congelado: fora das estatisticas de cs (licao #39)
         cs_viva = fluid.cs[viva] if np.any(viva) else fluid.cs
@@ -577,9 +517,7 @@ class SwarmApp(Application):
             mean_sig_all = 1.0
             frac_lowsig_all = 0.0
 
-        vf = void_fraction(
-            fluid.x, fluid.y, rb, dx, pilar_c=self._pilar_c, pilar_rp=self._pilar_rp
-        )
+        vf = void_fraction(fluid.x, fluid.y, rb, dx)
 
         rr = np.hypot(fluid.x, fluid.y)
         Rc = float(np.percentile(rr[rb > 0.1], 99)) if np.any(rb > 0.1) else 1.0
@@ -664,12 +602,6 @@ class SwarmApp(Application):
             f"Acelerações: Marangoni {a_mar:.2f} | Drag {a_drag:.2f} | Flagelo {a_flag:.2f} | "
             f"Pressão EOS máx {a_press_max:.2e} med {a_press_med:.2e} | Total {a_total:.2f}"
         )
-        if self._pilar_c is not None:
-            alerta = "  <<< PENETRACAO (criterio de aborto 2)" if n_pen else ""
-            print(
-                f"pilares: n_pen={n_pen} (sup {n_pen_sup}) n_contato={n_contato} | "
-                f"a_rep máx={a_rep_max:.2e} med={a_rep_med:.2e}{alerta}"
-            )
 
         with open(LOG_FILE, "a", newline="") as f:
             csv.writer(f).writerow(
@@ -721,11 +653,6 @@ class SwarmApp(Application):
                     n_junc_bio,
                     f"{a_press_max:.4e}",
                     f"{a_press_med:.4e}",
-                    n_pen,
-                    n_pen_sup,
-                    n_contato,
-                    f"{a_rep_max:.4e}",
-                    f"{a_rep_med:.4e}",
                 ]
             )
         self._inseridas_desde_log = 0
@@ -737,16 +664,6 @@ class SwarmApp(Application):
         fluid.append_parray(novas)
         solver.nnps.update()
         self._inseridas_desde_log += len(data["x"])
-
-    # pass-l-aprovado: guarda geometrica das duas vias de deposicao (insert e wake). A
-    # cKDTree do fluido nao enxerga os pilares, que vivem em array proprio — sem isto o
-    # filler nasce dentro do solido (docs/PLANO_RUGOSIDADE.md secao 5).
-    def _livre_pilar(self, px, py, prox):
-        """False se (px, py) esta a menos de `prox` de uma particula de pilar."""
-        if self._pilar_pts is None:
-            return True
-        d, _ = self._pilar_pts.query([px, py])
-        return d >= prox
 
     def _insere_vacuo(self, solver):
         fluid = self.particles[0]
@@ -770,8 +687,6 @@ class SwarmApp(Application):
             for j in range(6):
                 vx = xk + dx * cos_a[j]
                 vy = yk + dx * sin_a[j]
-                if not self._livre_pilar(vx, vy, prox):
-                    continue
                 d_existing, _ = tree.query([vx, vy])
                 if d_existing < prox:
                     continue
@@ -810,8 +725,6 @@ class SwarmApp(Application):
         new_x, new_y, parent = [], [], []
 
         def livre(px, py):
-            if not self._livre_pilar(px, py, prox):
-                return False
             d_ex, _ = tree.query([px, py])
             if d_ex < prox:
                 return False

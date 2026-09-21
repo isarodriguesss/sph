@@ -657,11 +657,7 @@ class ForcaContornoPilar(Equation):
         self.sig = 10.0 / (7.0 * 3.141592653589793 * hw * hw)
         super(ForcaContornoPilar, self).__init__(dest, sources)
 
-    def initialize(self, d_idx, d_ax_rep, d_ay_rep):
-        d_ax_rep[d_idx] = 0.0
-        d_ay_rep[d_idx] = 0.0
-
-    def loop(self, d_idx, s_idx, d_au, d_av, d_m, s_m, XIJ, RIJ, d_ax_rep, d_ay_rep):
+    def loop(self, d_idx, s_idx, d_au, d_av, d_m, s_m, XIJ, RIJ):
         if RIJ > 1e-12:
             q = RIJ / self.hw
             w = 0.0
@@ -674,5 +670,3 @@ class ForcaContornoPilar(Equation):
                 fac = self.K * w * mfac / (RIJ * RIJ)
                 d_au[d_idx] += fac * XIJ[0]
                 d_av[d_idx] += fac * XIJ[1]
-                d_ax_rep[d_idx] += fac * XIJ[0]
-                d_ay_rep[d_idx] += fac * XIJ[1]

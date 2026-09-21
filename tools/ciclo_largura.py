@@ -17,6 +17,7 @@ import sys
 
 import numpy as np
 from scipy import ndimage as ndi
+from scipy.spatial import cKDTree
 
 sys.path.insert(0, "plots")
 import fig_tese as FT  # noqa: E402
@@ -26,7 +27,7 @@ FRACS = (0.3, 0.45, 0.6, 0.75, 0.9)
 NBIN = 720
 
 
-def mascara(fl):
+def mascara(fl, pilar=None):
     rb = fl.rho_b_grown
     fil = fl.is_filler > 0.5
     r = np.hypot(fl.x, fl.y)
@@ -42,6 +43,15 @@ def mascara(fl):
     m[iy[ok], ix[ok]] = True
     m = ndi.binary_closing(m, ndi.generate_binary_structure(2, 2), iterations=2)
     m = ndi.binary_fill_holes(m)
+    # pass-l-aprovado: o pilar e um furo CERCADO pela colonia, entao o fill_holes acima o
+    # preencheria e a largura EDT sairia superestimada. Perfura depois do preenchimento.
+    if pilar is not None:
+        c_pil, rp_pil = pilar
+        yy, xx = np.mgrid[0:n, 0:n]
+        d_pil, _ = cKDTree(c_pil).query(
+            np.column_stack([(xx * pix - L).ravel(), (yy * pix - L).ravel()])
+        )
+        m &= d_pil.reshape(n, n) > rp_pil
     return m, Rmax, pix, L
 
 
@@ -63,7 +73,7 @@ def main():
     for run in a.runs:
         t, fname = min(FT.frames(run), key=lambda q: abs(q[0] - a.t))
         fl = load(fname)["arrays"]["fluid"]
-        m, Rmax, pix, L = mascara(fl)
+        m, Rmax, pix, L = mascara(fl, FT.carrega_pilares(fname))
         edt = ndi.distance_transform_edt(m) * pix
         n = m.shape[0]
         yy, xx = np.mgrid[0:n, 0:n]

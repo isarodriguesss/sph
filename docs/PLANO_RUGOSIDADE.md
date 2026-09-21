@@ -164,12 +164,41 @@ passa a descontá-la (senão a coluna de pressão vira a coluna de contato).
 
 ## 5. Armadilhas — tudo que hoje pode pôr material DENTRO de um pilar
 
-| mecanismo | como falha | correção |
-|---|---|---|
-| inserção C3.4 (`_insere_vacuo`) | candidatos testados contra a árvore de fluido; `sigma_a` baixo junto ao pilar dispara | pilar em `KernelSum` + teste geométrico: rejeitar ponto a < R_p + 0.5 dx de um centro |
-| wake (`_deposita_rastro`) | o anel de até 7 a 0.75 dx e (com `WAKE_SEG`) os pontos do segmento podem cair no pilar | o mesmo teste geométrico dentro de `livre()` |
-| shifting | `-∇C` só-fluido aponta para dentro do pilar | pilar como fonte do `ParticleShift` |
-| métricas (`void_fraction`, R99, borda da figura) | pilar conta como vazio ou fura a colônia | máscara geométrica dos pilares em todas |
+| mecanismo | como falha | correção | estado |
+|---|---|---|---|
+| inserção C3.4 (`_insere_vacuo`) | candidatos testados contra a árvore de fluido; `sigma_a` baixo junto ao pilar dispara | `_livre_pilar` com o MESMO `prox` já aplicado ao fluido | ✅ 2026-09-18 |
+| wake (`_deposita_rastro`) | o anel de até 7 a 0.75 dx e (com `WAKE_SEG`) os pontos do segmento podem cair no pilar | o mesmo teste dentro de `livre()` | ✅ 2026-09-18 |
+| shifting | `-∇C` só-fluido aponta para dentro do pilar | `ParticleShift(sources=src_par)` | ✅ 2026-09-18 |
+| `void_fraction` (C1 do §2.5) | área sólida conta como vazio da colônia | máscara no denominador | ✅ 2026-09-18 |
+| figura e réguas de forma | pilar não tem ágar → lido como COLÔNIA | `campo()` perfura o sólido; `carrega()` acha `pilares.json` sozinha | ✅ 2026-09-18 |
+| largura EDT (`ciclo_largura`) | `binary_fill_holes` preenche o pilar cercado → largura inflada | perfura DEPOIS do preenchimento | ✅ 2026-09-18 |
+| `R99` | — | **nenhuma**: o pilar sai de `fluid` no `extract_particles` (array `pilar` próprio no HDF5) e `_registra` mede sobre `fluid` | ✅ já estava correto |
+| `n_pen`, `n_pen_sup`, `n_contato`, `a_rep_*` no log | ainda não existem | seção 6 | ✅ 2026-09-18 |
+| resíduo `a_press_*` contando a força de contato | a coluna de pressão viraria a de contato | subtrai `ax_rep`/`ay_rep` | ✅ 2026-09-21 |
+
+**Magnitude do que foi removido, medida no V1 (t=20, 92 pilares de 5 dx):**
+
+| | sem máscara | com máscara | baseline liso |
+|---|---:|---:|---:|
+| `void_15` | **8.576%** | **0.000%** | 0.02% |
+| `void_10` | 11.074% | 0.338% | 0.25% |
+
+Sem isso **toda dose reprovaria em C1** por área que é sólida. E a guarda de deposição não era
+hipotética: o V1 rodou sem ela e já tinha **5 fillers dentro de pilares em t=20** (0 em t=12.4),
+com 45 a menos de `prox` — crescendo, e o V1 só chegou a 40% do tempo previsto.
+
+**Verificação (2026-09-18):** com `use_pilares=False` o código é **bit-a-bit idêntico** ao anterior
+— `runs/swarm/_verif_mask_novo` × `_verif_mask_ctrl`, 10 threads, iterações 0/200/400/600:
+`log.csv` idêntico caractere a caractere nas 47 colunas e `max|dif| = 0.000e+00` nas 79 arrays de
+cada frame, com o `t` do dt adaptativo batendo até a última casa. Wake disparou em 100-600 e
+insert em 200/400/600, então as guardas estiveram no caminho de execução.
+
+**Segunda verificação (2026-09-21)**, cobrindo a instrumentação e o desconto do resíduo,
+que foram acrescentados depois da primeira: `runs/swarm/_verif_instr_novo` × `_verif_instr_ctrl`
+(HEAD), 10 threads, iterações 0/200/400 — **47 colunas comuns do `log.csv` idênticas**,
+`max|dif| = 0.000e+00` nas 79 arrays comuns, e as **5 colunas novas todas em zero** com
+`use_pilares=False`. `LOG_HEADER` e `writerow` alinhados em 52 (o modo de falha do §9,
+*CSV column drift* do Pass F, está descartado).
 
 Toda propriedade persistente nova tem que ser setada nos dicts de inserção (lição #67-I) — aqui
 não há propriedade nova no `fluid`, só o array `pilar`.
@@ -195,21 +224,66 @@ não há propriedade nova no `fluid`, só o array `pilar`.
 
 ## 7. Sequência de rodadas
 
-| rodada | o quê | duração | critério |
-|---|---|---|---|
-| **V0** | `use_pilares=False` contra o código atual | 600 passos | HDF5 e log bit-a-bit (10 threads) |
-| **V1** | rede completa, só até o primeiro contato | t ≈ 20 (~5 min) | `n_pen = 0`; dt ≥ 0.5x o do liso no mesmo t; sem partícula ejetada |
-| **R1** | rede completa, t = 50 | ~30 min | seção 8 |
-| R2 | R1 com a rede girada 30° | ~30 min | separa efeito da rede de efeito de orientação |
-| R3+ | uma alavanca por vez: Λ (12 e 26 dx), A (3 e 8 dx), depois campo aleatório | — | — |
+**O estudo é uma COMPARAÇÃO: a rugosidade atrapalha o swarm?** (decisão da usuária, 2026-09-18).
+Isso reordena o desenho: o padrão é o pilar, a alavanca é a **dose**, e a orientação (sulcos) sai
+do caminho crítico — ela responde "como desvia", não "se atrapalha".
 
-Controle liso = o baseline escolhido (P2 ou P2S), mesma semente e threads. Como a morfologia
-diverge caoticamente assim que algo muda (§2.2), toda comparação usa janela t ∈ [35, 50] e o
-ruído entre as duas realizações do P2 como piso.
+**Por que dose-resposta e não um par liso × rugoso.** Com `Λ = 28 dx` a fresta vale 18 dx = **3.3
+larguras de braço** (braço = 5.4 dx no P2R23): o braço passa sem encostar. Um "não atrapalha"
+nessa geometria mede que a colônia não tocou os obstáculos — geometria, não biofísica, e é a
+lição #102 (`P2R18`) com outro rótulo. Um resultado negativo só vale se o experimento tinha poder
+de detectar o efeito, e é a monotonicidade ao longo das doses que dá isso.
+
+| rodada | Λ | fresta/braço | φ | pilares | **contatos/braço** |
+|---|---:|---:|---:|---:|---:|
+| **liso** | — | — | 0 | 0 | **0** — controle = **P2R23** |
+| **V0** ✅ | — | — | 0 | 0 | bit-a-bit com `use_pilares=False` |
+| **V1** ✅ | 28 dx | 3.3 | 11.6% | 92 | `n_pen`=0, dt inalterado, t≈20 |
+| **R1** | 28 dx | 3.3 | 11.6% | 92 | **1.50** |
+| **R2** | 20 dx | 1.9 | 22.7% | 180 | **2.38** |
+| **R3** | 16 dx | 1.1 | 35.4% | 256 | **4.02** |
+| **R4** | — | — | (casada) | 0 | **controle de atrito** (ver abaixo) |
+
+Contatos por braço medidos por Monte Carlo sobre a rede real (pré-passo de 2026-09-18,
+`docs/CRITERIOS_RUGOSIDADE.md` seção 8). **Nenhuma dose é transparente** — 100% dos braços
+interceptam ao menos um pilar nas três. A fresta estática enganava: ela diz que o braço *pode*
+passar entre dois pilares, não que passe ao percorrer 53 dx radiais numa rede 2D.
+
+`φ = (π/2√3)(A/Λ)²`, com `A = 10 dx` FIXO em todas — 2× a largura do braço, que é a transposição
+da regra da literatura (feição = 1-4× o tamanho do objeto que se move; Jayathilake usa 2× e 4×).
+Uma alavanca por vez: só `Λ` varia, e a dose é reportada como `φ`.
+
+**R4 — controle de atrito pareado, e ele não é opcional.** Os pilares entram como fonte da
+`ViscousForce`, então parte da desaceleração de R2/R3 é **atrito adicional, não bloqueio
+geométrico**. R4 roda um campo contínuo `γ_eff(x) = γ·[1 + κ·φ_r(x)]` com `κ` calibrado para
+igualar o sumidouro de momento dos pilares em `φ` casado, **sem nenhum sólido**. A diferença
+R3 − R4 isola a contribuição geométrica. Sem ele, "a colônia ficou mais lenta" não vira "a
+colônia foi bloqueada". Detalhe da arquitetura e por que a Opção 1 ficou como controle e não
+como mecanismo: análise preditiva de 2026-09-18 (Opção 1 × 2 × 3).
+
+**Sulcos (radiais e concêntricos)** ficam para depois de fechada a curva de dose: mesma
+infraestrutura, trocando só o recorte, com a orientação como alavanca única.
+
+Controle liso = **P2R23**, mesma semente e **mesmo número de threads** (lição #88: thread
+diferente já é outra realização). Como a morfologia diverge caoticamente assim que algo muda
+(§2.2), toda comparação usa janela **t ∈ [35, 50]** com média ± desvio, contra o ruído entre as
+duas realizações do P2 como piso.
+
+**Confundidor de normalização:** a rodada rugosa nasce com menos fluido (−11.6% em R1 a −35.4%
+em R3), porque `_faz_pilares` extrai as partículas. Nenhuma comparação pode usar contagem ou
+massa absoluta — só grandezas **por área** ou já mascaradas.
 
 ---
 
-## 8. Predições e critérios para R1 (pré-registrar em `runs/<R1>/CRITERIOS.md`)
+## 8. Predições e critérios
+
+> **SUPERSEDIDA em 2026-09-18** pela série de dose-resposta. Os critérios pré-registrados da
+> série R1-R4 estão em **[docs/CRITERIOS_RUGOSIDADE.md](CRITERIOS_RUGOSIDADE.md)** — em `docs/`,
+> e não em `runs/<R>/CRITERIOS.md`, porque `tools/archive_run.sh` faz `rm -rf` no destino e já
+> apagou o CRITERIOS.md pré-registrado do P2R22. Copiar para o run **depois** de arquivar.
+> O que está abaixo é o registro do desenho de rodada única, mantido como histórico.
+
+### 8-antigo. Predições e critérios para R1 (rodada única, superseded)
 
 **Predições:**
 - **Contatos:** livre caminho médio de um braço até um pilar `≈ 1/(n·(2R_p + w)) ≈ 35 dx ≈ 1.9`,

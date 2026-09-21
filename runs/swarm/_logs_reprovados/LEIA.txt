@@ -9,3 +9,21 @@ Os HDF5 foram apagados (8.3 GB); as licoes correspondentes estao no CLAUDE.md §
   serie D ........... D6 D4_t100 — REVERTIDA
   serie M ........... M2 M3 — superadas por M4 (#67)
   outras ............ P1b P4 A2b_agarfade ATUAL_M4rep
+
+----------------------------------------------------------------------------
+Segunda leva, 2026-09-18: mais 10 rodadas REPROVADAS tiveram o main_output
+apagado (5.2 GB). As licoes estao no CLAUDE.md §9.
+
+  P12_sink90 (1.6G) P14_sink200 (1.6G) P21_sink (604M) .... sumidouro quadratico (#78, #80)
+  P10_sink10 (322M) ................................... amplitude/fratura (#78-a)
+  P6_base (232M) P5_csmin010 (207M) ................... gate da colonizacao (#74)
+  P19_sempin (220M) ................................... pins desligados (#83)
+  OSM1_osmotico (182M) ................................ influxo osmotico (#87)
+  P2R13_filler_D_interno (180M) ....................... limite difusivo explicito (#96)
+  B1_motor05 (109M) ................................... MOTOR_SCALE (#86-G)
+
+DIFERENCA em relacao a leva de agosto: os diretorios NAO foram movidos para
+ca. Ficaram em runs/swarm/<nome>/ com o log.csv (e, no OSM1 e no P2R13, o
+CRITERIOS.md + main.py + src do experimento, que nao existem no repositorio).
+Motivo: o CLAUDE.md §9 cita esses caminhos diretamente, e move-los quebraria
+as citacoes. So o main_output/ foi removido.

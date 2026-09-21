@@ -52,7 +52,7 @@ k_col = 0.03
 COL_CS_MIN = 0.3
 COL_FILLER_DONOR = 1.0  # P2: filler conta como doador. 0.0 = E11.
 
-total_sim_time = 11.3
+total_sim_time = 50.0
 print_freq = 200
 
 NOISE_AMP = 0.6
@@ -106,7 +106,7 @@ AGAR_CS_LAMBDA = 0.125
 
 # pass-l-aprovado: Pass L (rugosidade) desbloqueado em 2026-09-17 — CLAUDE.md §12 e
 # docs/PLANO_RUGOSIDADE.md. Rede triangular de pilares no plano; geometria reancorada no P2R23.
-use_pilares = False
+use_pilares = True
 PILAR_A = 10.0  # diametro do pilar em dx (~ largura do braco: 9-10.5 dx no P2R23)
 PILAR_LAMBDA = 28.0  # espacamento da rede triangular em dx (~1.5 contatos por braco ate t=50)
 PILAR_R_EXCL = 1.2  # nenhum centro dentro deste raio (nao perturbar inoculo nem juncao)

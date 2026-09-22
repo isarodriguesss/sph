@@ -314,7 +314,10 @@ A serie S0-S5 expos que C1+C2 **nao cobrem o motor**: S2 ranqueou em 1o lugar (m
 
 ### 3.0 Fundacao teorica — literatura referencial
 
-Cinco artigos formam a base teorica do projeto. A leitura cruzada destes papers foi consolidada em 2026-05-02 e revela tensoes importantes com nossas hipoteses anteriores.
+A base teorica do projeto sao [T1]-[T10] nesta secao e [T11]-[T14] na licao #99 (morfometria
+experimental de PA14). A leitura cruzada dos cinco primeiros foi consolidada em 2026-05-02 e
+revela tensoes importantes com nossas hipoteses anteriores; [T15] entrou em 2026-09-21 como a
+referencia de interacao com o substrato, que e o assunto do Pass L.
 
 **[T1] Trinschek, John, Thiele 2018 — *Soft Matter* 14, 4464.** Modelo thin-film 2D com surfactante insoluvel + wettability + crescimento bioativo. Reproduz 4 morfologias (arrested, circular, modulated, fingering) controladas pelos parametros `W` (wettability) e `Γmax` (concentracao maxima de surfactante). Mecanismo de tendrils: gradiente forte de Γ nos tips + Γ saturado nas baias → baias arrested por wettability + Marangoni nos tips. Inspiracao original do projeto. **Painel (b) Fingering** (`W=0.1, Γmax=0.5`) — ver [reference_result.png](reference_result.png) — e a **meta morfologica primaria** do projeto: 7-9 dedos finos com `AR >= 1:5`, baias estaticas entre dedos, halo de Γ extendendo alem da biomassa. Suas equacoes governantes (Navier-Stokes thin-film + Marangoni + reacao-difusao de surfactante) sao da mesma classe que as nossas SPH; se Trinschek atingiu (b) com thin-film, devemos conseguir reproduzir com SPH. **Limitacoes:** modelo passivo, sem QS, sem flagelo, sem nutriente explicito.
 
@@ -361,6 +364,39 @@ Tres familias de tecnicas atacam a perda de suporte de kernel (`σ_a < 1`, Viole
 - **Diferenca PA14 vs PAO1 (MPAO1):** PA14 forma camada de surfactante + tendrils. MPAO1 nao produz surfactante na superficie → nao forma tendrils. Surfactante e necessario.
 - **Papel do flagelo:** propor que flagelo aumenta producao de osmolytes (LPS, EPS) no rim, drenando fluido do agar. Hyperflagellation (Deforet et al.) causa hyperswarming via aumento da producao de osmolytes via metabolic turnover.
 - **Knowledge gap:** mecanismo exato pelo qual flagelo causa influxo de fluido permanece nao caracterizado em P. aeruginosa.
+
+**[T15] Verma, Mookherjee, Tropini, Fusco & Ruiz Pestana 2025 — *npj Soft Matter* 1, 8
+(doi:10.1038/s44431-025-00007-4).** Unica referencia do projeto sobre **interacao biofilme-substrato**,
+que e o assunto do Pass L. Modelo de rede de molas triangular 2D imersa em 3D para *wrinkling*
+(flambagem fora do plano), com no = dominio hexagonal muito maior que a bacteria — **mesma
+granularidade grosseira que a nossa**. Topologia FIXA (nenhum no criado ou removido); o crescimento
+entra aumentando o comprimento de repouso das molas, `dl0/dt = 0.5*l0*mu(C)`.
+- **Atrito NAO e forca** — e amortecimento nodal na Langevin superamortecida, com
+  `zeta(t) = zeta(0)*(l(t)/l(0))^2`, ou seja **proporcional a area de contato DEFORMADA**. O
+  parametro reportado e `D_on_b` (36 a 360 nm²/h), inversamente proporcional ao atrito; no
+  delaminado passa a `D_off_b >> D_on_b`. **E a forma funcional que ancora o controle R4** — o
+  nosso `LinearDrag` usa `-(gamma + 1.5*gamma*rho_b^2)*v`, cuja dependencia em `rho_b^2` nunca teve
+  fundamentacao publicada.
+- **Adesao** = Lennard-Jones + Yukawa em funcao so da distancia vertical ao substrato (nao
+  representado explicitamente), `gamma` de ~5 a 46 uJ/m².
+- **Nutriente** = reacao-difusao com Monod e `Theta(z)` que zera crescimento no no delaminado.
+- **Resultados:** atrito ↑ enruga mais cedo, em raio menor e tensao maior (escala classica
+  `sigma_cr ~ R_cr^-2`); adesao ↑ ATRASA e da `alpha ≈ +7/2`, contradizendo a flambagem classica,
+  porque **desacopla** o comprimento da instabilidade do tamanho do biofilme; adesao heterogenea
+  derruba a tensao critica, mas so importa em atrito BAIXO + adesao media ALTA — em adesao baixa o
+  biofilme e praticamente INSENSIVEL a heterogeneidade do substrato; e com nutriente nao uniforme ha
+  transicao centro-primeiro → borda-primeiro, validada em *E. coli* AR3110 (1X vs 2X).
+- **Apoio independente para termos descartado a bicamada 2.5D** (analise preditiva de 2026-09-18):
+  a revisao deles cita que biofilmes de *P. aeruginosa* **nao tem estrutura estratificada e
+  delaminam direto do substrato**, contradizendo a hipotese multicamada de Zhang/Yan. E argumento
+  biologico e especifico da nossa especie, mais forte em revisao que o numerico (Liu §6.5).
+- **Limite declarado pelos proprios autores**, aplicavel a nos: nao ajustam parametro a experimento
+  nenhum e priorizam mecanismo sobre predicao quantitativa, porque o modelo nao tem expressao
+  genica — e e ela que governa a distribuicao heterogenea de fenotipos (produtor de matriz x celula
+  motil) que fixa a resposta constitutiva local, de fluida a viscoplastica.
+- **NAO e alvo morfologico.** Fenomeno diferente (flambagem elastica fora do plano x fingering de
+  Marangoni no plano), material diferente (solido elastico de topologia fixa x fluido que expande
+  ~25x em area). Nao substitui [T1] nem [T11].
 
 ### 3.1 Balanco critico de forcas
 
@@ -4425,6 +4461,77 @@ Calibracao pos-Passes A-I.7. **MARCO I.7:** Transicao blob→dendritico confirma
     depende da GEOMETRIA das baias a meia altura, nao da quimica da frente. Qualquer alavanca de forma
     (ponta, largura, numero de bracos) tem de reportar junto o agar na faixa 0.5-0.7 R99 e o limbo
     novo por frame — sao os sinais precoces de que o recrutamento vai morrer.
+
+106. **O MODELO NAO SELECIONA COMPRIMENTO DE ONDA ENTRE DEDOS — e isso e mais uma face do teto de
+    `c_s`, nao um defeito independente. O AR, porem, ESTA na faixa: a limitacao e nao termos
+    mecanismo que nos ponha la** (2026-09-21, a partir do [T15] Verma et al.; nenhuma rodada gasta):
+
+    **(A) CORRECAO DE ENQUADRAMENTO — nao ha "gap de AR" no baseline atual.** O P2R23 tem **AR 9.9**
+    contra a faixa **3.8-11.2** de [T12]/PA14, e o R1 da rugosidade tem 7.7: os dois DENTRO. Os
+    valores 12-23 que circulam nas licoes #99 e #101 sao de outras rodadas e de outra regua (largura
+    por arco x largura por EDT). **Ao citar AR, dizer sempre a rodada e a regua** — a conclusao muda
+    de "estamos fora da literatura" para "estamos dentro sem mecanismo que explique", que e uma
+    afirmacao mais fraca e e a correta.
+
+    **(B) O QUE ESTA DE FATO AUSENTE.** Seleção de escala = existe mecanismo fisico que escolhe um
+    comprimento de onda, logo existe parametro que o move. O teste foi feito e deu NEGATIVO (#98):
+    o P2R15 dobrou `L_D_ext` (1.03 -> 2.07) e o passo entre bracos andou 4% (0.157 -> 0.151 Rmax,
+    24 -> 25 dedos), contra o criterio pre-registrado de <= 16. Logo `n` nao e fixado por escala de
+    campo — e a **contagem de portadoras vivas na frente** (~30, #86-A), um numero de discretizacao.
+
+    **(C) MECANISMO, corrigindo a primeira leitura.** Eu havia atribuido a "os dedos estao a 14-21 dx
+    e a forca alcanca 5.4 dx". Isso vale para EOS/contato/viscosa, mas **a Marangoni alcança**:
+    `L_D_ext` = 1.03 = **19 dx**, da ordem do espacamento. O campo chega e ainda assim nao seleciona,
+    e a razao ja estava registrada na licao #13 — com `c_s` saturado (mid-arm a 0.98 do teto, #73) o
+    gradiente local e dominado pelo **salto vertical colonia-agar** e a componente azimutal fica
+    eclipsada. Estimativa de ordem de grandeza: radial ~0.5/(2h) = 0.14 por dx; azimutal de um vizinho
+    a 19 dx decaindo em `L_D_ext` ~0.18/19 = 0.0095 por dx — **~15x menor**. Sem componente azimutal
+    nao ha competicao; sem competicao nenhum dedo morre ou funde; `n` congela na nucleacao.
+    **PENDENTE DE MEDICAO:** a razao azimutal/radial de `∇c_s` nas lideres e pos-processamento puro e
+    converteria os "~15x" em numero medido. Enquanto nao for medida, tratar (C) como hipotese
+    quantitativa, nao como resultado.
+
+    **(D) POR QUE E O MESMO BLOQUEIO DE SEMPRE.** Se (C) estiver certo, a ausencia de selecao nao e
+    defeito novo: e consequencia do teto `(1 - cs/cs_max)`, o mesmo das licoes #64 e #77, ja atacado
+    sem sucesso por tres rotas independentes (serie Y removendo o teto, sumidouro quadratico P10-P14,
+    crescimento B2/D5/P8/P9). Restaurar competicao significaria devolver dependencia do campo a
+    propulsao — exatamente o que a Frente 5 removeu de proposito para sobreviver a saturacao — e
+    reproduziria o "motor starvation" de K.21. **E mudanca de MODELO, nao de parametro:** invalidaria
+    a cadeia de calibracao desde o Pass K e as ~20 rodadas da serie P2R.
+
+    **(E) O QUE O [T15] ACRESCENTA, e so isso.** Os itens (A)-(D) sao todos nossos. O artigo entrega
+    **um contraexemplo na classe de modelo vizinha**: mesma granularidade grosseira, mesma dinamica
+    superamortecida, mesmo nutriente Monod — e a contagem do padrao deles RESPONDE (8x com a adesao,
+    com o expoente indo de -2 para +7/2). Sem isso, um revisor pode alegar que nenhum modelo
+    coarse-grained desta granularidade seleciona escala e que a falha e intrinseca a abordagem; com
+    isso, a falha fica localizada na **nossa arquitetura de forcas**. O artigo NAO diz como consertar
+    — a selecao dele e de flambagem elastica fora do plano e o `V_bend` que a produz nao tem analogo
+    no nosso problema.
+
+    **(F) O PASS L E IMUNE.** A serie R1-R4 e comparacao PAREADA (rugoso x liso, mesma semente, mesmo
+    numero de threads): os dois bracos tem a mesma ausencia de selecao e ela CANCELA. "A rugosidade
+    atrapalha o swarm?" nao depende de o modelo predizer o espacamento, depende de ele responder de
+    forma consistente a dose, que e o que a monotonicidade R1->R3 mede. **Nao interromper a serie por
+    causa disto.**
+
+    **(G) O QUE E DEFENSAVEL — formulacao a usar na tese.** Afirmar: o modelo reproduz a CLASSE
+    morfologica (fingering, nao circular nem arrested) e cai dentro da faixa da literatura em varias
+    razoes (P2R17: nucleo 0.39/0.36, baia 0.38/0.34, 15 dedos/9-15, area/disco 0.38/0.35-0.39,
+    AR 10.4/6.5-11.2, halo 0.18/0.18; P2R23: AR 9.9, halo 0.17-0.18), com a estrutura de tres zonas e
+    o inoculo imovel (#53, #100). **Declarar junto:** "o modelo nao seleciona o comprimento de onda
+    entre dedos; a contagem e fixada pela contagem de portadoras na frente e nao responde aos
+    parametros do campo (medido: dobrar `L_D_ext` move o passo em 4%). O acordo com as razoes
+    morfologicas da literatura e reproducao de classe e de proporcoes, **nao predicao de escala**."
+    Declarado assim e limitacao estrutural honesta, com medicao propria que a demonstra e referencia
+    publicada que mostra nao ser preco obrigatorio da abordagem. Nao declarado, vira predicao que o
+    modelo nao sustenta.
+
+    **(H) CONSEQUENCIA OPERACIONAL.** Qualquer rodada futura cujo objetivo seja **reduzir o numero de
+    dedos** procura um botao que nao existe. Pelo (B), nenhum parametro de campo move `n`; pela
+    aritmetica da #99 (`AR = (1-nucleo)*n/(ciclo*2*pi*0.6)`, que fecha no medido) e pela #98
+    (`largura = ciclo * 2*pi*0.6/n`), com `n` = 20-25 alargar o braco tem teto e nao ha `RASTRO_W`
+    que satisfaca largura e ciclo ao mesmo tempo. Fechar isso exige mudar a estrutura de acoplamento,
+    que e capitulo de trabalho futuro — nao um Pass.
 
 75. **A LARGURA DO BRACO: cintura em r/R99=0.65, barriga em 0.83, razao 2.1x — e a barriga
     ACOMPANHA A FRENTE. Quatro alavancas refutadas por medicao antes de rodar, e o

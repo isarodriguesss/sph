@@ -277,3 +277,46 @@ dominado por ágar estático que sente força **exatamente zero** (o kernel de c
 propósito, para R1 seguir comparável com R2-R4 — `ax_rep` não vai para o HDF5, então o valor de R1
 não pode ser recomputado offline. **`a_rep_med` só é válido a partir de R2**; `n_pen`, `n_pen_sup`,
 `n_contato` e `a_rep_max` valem desde R1.
+
+---
+
+## 11. Ancoragem de literatura do R4 (§10) — acrescentada em 2026-09-21
+
+O R4 (controle de atrito casado) estava sem forma funcional justificada: "subir `γ` até casar" é
+tentativa e erro, que o §10 rejeita em revisão. **[T15] Verma et al. 2025** fornece a âncora.
+
+No modelo deles o atrito **não é força** — é amortecimento nodal numa Langevin superamortecida,
+com o coeficiente escalando pela **área de contato deformada**:
+
+```
+ζ(t) = ζ(0) · ( l(t) / l(0) )²
+```
+
+Dois motivos para isso importar aqui:
+
+1. **Forma funcional.** O nosso `LinearDrag` usa `−(γ + 1.5·γ·ρ_b²)·v`. A dependência em `ρ_b²`
+   nunca teve fundamentação publicada — é calibração herdada do Pass I.4. A forma de [T15] é
+   área de contato, não densidade. Ao fixar o R4, declarar qual das duas está sendo usada e por quê.
+2. **Aviso sobre o emaranhamento.** Os autores afirmam que atrito e adesão "são provavelmente
+   correlacionados positivamente, mas a relação exata é desconhecida". É exatamente o nosso caso:
+   o pilar é obstrução geométrica **e** fonte de `ViscousForce` ao mesmo tempo. Reforça a regra já
+   pré-registrada na seção 7 — a magnitude geométrica é **R3 − R4**, nunca R3 − liso.
+
+**O que [T15] NÃO autoriza:** o regime deles é um filme elástico aderido que acumula tensão até
+flambar; o nosso é expansão advectiva superamortecida sem adesão, com a pressão da EOS 219× abaixo
+da Marangoni (lição #85). A mesma resistência no substrato vira **tensão elástica** lá e **retenção
+de material** aqui — que é a leitura correta do espessamento de R1 (seção 10.4). Não importar
+conclusões sobre tensão crítica, raio crítico ou contagem de rugas.
+
+**Prior qualitativo, não predição:** [T15] mede que em **adesão baixa** o biofilme é praticamente
+insensível à heterogeneidade do substrato. O nosso modelo não tem termo de adesão nenhum — estamos
+no extremo desse eixo, o que é coerente com o −3.1% de R1. Mas a heterogeneidade deles é em energia
+de adesão e a nossa é obstrução geométrica: eixos diferentes, transposição sugestiva apenas.
+
+> **Nota de arquitetura (registrada para não se perder):** no nosso regime superamortecido
+> (`u = F/γ_eff`, lição #86-C), adesão e atrito seriam **degenerados** — os dois viram o mesmo
+> coeficiente multiplicando `v`. A adesão só ganha assinatura própria quando há movimento fora do
+> plano para ela resistir, que é o caso de [T15] e não o nosso. É a mesma degenerescência que
+> aposentou a Opção 1 da análise arquitetural (campo de atrito contínuo ≡ `MOTOR_SCALE`, reprovado
+> em #86-G). Acrescentar adesão a este modelo, como ele está, não acrescentaria física —
+> acrescentaria um segundo botão para o mesmo efeito.

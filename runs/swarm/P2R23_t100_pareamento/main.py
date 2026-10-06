@@ -52,7 +52,7 @@ k_col = 0.03
 COL_CS_MIN = 0.3
 COL_FILLER_DONOR = 1.0  # P2: filler conta como doador. 0.0 = E11.
 
-total_sim_time = 50.0
+total_sim_time = 100.0
 print_freq = 200
 
 NOISE_AMP = 0.6
@@ -106,21 +106,11 @@ AGAR_CS_LAMBDA = 0.125
 
 # pass-l-aprovado: Pass L (rugosidade) desbloqueado em 2026-09-17 — CLAUDE.md §12 e
 # docs/PLANO_RUGOSIDADE.md. Rede triangular de pilares no plano; geometria reancorada no P2R23.
-use_pilares = True
+use_pilares = False
 PILAR_A = 10.0  # diametro do pilar em dx (~ largura do braco: 9-10.5 dx no P2R23)
-PILAR_LAMBDA = 20.0  # espacamento da rede triangular em dx. R1=28 (1.10 contatos/braco no
-# alcance real, 83.7% de interceptacao), R2=20 (1.81, 100%), R3=16 (3.44, 100%) — tabela por
-# alcance em docs/CRITERIOS_RUGOSIDADE.md §8.
+PILAR_LAMBDA = 28.0  # espacamento da rede triangular em dx (~1.5 contatos por braco ate t=50)
 PILAR_R_EXCL = 1.2  # nenhum centro dentro deste raio (nao perturbar inoculo nem juncao)
 PILAR_ROT = 0.0  # rotacao da rede, em graus
-# pass-l-aprovado: desordem do meio a phi FIXO (sugestao do Prof. Cesar — meio como grafo com
-# regioes proibidas, condicao de contorno estocastica). JITTER=0 reproduz a rede regular
-# BIT-A-BIT; > 0 e um deslocamento gaussiano de PILAR_JITTER*Lambda por centro, com rejeicao
-# de sobreposicao, de dominio e de zona de exclusao — entao a CONTAGEM de pilares e phi ficam
-# IDENTICOS ao caso regular e so a distribuicao de gargantas muda (delta -> larga). Semente
-# SEPARADA do SEED do inoculo, para permitir "mesmo inoculo, meio diferente" e vice-versa.
-PILAR_JITTER = 0.0
-PILAR_SEED = 20261006
 PILAR_K = 0.005  # forca de contato (Monaghan & Kajtar 2009); calibrada no plano, secao 4
 PILAR_HW = 0.5  # h do kernel de contato, em dx (alcance 2*h_w = 1 dx: zero na rede inicial)
 
@@ -365,13 +355,6 @@ class SwarmApp(Application):
                         "c_n",
                         "m",
                         "rho",
-                        # pass-l-aprovado: forca de contato do pilar por particula, a partir do R2
-                        # (decisao da usuaria, 2026-10-06). Sem isto nao se pode recomputar offline
-                        # QUEM sentiu contato, o que separa "desviou pelo pilar" de "desviou por
-                        # outro motivo" na classificacao de desfecho (CRITERIOS_RUGOSIDADE.md §4).
-                        # O R1 nao os tem — assimetria aceita, como ja ocorre com `n_contato` (§10.5).
-                        "ax_rep",
-                        "ay_rep",
                     ]
                 )
             elif pa.name == "solid":
@@ -381,66 +364,6 @@ class SwarmApp(Application):
             fluid_solid.append(self._faz_pilares(fluid_solid[0]))
 
         return fluid_solid
-
-    def _desordena(self, cx, cy, lam, rp):
-        """Jitter gaussiano a contagem FIXA: rejeita sobreposicao, saida do dominio e entrada
-        na zona de exclusao, re-sorteando so o centro ofensor. Preserva N e phi."""
-        rng = np.random.default_rng(PILAR_SEED)
-        base = np.column_stack([cx, cy])
-        amp = PILAR_JITTER * lam
-        borda = 2.0 * dx
-
-        def valido(pos):
-            ok = (
-                (pos[:, 0] > x_min_domain + rp + borda)
-                & (pos[:, 0] < x_max_domain - rp - borda)
-                & (pos[:, 1] > y_min_domain + rp + borda)
-                & (pos[:, 1] < y_max_domain - rp - borda)
-                & (np.hypot(pos[:, 0], pos[:, 1]) >= PILAR_R_EXCL)
-            )
-            par = cKDTree(pos).query_pairs(2.0 * rp, output_type="ndarray")
-            if len(par):
-                ok[np.unique(par[:, 1])] = False
-            return ok
-
-        pos = base + amp * rng.standard_normal(base.shape)
-        for _ in range(200):
-            ruim = ~valido(pos)
-            if not ruim.any():
-                break
-            pos[ruim] = base[ruim] + amp * rng.standard_normal((int(ruim.sum()), 2))
-        else:
-            ruim = ~valido(pos)
-            pos[ruim] = base[ruim]  # desiste: volta ao sitio da rede
-            print(f"pilares: {int(ruim.sum())} centros sem posicao valida, mantidos na rede")
-        desl = np.hypot(pos[:, 0] - base[:, 0], pos[:, 1] - base[:, 1])
-        print(f"pilares: jitter {PILAR_JITTER:.3f} (semente {PILAR_SEED}), deslocamento "
-              f"p50={np.median(desl)/dx:.2f} dx, max={desl.max()/dx:.2f} dx")
-        return pos[:, 0], pos[:, 1]
-
-    def _gargantas(self, cx, cy, rp):
-        """Distribuicao de pesos de aresta do grafo de Delaunay (nó = pilar, aresta = garganta),
-        em dx. E a DOSE no caso desordenado, onde `lambda` perde sentido."""
-        C = np.column_stack([cx, cy])
-        if len(C) < 4:
-            return None
-        from scipy.spatial import Delaunay
-
-        ar = set()
-        for s in Delaunay(C).simplices:
-            for a, b in ((0, 1), (1, 2), (2, 0)):
-                ar.add((min(s[a], s[b]), max(s[a], s[b])))
-        e = np.array(sorted(ar))
-        g = (np.linalg.norm(C[e[:, 0]] - C[e[:, 1]], axis=1) - 2.0 * rp) / dx
-        return {
-            "n_arestas": int(len(e)),
-            "grau_medio": float(2.0 * len(e) / len(C)),
-            "p10": float(np.percentile(g, 10)),
-            "p50": float(np.median(g)),
-            "p90": float(np.percentile(g, 90)),
-            "media": float(g.mean()),
-            "desvio": float(g.std()),
-        }
 
     def _faz_pilares(self, fluid):
         """Rede triangular de pilares: os proprios pontos da grade viram parede estatica.
@@ -465,8 +388,6 @@ class SwarmApp(Application):
         )
         fora_inoculo = np.hypot(cx, cy) >= PILAR_R_EXCL
         cx, cy = cx[dentro_dom & fora_inoculo], cy[dentro_dom & fora_inoculo]
-        if PILAR_JITTER > 0.0:
-            cx, cy = self._desordena(cx, cy, lam, rp)
 
         tree = cKDTree(np.column_stack([fluid.x, fluid.y]))
         idx = np.unique(np.concatenate(tree.query_ball_point(np.column_stack([cx, cy]), rp)))
@@ -497,9 +418,6 @@ class SwarmApp(Application):
                     "rotacao_graus": PILAR_ROT,
                     "r_exclusao": PILAR_R_EXCL,
                     "n_particulas": int(len(idx)),
-                    "jitter": PILAR_JITTER,
-                    "semente": PILAR_SEED if PILAR_JITTER > 0.0 else None,
-                    "gargantas_dx": self._gargantas(cx, cy, rp),
                 },
                 fp,
             )

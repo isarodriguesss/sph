@@ -2475,6 +2475,62 @@ Calibracao pos-Passes A-I.7. **MARCO I.7:** Transicao blob→dendritico confirma
     para continuidade; adicionar por CONVERSAO e o mecanismo certo para preenchimento local
     (o P5 de fato entrega ocupacao 0.44 -> 0.60 e densidade 1.16 -> 2.99 em r=2.0).
 
+107. **A RELACAO DE DISPERSAO DO MODELO FOI MEDIDA: `sigma(m)` NAO TEM MAXIMO, E O NUMERO DE
+    MODO E CONSTANTE AO LONGO DE UMA EXPANSAO DE 4.5x EM RAIO — a licao #106 confirmada
+    quantitativamente, e por uma medida que nao depende de linearidade** (2026-09-23,
+    [tools/dispersao.py](tools/dispersao.py) sobre `runs/swarm/P2R23_conduz`, pos-processamento
+    puro dos 17 quadros, sem rodada nova; figura em [plots/dispersao.png](plots/dispersao.png)):
+
+    **Metodo.** `R(theta)` direto das PARTICULAS (nao do raster, licao #92): colonia =
+    `rho_b>=0.1` ou filler (§2.2), 720 bins angulares, `R` = maior raio com colonia no bin.
+    Espectro por `rfft` em amplitude RELATIVA ao raio medio. `sigma_m` por ajuste de
+    `ln(a_m)` contra `t`, usando SO os instantes em que o modo e resolvido (`m <= pi R/dx`).
+
+    | | resultado | numero |
+    |---|---|---|
+    | 1 | `sigma(m)` **sem maximo** — 22 dos 40 modos com `sigma` negativo | max em m=2, 0.137 |
+    | 2 | **a semente e APAGADA, nao so abandonada** | m=8: 0.293 -> **0.036**, `sigma` = −0.054 |
+    | 3 | o que parece crescimento e **equilibracao** para um nivel comum | corr(ln `a_m`(0), `sigma_m`) = **−0.53** |
+    | **4** | **numero de modo FIXO; o comprimento de onda so estica com a colonia** | **`m* ~ R^-0.13`**; `m*`=13.8 com `R` crescendo **4.55x**; `lambda*` cresce **5.12x** |
+
+    **O item 4 e o que sustenta a conclusao**, porque nao supoe regime linear — coisa que aqui
+    quase nao existe (a semente nasce com amplitude relativa 0.29). Se houvesse escala fisica,
+    `m*` cresceria proporcional a `R`; ele NAO cresce. `sigma(m)` entra como corroboracao.
+
+    **A CONTAGEM TEM DONO, e e a licao #98 medida pelo espectro.** Celulas VIVAS alem de
+    0.85 R caem de 91 e **saturam em EXATAMENTE 20** a partir de t~18, ficando la ate t=50;
+    no mesmo periodo `m*` ~ **13.8**. Sao **~1.4 celulas vivas por modo** — cada dedo e o
+    rastro de uma celula, agora com numero.
+
+    **Por que e mais forte que a #106.** La se media ausencia de resposta a UM parametro
+    (dobrar `L_D_ext` moveu o passo 4%). Aqui se mede a propriedade diretamente: **nao existe
+    comprimento de onda selecionado**, e o corte em comprimento de onda curto e a contagem de
+    portadores, que e numero de DISCRETIZACAO. Para a tese, a limitacao deixa de ser
+    declaracao e vira **curva medida** — o que e contribuicao, nao defeito confessado.
+
+    **DIAGNOSTICO ESTRUTURAL (o porque, derivado de Saffman-Taylor).** Em ST, Mullins-Sekerka
+    e [T1], a selecao vem sempre de `sigma(k) = (desestabilizador)k − (estabilizador)k^3`, e o
+    MAXIMO dessa curva e o comprimento de onda. **Os DOIS termos faltam aqui:**
+    - *desestabilizador `∝ k`*: viria de campo laplaciano (ondular a frente muda o gradiente
+      que ela sente). O teto `(1−cs/cs_max)` prende `cs` a **0.98 do maximo** no mid-arm —
+      ondular nao muda nada. Mesmo bloqueio das licoes #64/#77.
+    - *estabilizador `∝ k^3`*: viria de tensao superficial. O `tension_ratio` da `BiomassEOS`
+      e **COESAO** (deficit de densidade), **nao curvatura** — e a pressao esta 219x abaixo da
+      Marangoni (#85). Nao ha nada que penalize comprimento de onda curto.
+
+    Sem os dois, `sigma(k)` nao tem forma, nada cresce preferencialmente, e o que se ve e o
+    que a condicao inicial e a discretizacao deixaram. **Na pratica `dx` faz o papel da tensao
+    superficial.**
+
+    **ROTA PARA CORRIGIR, e por que NAO agora.** Exige as duas pecas, e a ordem importa:
+    (a) campo que nao satura — **tres familias ja fechadas** (serie Y, sumidouro quadratico
+    P10/P12/P14, crescimento B2/D5/P8/P9); (b) tensao superficial de verdade em SPH
+    (Adami, Hu & Adams 2010, *JCP* 229:5011; Tartakovsky & Meakin 2005, *PRE* 72:026227) —
+    **nunca tentada**. E **(b) sozinho PIORA**: estabilizador sem motriz dependente de `k` da
+    `sigma(k)<0` para todo `k`, ou seja colonia circular. E mudanca de ESQUEMA, nao um Pass:
+    refaz o balanco de forcas e invalida o bit-a-bit com o P2R23. **O Pass L nao precisa disso**
+    — e comparacao pareada, e a ausencia de selecao esta nos dois bracos e cancela (#106-F).
+
 75. **A LARGURA DO BRACO: cintura em r/R99=0.65, barriga em 0.83, razao 2.1x — e a barriga
     ACOMPANHA A FRENTE. Quatro alavancas refutadas por medicao antes de rodar, e o
     `contrast_cs` invalidado como orcamento** (diagnostico sobre o P5, 2026-09-03):
@@ -3728,6 +3784,29 @@ Calibracao pos-Passes A-I.7. **MARCO I.7:** Transicao blob→dendritico confirma
     & Aly 2012, MNRAS 425:1068), piso de repulsao na EOS para vivas, ou shifting mais forte na
     banda `rho_b` 0.1-0.5 (Lind 2012 [T8]).
 
+    **CORRECAO DA ATRIBUICAO E DA JANELA (2026-10-06, medido no P2R23).** A validacao
+    do P2R23 ate t=100 (`runs/swarm/P2R23_t100_pareamento`, morta em t=66.7) reproduziu a cascata e
+    mostrou que **a populacao que pareia e o FILLER, nao as recrutas**: dos 10 656 em pares a
+    < 0.05 dx em t=65.6, **10 465 (98.2%) sao filler** com `rho_b` mediano 0.458, contra 170 vivas
+    (135 recrutas). Em `rho_b` = 0.477 o `fade_rep` da `BiomassEOS` vale **0.99** — repulsao
+    praticamente PLENA, com `rho/rho0` p99 = 1.87 —, entao o "`fade_rep`~0.16 da recruta em
+    `rho_b`~0.2" acima **nao e o mecanismo**. O mecanismo e so o kernel: `DWIJ` -> 0 quando
+    `r` -> 0, e a pressao existente nao tem como agir. E a fonte do filler e o **rastro**: 2 382
+    (t=21.7) -> **17 444** (t=65.6), com o agar caindo 65 400 -> 57 005 (8 395 convertidos).
+
+    **Consequencia: a janela numerica do P2R23 e t ≲ 60, nao t ≲ 75.** O `t ≲ 75` foi medido no P2
+    (779 pares em t=70); o P2R23 tem **12 243 em t=65.6**, ~16x pior e mais cedo — o rastro
+    encurtou a janela em ~15 unidades de `t`. Joelho do `dt` em t≈61-62 (`dt`/passo 5.5e-3 ->
+    1.3e-3), `iter/t` acumulado 112.8 contra 62 a t=50. **Antes disso a colonia ja parou de
+    expandir:** `dR/dt` 0.0756 em t∈[25,50] contra **0.0149** em t∈[54,66.7], com `R99` indo de
+    4.455 (t=53.6) a 4.650 (t=66.7). Logo a janela UTIL do P2R23 e t ≲ 54 para expansao e t ≲ 60
+    para numerica. Detalhe completo em docs/CRITERIOS_RUGOSIDADE.md §13.
+
+    **Nenhum criterio escalar pega isso**: `max_v` CAI (0.097 -> 0.043), `n_fast` = 0,
+    `a_press_med` = 0.005, `max_cs` cravado em 0.4938 e massa linear (+7%). A rodada parece
+    saudavel por toda metrica convencional e morre de qualquer forma — vigiar pares < 0.05 dx e
+    `nn_median` (0.36 em t=53.6 -> **0.006** em t=66.7) com `tools/pares_dt.py`.
+
     **DETERMINISMO DEPENDE DO NUMERO DE THREADS (verificado, `runs/swarm/_verif_P2_5t`).** O
     `P2_t100` rodou com `OMP_NUM_THREADS=5` e diverge do P2 original (10 threads) a partir da
     iteracao 600, na 4a-5a casa (t 12.7260 vs 12.7259), amplificando-se depois. Uma copia com
@@ -3763,7 +3842,7 @@ Calibracao pos-Passes A-I.7. **MARCO I.7:** Transicao blob→dendritico confirma
     (recrutamento crescente), nao numerico. Agar limpo nas baias 71% contra 76-78% do P2.
 
     **DECISAO DA USUARIA (2026-09-14): o baseline MANTEM o kernel cubico** (`KERNEL="cubic"`,
-    `H_FACTOR=1.8`). O parametro fica no codigo; o P2 segue com janela util t ≲ 75.
+    `H_FACTOR=1.8`). O parametro fica no codigo; o P2 segue com janela util t ≲ 75 — **o P2R23, com o rastro, so t ≲ 60** (correcao dentro da licao #88).
 
     **Nota de medicao:** a contagem de pares usada aqui da numeros absolutos menores que a da
     licao #88 (E11 871 contra 1246 em t=87). So comparar runs contados pelo MESMO script,
@@ -3817,7 +3896,7 @@ Calibracao pos-Passes A-I.7. **MARCO I.7:** Transicao blob→dendritico confirma
     #84, **conectar contra separar**, agora com o mecanismo medido. O unico elemento proprio do
     tardio e a subida do `cs` na baia; qualquer alavanca de gate/doador/wake corta tambem a
     ligacao. **Janela morfologica do P2: t ≲ 55** (em t=55 F ja esta 30% coberta e `R_min`
-    salta 1.64 -> 1.95); a janela numerica segue t ≲ 75.
+    salta 1.64 -> 1.95); a janela numerica segue t ≲ 75 **no P2** — no P2R23 e t ≲ 60 (correcao dentro da licao #88).
 
 91. **P2S (`WAKE_SEG` sobre o P2) NAO engrossa os bracos — o rastro da ponta nao e vazio, e
     AGAR; a largura e fixada pelo RECRUTAMENTO lateral, nao pela deposicao** (2026-09-14,

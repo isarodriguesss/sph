@@ -20,3 +20,6 @@ log.csv
 
 # Estado interno dos hooks do harness Claude Code (por sessao, nao versionar)
 .claude/.state/
+
+# Trava de simulacao em andamento (por maquina, nao versionar)
+.sph_rodando

@@ -1,8 +1,6 @@
-import atexit
 import csv
 import json
 import os
-import time
 import numpy as np
 from scipy.sparse.csgraph import connected_components
 from scipy.spatial import cKDTree
@@ -21,10 +19,8 @@ x_min_domain, x_max_domain = -7.0, 7.0
 y_min_domain, y_max_domain = -7.0, 7.0
 dx = (x_max_domain - x_min_domain) / (x_dim - 1)
 
-KERNEL = "wendland_c2"  # correcao do pareamento (licao #88/#89, CRITERIOS_RUGOSIDADE §13):
-# o spline cubico tem gradiente -> 0 quando r -> 0 e nao separa o par; o Wendland C2 nao tem
-# instabilidade de pareamento (Dehnen & Aly 2012). "cubic" com H_FACTOR=1.8 e a baseline P2R23.
-H_FACTOR = 1.92
+KERNEL = "cubic"  # "wendland_c2" com H_FACTOR=1.92 em teste (P2W, licao #88)
+H_FACTOR = 1.8
 
 mu = 0.020
 gamma = 60.0
@@ -56,7 +52,7 @@ k_col = 0.03
 COL_CS_MIN = 0.3
 COL_FILLER_DONOR = 1.0  # P2: filler conta como doador. 0.0 = E11.
 
-total_sim_time = 100.0
+total_sim_time = 50.0
 print_freq = 200
 
 NOISE_AMP = 0.6
@@ -105,7 +101,7 @@ FILLER_RHO_B_FLOOR = 0.4
 FILLER_CS_CONDUZ = 1.0
 FILLER_CS_D = 0.0
 FILLER_CS_D_INTERNO = 0.0
-FILLER_CS_LAMBDA = 0.5
+FILLER_CS_LAMBDA = 1.0
 AGAR_CS_LAMBDA = 0.125
 
 # pass-l-aprovado: Pass L (rugosidade) desbloqueado em 2026-09-17 — CLAUDE.md §12 e
@@ -1124,47 +1120,6 @@ class SwarmApp(Application):
         return sel[d_viz > g]
 
 
-def _trava(libera=False):
-    """Impede DUAS simulacoes simultaneas escrevendo em main_output/ e log.csv.
-
-    Em 2026-10-06 duas rodadas correram juntas por 1h10: 35 de 36 iteracoes duplicadas no
-    log, quadros de uma sobrescrevendo os da outra e `R99` alternando entre as duas
-    trajetorias (parecia instabilidade fisica). Nada acusou.
-
-    O arquivo fica na RAIZ, nao em main_output/, porque `make run` faz `rm -rf main_output`
-    ANTES do python iniciar — uma trava la dentro seria apagada pela segunda invocacao.
-    Trava morta (processo que nao existe mais) e sobrescrita sem reclamar.
-    """
-    alvo = ".sph_rodando"
-    if libera:
-        try:
-            if os.path.exists(alvo) and json.load(open(alvo)).get("pid") == os.getpid():
-                os.remove(alvo)
-        except Exception:
-            pass
-        return
-    if os.path.exists(alvo):
-        try:
-            d = json.load(open(alvo))
-            os.kill(int(d["pid"]), 0)          # nao mata: so testa se existe
-        except Exception:
-            pass                                # trava morta ou ilegivel: segue
-        else:
-            raise SystemExit(
-                f"\nABORTADO: ja ha uma simulacao rodando (pid {d['pid']}, iniciada em "
-                f"{d.get('inicio', '?')}).\n"
-                f"  Ela escreve em main_output/ e log.csv — duas ao mesmo tempo corrompem as\n"
-                f"  duas, sem erro nenhum. Espere terminar, ou mate aquele processo, ou apague\n"
-                f"  {alvo} se souber que ele morreu.\n"
-            )
-    with open(alvo, "w") as fp:
-        json.dump({"pid": os.getpid(), "inicio": time.strftime("%Y-%m-%d %H:%M:%S"),
-                   "kernel": KERNEL, "t_final": total_sim_time,
-                   "pilares": bool(use_pilares)}, fp)
-
-
 if __name__ == "__main__":
-    _trava()
-    atexit.register(_trava, libera=True)
     app = SwarmApp()
     app.run()

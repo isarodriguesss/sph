@@ -5,17 +5,14 @@ principal (CRITERIOS_RUGOSIDADE.md §12) — no R1 a modulacao vale 22% e a medi
 Uma figura com so as duas curvas mentiria por omissao. Entao a figura mostra o nulo E o
 efeito no mesmo quadro:
 
-  (a),(b) a FORMA, em R_med CASADO (o tamanho nao e confundidor), com a rede desenhada nos
-          DOIS paineis — tenue em (a), onde ela nao existe, como referencia geometrica. E
-          isso que torna o travamento de fase visivel em vez de espectral: os lobos do R1
-          caem nas GARGANTAS (30/90/150 graus), os do liso nao tem relacao com elas.
+  (a),(b) a FORMA em t=50, com a rede desenhada nos DOIS paineis — tenue em (a), onde ela
+          nao existe, como referencia geometrica.
   (c)     R99(t) das duas — quase sobrepostas. E o nulo, e aparece honestamente.
-  (d)     R(theta)/R_medio desenrolado no instante do pico, com faixas nos azimutes das
-          gargantas: seis maximos sobre seis faixas no R1, nada no liso.
-
-O instante da linha de cima e fixado pela GEOMETRIA, nao pelo resultado: o a_6 do R1 pica
-quando a frente atravessa a primeira coroa (R_med ~ 1.50 = 0.99 do raio da coroa), que e a
-janela pre-registrada na §12.4. Em t=50 o a_6 ja decaiu a 0.013 e a figura nao mostraria nada.
+  (d)     os modos da REDE ao longo do tempo. Em t=50 o travamento de m=6 ja decaiu (0.223
+          em t=25.6 -> 0.013), mas a assinatura NAO sumiu: ela migrou para o harmonico
+          m=12 = 2x6, que vale 0.200 no R1 contra 0.064 no liso. E o modo PROPRIO do
+          modelo (m=10-11 no liso, licao #107) desaparece do R1. Por isso (d) e serie
+          temporal e nao espectro num instante: a historia e a troca de m=6 por m=12.
 
     python plots/fig_obstaculo.py                    # usa os caminhos padrao
     python plots/fig_obstaculo.py --rmed 1.50 --out plots/fig_obstaculo.png
@@ -70,6 +67,11 @@ def serie(run):
     return out
 
 
+def am(R, m):
+    F = np.fft.rfft(R)
+    return 2 * np.abs(F[m]) / np.abs(F[0])
+
+
 def a6(R):
     F = np.fft.rfft(R)
     return (2 * np.abs(F[6]) / np.abs(F[0]),
@@ -101,17 +103,17 @@ def main():
     p = argparse.ArgumentParser()
     p.add_argument("--liso", default=LISO)
     p.add_argument("--rug", default=RUG)
-    p.add_argument("--rmed", type=float, default=1.50)
+    p.add_argument("--t", type=float, default=50.0)
     p.add_argument("--n", type=int, default=600)
     p.add_argument("--iso", type=float, default=2.0)
     p.add_argument("--out", default="plots/fig_obstaculo.png")
     a = p.parse_args()
 
     SL, SR = serie(a.liso), serie(a.rug)
-    ql = min(SL, key=lambda q: abs(q["rmed"] - a.rmed))
-    qr = min(SR, key=lambda q: abs(q["rmed"] - a.rmed))
+    ql = min(SL, key=lambda q: abs(q["t"] - a.t))
+    qr = min(SR, key=lambda q: abs(q["t"] - a.t))
     pil = FT.carrega_pilares(qr["f"])
-    L = 2.6
+    L = 4.9
     al, fl = a6(ql["R"]); ar, fr = a6(qr["R"])
     print(f"liso: t={ql['t']:.1f} R_med={ql['rmed']:.3f} a6={al:.3f} fase={fl:.1f}")
     print(f"R1  : t={qr['t']:.1f} R_med={qr['rmed']:.3f} a6={ar:.3f} fase={fr:.1f}")
@@ -119,10 +121,10 @@ def main():
     fig, ax = plt.subplots(2, 2, figsize=(9.6, 9.0))
     painel(ax[0, 0], ql, pil, L, a.n, a.iso,
            f"(a) sem obstaculo — t = {ql['t']:.0f} s\n"
-           f"$a_6$ = {al:.3f}   fase = {fl:.0f}°", tenue=True)
+           f"$R_{{99}}$ = {ql['r99']:.2f}", tenue=True)
     painel(ax[0, 1], qr, pil, L, a.n, a.iso,
            f"(b) com obstaculos (R1, $\\Lambda$ = 28 dx) — t = {qr['t']:.0f} s\n"
-           f"$a_6$ = {ar:.3f}   fase = {fr:.0f}°", tenue=False)
+           f"$R_{{99}}$ = {qr['r99']:.2f}  (−5.3%)", tenue=False)
     ax[0, 0].text(0.02, 0.02, "rede desenhada como referencia\n(ausente nesta rodada)",
                   transform=ax[0, 0].transAxes, fontsize=7, color="#555",
                   va="bottom", ha="left")
@@ -139,22 +141,22 @@ def main():
     b.grid(alpha=0.25, lw=0.5)
 
     c = ax[1, 1]
-    th = np.arange(NTH) * 360.0 / NTH
-    for k in range(6):
-        c.axvspan(30 + 60 * k - 7, 30 + 60 * k + 7, color="#9a9855", alpha=0.16, lw=0)
-    for q, cor, lbl, am, fa in ((ql, COR_LISO, "sem obstaculo", al, fl),
-                                (qr, COR_RUG, "com obstaculos (R1)", ar, fr)):
-        rel = q["R"] / q["R"].mean()
-        c.plot(th, rel, color=cor, lw=0.7, alpha=0.28)
-        # componente m=6 isolada: e exatamente o que a metrica mede (amplitude + fase)
-        c.plot(th, 1.0 + am * np.cos(np.radians(6 * (th - fa))), color=cor, lw=2.4,
-               label=f"{lbl} — $a_6$={am:.3f}, fase={fa:.0f}°")
-    c.axhline(1.0, color="#999", lw=0.7, ls=":")
-    c.set_xlim(0, 360); c.set_xticks(np.arange(0, 361, 60))
-    c.set_xlabel(r"$\theta$ (graus)"); c.set_ylabel(r"$R(\theta)\,/\,\bar{R}$")
-    c.set_title("(d) contorno desenrolado no instante do pico\n"
-                "claro = $R(\\theta)$ cru;  grosso = componente $m$=6 medida", fontsize=10, pad=6)
-    c.legend(fontsize=7.5, frameon=False, loc="lower left", ncol=1)
+    for S, cor, lbl in ((SL, COR_LISO, "sem obstaculo"), (SR, COR_RUG, "com obstaculos (R1)")):
+        tt = [q["t"] for q in S]
+        c.plot(tt, [a6(q["R"])[0] for q in S], "-o", color=cor, ms=3.5, lw=1.8,
+               label=f"{lbl} — $m$=6")
+        c.plot(tt, [am(q["R"], 12) for q in S], "--s", color=cor, ms=3.0, lw=1.3,
+               alpha=0.75, label=f"{lbl} — $m$=12")
+    c.axvline(qr["t"], color="#999", lw=0.8, ls=":")
+    c.annotate("frente atravessa a 1a coroa", xy=(25.6, 0.223), xytext=(31.5, 0.205),
+               fontsize=7.5, color="#6b6b45",
+               arrowprops=dict(arrowstyle="->", color="#6b6b45", lw=0.8))
+    c.set_ylim(-0.012, 0.255)
+    c.set_xlabel("t (s)")
+    c.set_ylabel("amplitude relativa do modo")
+    c.set_title("(d) os modos da REDE (6 e seu harmonico 12)\n"
+                "o pico de $m$=6 migra para $m$=12", fontsize=10, pad=6)
+    c.legend(fontsize=7, frameon=False, loc="upper left", ncol=1)
     c.grid(alpha=0.25, lw=0.5)
 
     fig.suptitle("A mesma expansao, com organizacao diferente", fontsize=12.5, y=0.985)

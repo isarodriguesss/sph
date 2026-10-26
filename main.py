@@ -21,10 +21,10 @@ x_min_domain, x_max_domain = -7.0, 7.0
 y_min_domain, y_max_domain = -7.0, 7.0
 dx = (x_max_domain - x_min_domain) / (x_dim - 1)
 
-KERNEL = "wendland_c2"  # correcao do pareamento (licao #88/#89, CRITERIOS_RUGOSIDADE §13):
+KERNEL = "cubic"  # correcao do pareamento (licao #88/#89, CRITERIOS_RUGOSIDADE §13):
 # o spline cubico tem gradiente -> 0 quando r -> 0 e nao separa o par; o Wendland C2 nao tem
 # instabilidade de pareamento (Dehnen & Aly 2012). "cubic" com H_FACTOR=1.8 e a baseline P2R23.
-H_FACTOR = 1.92
+H_FACTOR = 1.8
 
 mu = 0.020
 gamma = 60.0
@@ -56,7 +56,7 @@ k_col = 0.03
 COL_CS_MIN = 0.3
 COL_FILLER_DONOR = 1.0  # P2: filler conta como doador. 0.0 = E11.
 
-total_sim_time = 100.0
+total_sim_time = 50.0
 print_freq = 200
 
 NOISE_AMP = 0.6
@@ -89,6 +89,7 @@ WAKE_MASS_BUDGET = 0.12
 WAKE_SEG = False
 WAKE_SEG_MAX = 6
 RASTRO_W = 5.0
+RASTRO_W_RAZAO = 0.0
 RASTRO_R_MIN = 0.7
 RASTRO_COS_FRENTE = 1.0
 RASTRO_SEG = True
@@ -110,8 +111,8 @@ AGAR_CS_LAMBDA = 0.125
 
 # pass-l-aprovado: Pass L (rugosidade) desbloqueado em 2026-09-17 — CLAUDE.md §12 e
 # docs/PLANO_RUGOSIDADE.md. Rede triangular de pilares no plano; geometria reancorada no P2R23.
-use_pilares = False
-PILAR_A = 5.0  # diametro do pilar em dx (~ largura do braco: 9-10.5 dx no P2R23)
+use_pilares = True
+PILAR_A = 10.0  # diametro do pilar em dx (~ largura do braco: 9-10.5 dx no P2R23)
 PILAR_LAMBDA = 28.0  # espacamento da rede triangular em dx. R1=28 (1.10 contatos/braco no
 # alcance real, 83.7% de interceptacao), R2=20 (1.81, 100%), R3=16 (3.44, 100%) — tabela por
 # alcance em docs/CRITERIOS_RUGOSIDADE.md §8.
@@ -991,6 +992,11 @@ class SwarmApp(Application):
         if len(lider) == 0 or len(agar) == 0:
             return
 
+        w_eff = RASTRO_W
+        if RASTRO_W_RAZAO > 0.0:
+            passo = 2.0 * np.pi * r99 / len(lider) / dx
+            w_eff = min(RASTRO_W, 0.5 * RASTRO_W_RAZAO * passo)
+
         self._rastro_ponta = None
         if RASTRO_PONTA > 0.0 and RASTRO_PONTA_LINK > 0.0:
             tl = cKDTree(np.column_stack([fluid.x[lider], fluid.y[lider]]))
@@ -1007,7 +1013,7 @@ class SwarmApp(Application):
             if RASTRO_BAIA > 0.0:
                 col = np.where(fil | (rb > 1e-12))[0]
                 self._col_tree = (cKDTree(np.column_stack([fluid.x[col], fluid.y[col]])), col)
-            mae = self._rastro_segmento(fluid, lider, agar, tree)
+            mae = self._rastro_segmento(fluid, lider, agar, tree, w_eff)
             self._rastro_x = fluid.x.copy()
             self._rastro_t = float(solver.t)
             self._rastro_y = fluid.y.copy()
@@ -1052,11 +1058,11 @@ class SwarmApp(Application):
         fluid.x_dep[alvo] = fluid.x[alvo]
         fluid.y_dep[alvo] = fluid.y[alvo]
 
-    def _rastro_segmento(self, fluid, lider, agar, tree):
+    def _rastro_segmento(self, fluid, lider, agar, tree, w_rastro=RASTRO_W):
         mae = {}
         if self._rastro_x is None:
             return mae
-        w = RASTRO_W * dx
+        w = w_rastro * dx
         n_prev = len(self._rastro_x)
         novos = []
         for k in lider:

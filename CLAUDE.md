@@ -269,7 +269,11 @@ perturbacao zero — licao #72-K),
 [rho_b_vis.py](tools/rho_b_vis.py) (reconstroi o envelope da colonia SO para visualizacao — pos-
 processamento puro, nao toca na dinamica; o `rho_b` do C4 tem 77.6% de zeros exatos por underflow
 da gaussiana inicial) e [verdict_topico2.py](tools/verdict_topico2.py) (criterios pre-registrados
-de agar engolido).
+de agar engolido). Para os TOCOS (licao #108): [plots/fig_tocos.py](plots/fig_tocos.py)
+identifica cada toco com o estado do lider — o detector roda em `prom`=0.01 e o criterio de
+validade e a contagem SATURAR na varredura, nunca um valor so — e
+[plots/fig_sufoco.py](plots/fig_sufoco.py) plota a razao entre a largura do dispositivo de
+deposicao e o espacamento entre lideres contra `t`, que e onde o aperto aparece.
 
 **Instrumentacao:** `void_07`, `void_10`, `void_15` no `log.csv` (funcao `void_fraction` em [main.py](main.py)); ranking e guardrails automatizados em [tools/compare_runs.py](tools/compare_runs.py); comparativo visual com escalas fixas entre rodadas em [tools/compare_frames.py](tools/compare_frames.py).
 
@@ -2530,6 +2534,109 @@ Calibracao pos-Passes A-I.7. **MARCO I.7:** Transicao blob→dendritico confirma
     `sigma(k)<0` para todo `k`, ou seja colonia circular. E mudanca de ESQUEMA, nao um Pass:
     refaz o balanco de forcas e invalida o bit-a-bit com o P2R23. **O Pass L nao precisa disso**
     — e comparacao pareada, e a ausencia de selecao esta nos dois bracos e cancela (#106-F).
+
+108. **OS TOCOS SAO O RASTRO DE LIDERES QUE MORRERAM SOTERRADOS PELO WAKE DOS VIZINHOS — e o
+    `v(r)` monotono e a TRAVA, nao a causa. Isso tambem explica o "satura em exatamente 20" da
+    licao #107** (2026-10-07, pos-processamento do `runs/swarm/P2R28_pin045` mais dois runs de
+    teste de 8 s; instrumentos em [plots/fig_tocos.py](plots/fig_tocos.py) e
+    [plots/fig_sufoco.py](plots/fig_sufoco.py)):
+
+    **(A) SAO QUATRO TOCOS, NAO DOIS — e o erro foi o detector, pela segunda vez na mesma
+    sessao.** Usei `prom=0.06`, herdado do `lit_rank.dedos`, e ele suprime justamente o que se
+    quer contar. Varrendo (P2R28): 0.005 -> 4 tocos, 0.01 -> 4, 0.015 -> 3, 0.06 -> 2. **O
+    criterio de validade e a contagem SATURAR** — abaixo de 0.015 ela para em 4, e so entao
+    estao todos. P2R28 tem 4 (-165, 68, 113, 165 graus), o P2R23 tem **8**: o pin da licao #83
+    cortou metade. Terceira ocorrencia da licao #68 (o parametro da regua decidindo o
+    resultado), desta vez cometida DENTRO do diagnostico do proprio erro.
+
+    **Dois filtros obrigatorios junto do detector:** (i) pico abaixo de 0.7 Rmax cujo setor tem
+    `p90` do R BRUTO >= 0.7 Rmax e FLANCO de dedo alto, nao toco (4 dos 8 no P2R28); (ii) o
+    setor tem de vir da particao por ponto medio entre picos — caminhar ate o primeiro minimo
+    local da uma largura de 0-12 graus e pega a celula errada como lider.
+
+    **(B) TRAJETORIA: todos morrem da MESMA coisa, e o controle saudavel nunca morre.** Janela
+    azimutal de +-5 graus (a de +-10 pega o braco vizinho), lider = viva mais externa:
+
+    | setor | sufocado em | %agar vizinho | `\|u\|` | desfecho |
+    |---|---|---:|---:|---|
+    | -165 | t~6 | 0% | 0.004 | nunca recuperou |
+    | 113 | t=6-14 | 0% | 0.005-0.010 | sucessor em t=17.5, metade da velocidade |
+    | 68 | t=6-17 | 0-4% | 0.009-0.024 | recupera em t=21 |
+    | 166 | t~27 | 0% | 0.011 | **sem sucessor** — braco so de wake (orfao) |
+    | 52 | t~49 | 0% | 0.023 | tarde demais para afetar a forma |
+    | **controle -66** | **nunca** | **54-98%** | **0.064-0.135** | `r_viva` = `R` em TODOS os instantes |
+
+    A assinatura e unica: **o agar vizinho vai a 0% e o lider para.** Toco e orfao sao o mesmo
+    evento em instantes diferentes — orfao e quando nao ha sucessor.
+
+    **(C) A CAUSA E AGLOMERACAO DE LIDERES, MEDIDA.** Em t=3-10 a frente tem ~60 vivas em
+    `r`~1, ou seja **1.3-2.1 dx de espacamento**, dentro do suporte do kernel (2h = 3.6 dx):
+    cada lider esta na vizinhanca SPH dos outros. Correlacao entre numero de vizinhos-lider a
+    2h e a propria velocidade:
+
+    | t | n lideres | `nwake` p50 a 2h | Q1 (menos vizinhos) | Q4 (mais) | **corr(nviz, `\|u\|`)** |
+    |---:|---:|---:|---:|---:|---:|
+    | 3.2 | 62 | 2 | 0.0456 | 0.0681 | **+0.55** |
+    | 6.4 | 59 | 6 | 0.0432 | 0.0319 | −0.28 |
+    | **10.2** | **61** | 3 | **0.0587** | **0.0212** | **−0.70** |
+    | 13.8 | **25** | 0 | 0.0603 | 0.0526 | −0.31 |
+    | >= 17.5 | 21-22 | 0 | 0.0591 | 0.0560 | ~−0.2 |
+
+    A correlacao **inverte de sinal** entre t=3.2 e t=6.4, exatamente quando `nwake` a 2h chega
+    a 6. Em t=10.2 o quartil mais aglomerado anda **2.8x mais devagar**. Entre t=10 e t=14 a
+    frente perde **59% dos lideres** (61 -> 25) e os sobreviventes ficam ISOLADOS (`nviz` 0-1),
+    voltando todos a 0.055-0.061.
+
+    **(D) O AGENTE E O WAKE, NAO O RASTRO — atribuicao por INDICE.** Rastro CONVERTE particula
+    da rede inicial (indice < `N0`); wake/insert APPENDAM (indice >= `N0`). As duas ficam com
+    `is_wake`=1, entao so o indice separa. Em t=6.4, vizinhanca do lider:
+
+    | | %agar | %rastro | **%wake** |
+    |---|---:|---:|---:|
+    | TOCO 113 | 0% | **0%** | **76%** |
+    | TOCO -165 | 0% | **0%** | **46%** |
+    | TOCO 68 | 4% | 28% | 19% |
+    | **controle -66** | **54%** | 18% | **0%** |
+
+    O lider saudavel tem **zero** wake em volta; os sufocados estao enterrados nele. Confirmado
+    pelo proprio run de controle: ate t=6.4 o rastro disparou **uma unica vez** (80 convertidas),
+    enquanto o sufocamento ja estava em curso. **`RASTRO_W` nao e a alavanca** — so o 68 tem
+    contribuicao real do rastro (28% -> 54% -> 65%).
+
+    **(E) `v(r)` E A TRAVA.** Depois do aperto, a velocidade do lider e funcao do RAIO sozinho
+    (Pearson 0.95 sobre 19 lideres em t=50: `r`=2.66 da `\|u\|`=0.033, `r`=4.38 da 0.082),
+    porque `\|grad c_s\|` cai com o raio — o agar atras da frente e mais umido. Testado e
+    REFUTADO que haja sombra azimutal: a `c_s` do agar em raio FIXO e quase plana (max/min
+    1.37-1.58 em 36 setores) e os tocos caem nos percentis 6, 19, 31, 53, 77 e 91 conforme o
+    anel. **Nao ha competicao entre dedos; ha uma lei radial.** Quem ficou atras no aperto
+    recebe menos forca para sempre, sem mecanismo de recuperacao — nem reabsorcao (nao ha forca
+    para dentro) nem bonus por estar atras. Correlacao de ranking de `R(theta)` com o estado
+    final: 0.27 (t=0), 0.28 (t=10), **0.64 (t=21)**, 0.94 (t=47) — o padrao **nao esta no
+    inoculo** e trava ao fim do aperto.
+
+    **(F) ISSO EXPLICA A LICAO #107.** La ficou medido que as vivas alem de 0.85 R caem de 91 e
+    **saturam em exatamente 20** a partir de t~18, com `m*` ~ 13.8. **A saturacao em 20 E o
+    saldo deste aperto** (61 -> 25 -> 21 -> 14). Ou seja o modelo TEM uma selecao — so que ela e
+    por aglomeracao local e ruido inicial, nao por escala de campo; por isso `m*` nao responde a
+    `L_D_ext` (#98) e nao ha comprimento de onda selecionado (#107).
+
+    **(G) `RASTRO_W_RAZAO` — testado, efeito confirmado, alvo errado, preservado DESLIGADO.**
+    Cap `w_eff = min(RASTRO_W, 0.5*RAZAO*passo)` com `passo = 2 pi r99 / n_lider / dx`, em
+    [main.py](main.py); `0.0` reproduz o anterior bit-a-bit (`w_eff = RASTRO_W` exato).
+    Teste da licao #102 (dois runs de t=8, 10 threads): controle teve 1 evento de conversao
+    (80 particulas), com `RAZAO`=1.0 teve **0**, e o filler em t=8 caiu 527 -> **332 (-37%)**;
+    estados identicos ate a iteracao 200 e divergentes a partir da 400. **NAO e no-op** (ao
+    contrario do P2R18) — mas pelo item (D) ele corrige o dispositivo errado. Fica desligado.
+
+    **(H) O QUE A ALAVANCA CERTA TERIA DE FAZER, e o risco que ela carrega.** O wake deposita
+    por mae a cada `WAKE_FREQ`=100 iteracoes: 1 particula na posicao vagada mais um anel de ate
+    `WAKE_CLUSTER_MAX`-1 = 6 em raio `WAKE_RING_RATIO*dx` = 0.75 dx. Com os lideres a 1.3-2.1 dx
+    isso cai dentro do kernel do vizinho. O conserto analogo e capar o deposito pelo espacamento
+    medido. **Mas preservar os 60 lideres daria ~60 dedos**, contra a faixa 9-15 da literatura
+    (#95) e contra a aritmetica da #98 (`largura = ciclo * 2 pi R * 0.6 / n`): dedos mais finos,
+    nao mais largos. E a licao #104-E mediu que **+30% de pontas ja matou a colonizacao**. Antes
+    de qualquer rodada, pre-registrar os sinais precoces de la — agar na faixa 0.5-0.7 R99 e
+    limbo novo por frame — alem de largura e AR.
 
 75. **A LARGURA DO BRACO: cintura em r/R99=0.65, barriga em 0.83, razao 2.1x — e a barriga
     ACOMPANHA A FRENTE. Quatro alavancas refutadas por medicao antes de rodar, e o

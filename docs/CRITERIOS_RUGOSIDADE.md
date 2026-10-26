@@ -839,3 +839,59 @@ contra "cabe em linha reta?" (não).
 > líder não desvia, ele para** (arco azimutal muda 20% enquanto o avanço radial cai 8×). **Logo R3
 > deve mostrar extinção de líder pesada, não braços sinuosos.** Deriva de duas medições
 > independentes e é mais forte que a predição 1 da §3, que o R1 já contrariou.
+
+
+---
+
+## 17. PISO DO CAMPO DE `c_s` — e porque ele e o HALO, nao o nivel no corpo (2026-10-07)
+
+**Decisao da usuaria.** Qualquer alavanca de morfologia tem de preservar o campo de `c_s` na
+zona de expansao. O piso precisava de ancora de literatura, e a escolha da grandeza importa.
+
+### 17.1 O nivel no corpo NAO e ancoravel
+
+O Trinschek (b) da `corpo` = 0.99 do teto, e nos estamos em 0.44 (P2R23). Mas pela licao #99
+esse 0.99 e **propriedade do MODELO dele** — Gamma e advectado com o filme, entao satura sobre
+toda a pegada por construcao. **Nao e dado experimental.** A medida experimental direta,
+[T14] (MSI de metabolitos), diz o oposto: os ramnolipideos ficam *"delineando os tendrils e o
+espaco alem deles"*, nao uniformes sobre a colonia.
+
+Portanto a distancia 0.44 x 0.99 **nao mede um defeito** — mede uma diferenca de formulacao.
+
+### 17.2 O que a literatura ancora e o ALCANCE do halo
+
+| | corpo | baia | 0.9R | ponta | **`L`/R** |
+|---|---:|---:|---:|---:|---:|
+| **Trinschek (b)** | 0.99 | 0.95 | 0.71 | 0.54 | **0.18** |
+| P2R21 (sem conduzir) | 0.20 | 0.17 | 0.12 | 0.07 | 0.16 |
+| **P2R23 (baseline)** | 0.44 | 0.25 | 0.14 | 0.08 | **0.17** |
+| **R1 (Pass L)** | 0.62 | 0.34 | 0.19 | 0.11 | **0.18** |
+| P2R26 (beta 6.5) | 0.30 | 0.17 | **0.07** | **0.04** | **0.11** |
+
+Nessa grandeza **ja estamos no alvo**: 0.17-0.18 contra 0.18 do Trinschek.
+
+> ### PISO PRE-REGISTRADO: `L`/R >= 0.17
+>
+> Nenhuma alavanca de morfologia pode levar o halo abaixo disso. Reportar junto `0.9R` e
+> `ponta`, que sao o campo onde a Marangoni de fato trabalha.
+
+### 17.3 Consequencia imediata: `beta` = 6.5 REPROVADO
+
+O P2R26 entregou dedo +47%, AR 9.7 -> 14.1 e nucleo 0.385 -> 0.280 **sem abrir buraco**
+(`void_07` ate caiu, `mean_sig_all` 0.9981). Mas derrubou o halo para **0.11** (-35%), o
+`0.9R` de 0.14 para 0.07 e a ponta de 0.08 para 0.04 — **o campo some justamente onde a
+Marangoni trabalha**. A colonia ficou 26% maior com a mesma producao e o campo diluiu.
+
+**Revertido para `beta` = 5.0.** Arquivado em `runs/swarm/P2R26_beta65` como medido-e-reprovado.
+
+### 17.4 E isso protege a serie de rugosidade
+
+O R1 **ja rodou sobre o P2R23** e tem o melhor campo da serie (corpo 0.62, halo 0.18). O canal
+2 da secao 3 e justamente o quimico, com a sentinela pre-registrada `max c_s` no agar vizinho
+em **exatamente 0.300**, encostada no gate — margem zero.
+
+Mudar o motor agora quebraria duas coisas: **R1 deixaria de ser comparavel** (a dose se mede
+contra o liso, e o liso mudaria), e **o canal quimico ficaria cego** — medir a perturbacao do
+pilar sobre um campo 35% mais curto e medir sinal sobre ruido.
+
+**Enquanto a serie R1-R4 estiver aberta, o motor do liso nao se mexe.**

@@ -36,6 +36,7 @@ A escolha entre os dois nao e tecnica, e de qual figura se quer: envelope ou den
 
     python tools/rho_b_vis.py runs/swarm/C4 [saida.png] [modo]
 """
+
 import glob
 import sys
 
@@ -88,13 +89,17 @@ def preencher(pa, h_mult=1.0, modo="iterativo"):
         tree = cKDTree(np.column_stack([x[dj], y[dj]]))
         raio = (2.0 if exigir_cerco else h_mult) * h
         n = 0
-        for k, j in enumerate(tree.query_ball_point(np.column_stack([x[alvos], y[alvos]]), raio)):
+        for k, j in enumerate(
+            tree.query_ball_point(np.column_stack([x[alvos], y[alvos]]), raio)
+        ):
             if not j:
                 continue
             j = dj[np.asarray(j, dtype=int)]
             dx, dy = x[j] - x[alvos[k]], y[j] - y[alvos[k]]
             if exigir_cerco:
-                setores = set(((np.arctan2(dy, dx) + np.pi) / (2 * np.pi) * 8).astype(int) % 8)
+                setores = set(
+                    ((np.arctan2(dy, dx) + np.pi) / (2 * np.pi) * 8).astype(int) % 8
+                )
                 if len(setores) < SETORES_CERCO:
                     continue
             w = np.exp(-((np.hypot(dx, dy) / h) ** 2))
@@ -142,16 +147,27 @@ def main(run="runs/swarm/C4", out="plots/rho_b_vis.png", modo="iterativo"):
     print(f"{run}  t={t:.1f}  modo={modo}  (R_base={R:.2f}, so referencia)")
     print(f"  preenchidas (rho_b<0.1 -> vis>=0.1) : {int(ch.sum())}")
     print(f"  rho_b_vis nas preenchidas           : mediana {np.median(vis[ch]):.3f}")
-    print(f"  vazamento p/ agar externo (r>1.15R) : {int((ch & (rb < 1e-12) & (r > 1.15 * Rout)).sum())}")
+    print(
+        f"  vazamento p/ agar externo (r>1.15R) : {int((ch & (rb < 1e-12) & (r > 1.15 * Rout)).sum())}"
+    )
     print(f"  rho_b REAL (nao tocado)             : soma {np.sum(rb):.6f}")
 
     L = 1.25 * Rout
     s = (np.abs(x) < L) & (np.abs(y) < L)
     fig, ax = plt.subplots(1, 2, figsize=(13.5, 6.4))
-    for a, campo, ttl in ((ax[0], rb, "rho_b REAL (dinamico)"),
-                          (ax[1], vis, f"rho_b_vis ({modo})")):
-        sc = a.scatter(x[s], y[s], c=np.maximum(campo[s], FLOOR), s=5,
-                       cmap="viridis", norm=LogNorm(FLOOR, 1.0), linewidths=0)
+    for a, campo, ttl in (
+        (ax[0], rb, "rho_b REAL (dinamico)"),
+        (ax[1], vis, f"rho_b_vis ({modo})"),
+    ):
+        sc = a.scatter(
+            x[s],
+            y[s],
+            c=np.maximum(campo[s], FLOOR),
+            s=5,
+            cmap="viridis",
+            norm=LogNorm(FLOOR, 1.0),
+            linewidths=0,
+        )
         a.set_aspect("equal")
         a.set_xlim(-L, L)
         a.set_ylim(-L, L)

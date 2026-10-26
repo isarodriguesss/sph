@@ -70,13 +70,20 @@ def autoteste():
     """Calibra a regua antes de ranquear por ela (licoes #67-F, #101)."""
     th = np.arange(NTH) * 2.0 * np.pi / NTH
     ok = True
-    for m, a, t0 in ((6, 0.20, 30.0), (6, 0.05, 12.0), (4, 0.10, 15.0), (12, 0.08, 7.0)):
+    for m, a, t0 in (
+        (6, 0.20, 30.0),
+        (6, 0.05, 12.0),
+        (4, 0.10, 15.0),
+        (12, 0.08, 7.0),
+    ):
         R = 2.0 * (1.0 + a * np.cos(m * (th - np.radians(t0))))
         am, tm = modo(R, m)
         bom = abs(am - a) < 1e-9 and abs(tm - t0) < 1e-6
         ok &= bom
-        print(f"  m={m:2d} a={a:.2f} fase={t0:5.1f} -> {am:.6f} {tm:8.4f}  "
-              f"{'ok' if bom else 'FALHOU'}")
+        print(
+            f"  m={m:2d} a={a:.2f} fase={t0:5.1f} -> {am:.6f} {tm:8.4f}  "
+            f"{'ok' if bom else 'FALHOU'}"
+        )
     print("autoteste:", "ok" if ok else "FALHOU")
     return ok
 
@@ -85,8 +92,12 @@ def main():
     p = argparse.ArgumentParser()
     p.add_argument("runs", nargs="*")
     p.add_argument("--t-min", type=float, default=8.0)
-    p.add_argument("--janela", type=float, default=35.0,
-                   help="inicio da janela de media (CLAUDE.md §2.2)")
+    p.add_argument(
+        "--janela",
+        type=float,
+        default=35.0,
+        help="inicio da janela de media (CLAUDE.md §2.2)",
+    )
     p.add_argument("--autoteste", action="store_true")
     a = p.parse_args()
 
@@ -113,8 +124,10 @@ def main():
                 acc.append((a6, th6))
         if acc:
             M = np.array(acc)
-            print(f"  media t>={a.janela:.0f}: a6={M[:, 0].mean():.4f}+-{M[:, 0].std():.4f}"
-                  f"  fase6={M[:, 1].mean():.1f}+-{M[:, 1].std():.1f}")
+            print(
+                f"  media t>={a.janela:.0f}: a6={M[:, 0].mean():.4f}+-{M[:, 0].std():.4f}"
+                f"  fase6={M[:, 1].mean():.1f}+-{M[:, 1].std():.1f}"
+            )
 
 
 if __name__ == "__main__":

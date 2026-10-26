@@ -2,9 +2,18 @@ from pysph.sph.equation import Equation
 
 
 class BiomassGrowth(Equation):
-    def __init__(self, dest, sources, r_growth, rho_max, density_limit=1.1,
-                 motile_boost=0.0, v_sat=0.01, mass_gain=1.0,
-                 gain_rho_b_min=0.0):
+    def __init__(
+        self,
+        dest,
+        sources,
+        r_growth,
+        rho_max,
+        density_limit=1.1,
+        motile_boost=0.0,
+        v_sat=0.01,
+        mass_gain=1.0,
+        gain_rho_b_min=0.0,
+    ):
         self.r_growth = r_growth
         self.rho_max = rho_max
         self.density_limit = density_limit
@@ -121,8 +130,9 @@ class BiomassColonization(Equation):
     mecanismo dentro do orcamento sem desacelerar a rampa.
     """
 
-    def __init__(self, dest, sources, k_col, rho_max, cs_min, filler_donor=0.0,
-                 target_frac=1.0):
+    def __init__(
+        self, dest, sources, k_col, rho_max, cs_min, filler_donor=0.0, target_frac=1.0
+    ):
         self.k_col = k_col
         self.rho_max = rho_max
         self.cs_min = cs_min

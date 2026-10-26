@@ -150,7 +150,9 @@ def kernel_w(r, h):
     w = np.zeros_like(q, dtype=float)
     if KERNEL == "wendland_c2":
         m = q < 2.0
-        w[m] = (7.0 / (4.0 * np.pi * h * h)) * (1.0 - 0.5 * q[m]) ** 4 * (2.0 * q[m] + 1.0)
+        w[m] = (
+            (7.0 / (4.0 * np.pi * h * h)) * (1.0 - 0.5 * q[m]) ** 4 * (2.0 * q[m] + 1.0)
+        )
         return w
     fac = 10.0 / (7.0 * np.pi * h * h)
     m1 = q <= 1.0
@@ -346,7 +348,9 @@ class SwarmApp(Application):
         )
 
     def create_solver(self):
-        kernel = WendlandQuintic(dim=2) if KERNEL == "wendland_c2" else CubicSpline(dim=2)
+        kernel = (
+            WendlandQuintic(dim=2) if KERNEL == "wendland_c2" else CubicSpline(dim=2)
+        )
         solver = Solver(
             dim=2,
             integrator=self.scheme.get_integrator(),
@@ -389,7 +393,9 @@ class SwarmApp(Application):
         a_pressure = np.max(np.sqrt(ax_p**2 + ay_p**2))
         a_flag = np.max(np.abs(fluid.au_flag))
         # `a_pressure` (historica) inclui o flagelo e a viscosa; esta e so a pressao da EOS
-        a_press = np.hypot(ax_p - fluid.ax_flag - fluid.ax_vis, ay_p - fluid.ay_flag - fluid.ay_vis)
+        a_press = np.hypot(
+            ax_p - fluid.ax_flag - fluid.ax_vis, ay_p - fluid.ay_flag - fluid.ay_vis
+        )
         corpo = (rb >= 0.1) | (fluid.is_filler > 0.5)
         a_press_max = float(np.max(a_press))
         a_press_med = float(np.median(a_press[corpo])) if np.any(corpo) else 0.0
@@ -474,7 +480,9 @@ class SwarmApp(Application):
                         rho_b_dip = v
                         rho_b_dip_r = float(r0)
 
-        n_shift_gate = int(np.sum((rb >= SHIFT_RHO_B_MIN) & (rb < 0.8) & (fluid.c_n >= 0.6)))
+        n_shift_gate = int(
+            np.sum((rb >= SHIFT_RHO_B_MIN) & (rb < 0.8) & (fluid.c_n >= 0.6))
+        )
 
         vol = fluid.m[viva] / np.maximum(fluid.rho[viva], 1e-9)
         biomass_total = float(np.sum(rb[viva] * vol))
@@ -489,7 +497,11 @@ class SwarmApp(Application):
                 cs_bio_arms = float(np.mean(fluid.cs[arm_bio]))
                 c_n_bio_arms = float(np.mean(fluid.c_n[arm_bio]))
                 biomass_arms = float(
-                    np.sum(rb[arm_bio] * fluid.m[arm_bio] / np.maximum(fluid.rho[arm_bio], 1e-9))
+                    np.sum(
+                        rb[arm_bio]
+                        * fluid.m[arm_bio]
+                        / np.maximum(fluid.rho[arm_bio], 1e-9)
+                    )
                 )
             else:
                 cs_bio_arms = c_n_bio_arms = biomass_arms = 0.0
@@ -505,7 +517,9 @@ class SwarmApp(Application):
             f"sigma_a braços (n={n_bio_arms}): min={min_sig_bio:.3f} mean={mean_sig_bio:.3f} "
             f"frac<0.85={frac_lowsig_bio:.2%} | c/ filler: mean={mean_sig_all:.3f}"
         )
-        print(f"vazio areal: >0.7dx={vf[0.7]:.2%} >1.0dx={vf[1.0]:.2%} >1.5dx={vf[1.5]:.2%}")
+        print(
+            f"vazio areal: >0.7dx={vf[0.7]:.2%} >1.0dx={vf[1.0]:.2%} >1.5dx={vf[1.5]:.2%}"
+        )
         print(
             f"motor na biomassa: a_mar med={a_mar_bio_med:.3f} p95={a_mar_bio_p95:.2f} | "
             f"biomassa={biomass_total:.4f} bracos={biomass_arms:.4f} | pinadas={n_pinned}"
@@ -603,7 +617,10 @@ class SwarmApp(Application):
                 d_existing, _ = tree.query([vx, vy])
                 if d_existing < prox:
                     continue
-                if any((vx - ax) ** 2 + (vy - ay) ** 2 < prox_sq for ax, ay in zip(new_x, new_y)):
+                if any(
+                    (vx - ax) ** 2 + (vy - ay) ** 2 < prox_sq
+                    for ax, ay in zip(new_x, new_y)
+                ):
                     continue
                 new_x.append(vx)
                 new_y.append(vy)
@@ -620,7 +637,9 @@ class SwarmApp(Application):
         m_target = dx * dx
 
         disp = np.hypot(fluid.x - fluid.x_dep, fluid.y - fluid.y_dep)
-        wake_idx = np.where((fluid.rho_b_grown > WAKE_RHO_B_MIN) & (disp >= WAKE_DISP * dx))[0]
+        wake_idx = np.where(
+            (fluid.rho_b_grown > WAKE_RHO_B_MIN) & (disp >= WAKE_DISP * dx)
+        )[0]
         # orcamento conta so a massa que o wake adicionou, nao o crescimento
         if self._wake_mass_added >= WAKE_MASS_BUDGET * self._m_initial:
             return
@@ -641,7 +660,10 @@ class SwarmApp(Application):
             d_ex, _ = tree.query([px, py])
             if d_ex < prox:
                 return False
-            return not any((px - ax) ** 2 + (py - ay) ** 2 < prox_sq for ax, ay in zip(new_x, new_y))
+            return not any(
+                (px - ax) ** 2 + (py - ay) ** 2 < prox_sq
+                for ax, ay in zip(new_x, new_y)
+            )
 
         for k in wake_idx:
             sx = float(fluid.x_dep[k])
@@ -710,12 +732,18 @@ class SwarmApp(Application):
         lider = np.where((~fil) & (rb >= 0.1) & (r >= r_min))[0]
         if RASTRO_R_MOV > 0.0 and self._rastro_x is not None:
             n_prev = len(self._rastro_x)
-            cand = np.where((~fil[:n_prev]) & (rb[:n_prev] >= 0.1)
-                            & (r[:n_prev] >= RASTRO_R_MOV * r99) & (r[:n_prev] < r_min))[0]
+            cand = np.where(
+                (~fil[:n_prev])
+                & (rb[:n_prev] >= 0.1)
+                & (r[:n_prev] >= RASTRO_R_MOV * r99)
+                & (r[:n_prev] < r_min)
+            )[0]
             ddx = fluid.x[cand] - self._rastro_x[cand]
             ddy = fluid.y[cand] - self._rastro_y[cand]
             passo = np.hypot(ddx, ddy)
-            radial = (ddx * fluid.x[cand] + ddy * fluid.y[cand]) / np.maximum(r[cand], 1e-12)
+            radial = (ddx * fluid.x[cand] + ddy * fluid.y[cand]) / np.maximum(
+                r[cand], 1e-12
+            )
             mov = cand[(passo >= RASTRO_PASSO_MOV * dx) & (radial >= 0.5 * passo)]
             lider = np.concatenate([lider, mov])
         agar = np.where((~fil) & (rb <= 1e-12))[0]
@@ -726,7 +754,10 @@ class SwarmApp(Application):
         if RASTRO_SEG:
             if RASTRO_BAIA > 0.0:
                 col = np.where(fil | (rb > 1e-12))[0]
-                self._col_tree = (cKDTree(np.column_stack([fluid.x[col], fluid.y[col]])), col)
+                self._col_tree = (
+                    cKDTree(np.column_stack([fluid.x[col], fluid.y[col]])),
+                    col,
+                )
             mae = self._rastro_segmento(fluid, lider, agar, tree)
             self._rastro_x = fluid.x.copy()
             self._rastro_y = fluid.y.copy()
@@ -738,7 +769,9 @@ class SwarmApp(Application):
             alvo = np.fromiter(mae.keys(), dtype=int)
             origem = np.fromiter(mae.values(), dtype=int)
             self._converte_rastro(fluid, alvo, origem, rb)
-            print(f"rastro t={solver.t:.1f}s: {len(alvo)} convertidas ({len(lider)} lideres)")
+            print(
+                f"rastro t={solver.t:.1f}s: {len(alvo)} convertidas ({len(lider)} lideres)"
+            )
             return
         viz = tree.query_ball_point(
             np.column_stack([fluid.x[lider], fluid.y[lider]]), RASTRO_W * dx
@@ -752,7 +785,9 @@ class SwarmApp(Application):
                 v = np.asarray(v, dtype=int)
                 ddx = fluid.x[agar[v]] - fluid.x[k]
                 ddy = fluid.y[agar[v]] - fluid.y[k]
-                cos = (ddx * fluid.u[k] + ddy * fluid.v[k]) / (np.hypot(ddx, ddy) * vk + 1e-12)
+                cos = (ddx * fluid.u[k] + ddy * fluid.v[k]) / (
+                    np.hypot(ddx, ddy) * vk + 1e-12
+                )
                 v = v[cos <= RASTRO_COS_FRENTE]
             for j in v:
                 mae.setdefault(int(agar[j]), int(k))
@@ -762,7 +797,9 @@ class SwarmApp(Application):
         alvo = np.fromiter(mae.keys(), dtype=int)
         origem = np.fromiter(mae.values(), dtype=int)
         self._converte_rastro(fluid, alvo, origem, rb)
-        print(f"rastro t={solver.t:.1f}s: {len(alvo)} convertidas ({len(lider)} lideres)")
+        print(
+            f"rastro t={solver.t:.1f}s: {len(alvo)} convertidas ({len(lider)} lideres)"
+        )
 
     def _converte_rastro(self, fluid, alvo, origem, rb):
         fluid.is_filler[alvo] = 1.0
@@ -787,7 +824,9 @@ class SwarmApp(Application):
             L2 = float(d @ d)
             if L2 < (0.1 * dx) ** 2:
                 continue
-            cand = np.asarray(tree.query_ball_point(0.5 * (p0 + p1), 0.5 * np.sqrt(L2) + w), dtype=int)
+            cand = np.asarray(
+                tree.query_ball_point(0.5 * (p0 + p1), 0.5 * np.sqrt(L2) + w), dtype=int
+            )
             if len(cand) == 0:
                 continue
             q = np.column_stack([fluid.x[agar[cand]], fluid.y[agar[cand]]])
@@ -807,20 +846,27 @@ class SwarmApp(Application):
         g = RASTRO_BAIA * dx
         q = np.column_stack([fluid.x[agar[sel]], fluid.y[agar[sel]]])
         perto = np.unique(
-            np.concatenate([np.asarray(v, dtype=int) for v in ctree.query_ball_point(q, g)] + [np.zeros(0, int)])
+            np.concatenate(
+                [np.asarray(v, dtype=int) for v in ctree.query_ball_point(q, g)]
+                + [np.zeros(0, int)]
+            )
         )
         c = np.column_stack([fluid.x[col[perto]], fluid.y[col[perto]]])
         if novos and RASTRO_BAIA_CHAMADA:
             c = np.vstack([c, np.asarray(novos)])
         if len(c) == 0:
             return sel
-        pts = [np.array([hx[k], hy[k]]) for hx, hy in self._rastro_hist if k < len(hx)] + [p1]
+        pts = [
+            np.array([hx[k], hy[k]]) for hx, hy in self._rastro_hist if k < len(hx)
+        ] + [p1]
         d_poly = np.hypot(c[:, 0] - pts[0][0], c[:, 1] - pts[0][1])
         for a, b in zip(pts[:-1], pts[1:]):
             e = b - a
             e2 = float(e @ e)
             tt = np.clip(((c - a) @ e) / e2, 0.0, 1.0) if e2 > 0.0 else np.zeros(len(c))
-            d_poly = np.minimum(d_poly, np.hypot(c[:, 0] - a[0] - tt * e[0], c[:, 1] - a[1] - tt * e[1]))
+            d_poly = np.minimum(
+                d_poly, np.hypot(c[:, 0] - a[0] - tt * e[0], c[:, 1] - a[1] - tt * e[1])
+            )
         viz = c[d_poly > w + 0.5 * dx]
         if len(viz) == 0:
             return sel

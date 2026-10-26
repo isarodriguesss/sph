@@ -25,7 +25,9 @@ def serie(run, nb=128):
         with h5py.File(f, "r") as h:
             t = float(h["solver_data"].attrs["t"])
             a = h["particles"]["fluid"]["arrays"]
-            x, y, rb, isf = (np.asarray(a[k]) for k in ("x", "y", "rho_b_grown", "is_filler"))
+            x, y, rb, isf = (
+                np.asarray(a[k]) for k in ("x", "y", "rho_b_grown", "is_filler")
+            )
         port = rb > 0.1
         if port.sum() < 20:
             continue
@@ -80,7 +82,11 @@ def main():
         ax[1, 1].plot(t, amp, "-o", color=c, ms=3, label=rot)
 
     for a, tit, yl in (
-        (ax[0, 0], "RAIO — cheio R99, tracejado R90 (licao #67-J: nunca ler R99 sozinho)", "R"),
+        (
+            ax[0, 0],
+            "RAIO — cheio R99, tracejado R90 (licao #67-J: nunca ler R99 sozinho)",
+            "R",
+        ),
         (ax[0, 1], "RITMO  dR99/dt", "dR/dt"),
         (ax[1, 0], "FORMA — numero de dedos", "dedos"),
         (ax[1, 1], "FORMA — amplitude  std(R)/mean(R)", "amplitude"),

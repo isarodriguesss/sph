@@ -6,6 +6,7 @@ Imprime, no ultimo frame de cada run, as metricas pre-registradas: fracao de are
 da colonia ocupada por agar morto, R99, coesao efetiva na junção, e os guardrails
 (contrast_cs, a_pressure, massa, nutriente, pin).
 """
+
 import csv
 import glob
 import sys
@@ -57,15 +58,31 @@ def medir(run):
     }
 
 
-COLS = ["t", "R99", "%agar", "n_agar", "coes", "viva_j",
-        "contr_cs", "a_press", "massa", "min_c_n", "n_pin"]
-ALVO = {"%agar": "< 60", "R99": ">= 3.9", "contr_cs": ">= 11",
-        "a_press": "<= 4", "massa": "<= 210"}
+COLS = [
+    "t",
+    "R99",
+    "%agar",
+    "n_agar",
+    "coes",
+    "viva_j",
+    "contr_cs",
+    "a_press",
+    "massa",
+    "min_c_n",
+    "n_pin",
+]
+ALVO = {
+    "%agar": "< 60",
+    "R99": ">= 3.9",
+    "contr_cs": ">= 11",
+    "a_press": "<= 4",
+    "massa": "<= 210",
+}
 
 
 def main(runs):
     print(f"{'run':>16} " + " ".join(f"{c:>9}" for c in COLS))
-    print(f"{'ALVO':>16} " + " ".join(f"{ALVO.get(c,''):>9}" for c in COLS))
+    print(f"{'ALVO':>16} " + " ".join(f"{ALVO.get(c, ''):>9}" for c in COLS))
     for run in runs:
         v = medir(run)
         if v is None:

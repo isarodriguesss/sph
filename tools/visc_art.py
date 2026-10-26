@@ -1,5 +1,6 @@
 """Viscosidade artificial de Monaghan como o solver faz (c_ij = cs medio, o SURFACTANTE) contra
 como deveria (c_ij = c0), por populacao, no estado real do P2."""
+
 import sys
 
 import numpy as np
@@ -33,7 +34,10 @@ def a_visc_art(d, sel):
     base = np.where(vdotr < 0.0, -ALPHA * mu / rbar, 0.0)
     n = len(sel)
     out = {}
-    for nome, cij in (("atual", 0.5 * (d["cs"][di] + d["cs"][jj])), ("c0", np.full(len(di), C0))):
+    for nome, cij in (
+        ("atual", 0.5 * (d["cs"][di] + d["cs"][jj])),
+        ("c0", np.full(len(di), C0)),
+    ):
         pi = base * cij
         ax = np.bincount(ii, weights=-mj * pi * DXg, minlength=n)
         ay = np.bincount(ii, weights=-mj * pi * DYg, minlength=n)
@@ -41,7 +45,11 @@ def a_visc_art(d, sel):
     return out
 
 
-for run, tt in (("runs/swarm/P2_t100", 50), ("runs/swarm/P2_t100", 75), ("runs/swarm/P2_t100", 85)):
+for run, tt in (
+    ("runs/swarm/P2_t100", 50),
+    ("runs/swarm/P2_t100", 75),
+    ("runs/swarm/P2_t100", 85),
+):
     t, d = DF.carrega(run, tt)
     rb, isf, isw = d["rho_b_grown"], d["is_filler"], d["is_wake"]
     r = np.hypot(d["x"], d["y"])
@@ -53,8 +61,10 @@ for run, tt in (("runs/swarm/P2_t100", 50), ("runs/swarm/P2_t100", 75), ("runs/s
         "agar ate 1.2 R99": (isf < 0.5) & (rb <= 1e-12) & (r < 1.2 * R99),
     }
     print(f"\n=== {run} t={t:.1f}  R99={R99:.2f}")
-    print(f"{'populacao':18s} {'n':>6s} {'cs p50':>7s} {'c0/cs':>6s} | {'|a_av| atual':>12s} "
-          f"{'|a_av| c0':>10s} {'|a_drag|':>9s} {'|a_mar|':>8s}")
+    print(
+        f"{'populacao':18s} {'n':>6s} {'cs p50':>7s} {'c0/cs':>6s} | {'|a_av| atual':>12s} "
+        f"{'|a_av| c0':>10s} {'|a_drag|':>9s} {'|a_mar|':>8s}"
+    )
     for nome, m in pops.items():
         idx = np.where(m)[0]
         if len(idx) == 0:
@@ -64,11 +74,15 @@ for run, tt in (("runs/swarm/P2_t100", 50), ("runs/swarm/P2_t100", 75), ("runs/s
         cs = np.median(d["cs"][s])
         ge = GAMMA + 1.5 * GAMMA * rb[s] ** 2
         drag = np.median(ge * np.hypot(d["u"][s], d["v"][s]))
-        print(f"{nome:18s} {m.sum():6d} {cs:7.3f} {C0 / max(cs, 1e-9):6.1f} | "
-              f"{np.median(A['atual']):12.2e} {np.median(A['c0']):10.2e} {drag:9.2e} "
-              f"{np.median(d['au_mar'][s]):8.2e}")
+        print(
+            f"{nome:18s} {m.sum():6d} {cs:7.3f} {C0 / max(cs, 1e-9):6.1f} | "
+            f"{np.median(A['atual']):12.2e} {np.median(A['c0']):10.2e} {drag:9.2e} "
+            f"{np.median(d['au_mar'][s]):8.2e}"
+        )
     pares = np.array(list(cKDTree(np.c_[d["x"], d["y"]]).query_pairs(0.05 * DX)))
     if len(pares):
         u = np.unique(pares.ravel())
-        print(f"pares < 0.05 dx: {len(pares)}  particulas {len(u)}  cs p50 {np.median(d['cs'][u]):.3f} "
-              f"(c0/cs = {C0 / np.median(d['cs'][u]):.2f})  r/R99 p50 {np.median(r[u] / R99):.2f}")
+        print(
+            f"pares < 0.05 dx: {len(pares)}  particulas {len(u)}  cs p50 {np.median(d['cs'][u]):.3f} "
+            f"(c0/cs = {C0 / np.median(d['cs'][u]):.2f})  r/R99 p50 {np.median(r[u] / R99):.2f}"
+        )

@@ -13,6 +13,7 @@ A diferenca entre as duas e o tamanho da ilusao. A escala de ligacao e varrida
 
     python tools/plot_continuidade.py runs/swarm/P2_fillerdonor . [saida.png]
 """
+
 import glob
 import sys
 
@@ -48,7 +49,8 @@ def conexo(P, link):
         return np.zeros(n, bool)
     _, lab = connected_components(
         coo_matrix((np.ones(len(pp)), (pp[:, 0], pp[:, 1])), shape=(n, n)),
-        directed=False)
+        directed=False,
+    )
     return lab == lab[int(np.argmin(np.hypot(P[:, 0], P[:, 1])))]
 
 
@@ -69,8 +71,9 @@ for i, run in enumerate(runs):
     R99 = float(np.percentile(r[col], 99))
     nome = run.rstrip("/").split("/")[-1] or "atual"
 
-    for j, (rotulo, mask) in enumerate([("COLONIA  (rho_b>=0.1 ou filler)", col),
-                                        ("COLONIA + LIMBO", col | limbo)]):
+    for j, (rotulo, mask) in enumerate(
+        [("COLONIA  (rho_b>=0.1 ou filler)", col), ("COLONIA + LIMBO", col | limbo)]
+    ):
         ax = fig.add_subplot(gs[i, j])
         ax.set_facecolor("#0c0c10")
         idx = np.where(mask)[0]
@@ -78,42 +81,63 @@ for i, run in enumerate(runs):
         c = conexo(P, 1.05)
         ax.scatter(P[~c, 0], P[~c, 1], s=2.2, c="#d0342c", lw=0)
         ax.scatter(P[c, 0], P[c, 1], s=2.2, c="#2ecc71", lw=0)
-        ax.add_patch(plt.Circle((0, 0), R99, fill=False, ec="w", ls="--", lw=1, alpha=.5))
+        ax.add_patch(
+            plt.Circle((0, 0), R99, fill=False, ec="w", ls="--", lw=1, alpha=0.5)
+        )
         ax.set_xlim(-1.15 * R99, 1.15 * R99)
         ax.set_ylim(-1.15 * R99, 1.15 * R99)
         ax.set_aspect("equal")
         ax.set_xticks([])
         ax.set_yticks([])
-        ax.set_title("%s\nligado ao centro: %d de %d = %.1f%%"
-                     % (rotulo, c.sum(), len(idx), 100 * c.mean()),
-                     fontsize=10.5, color="w")
+        ax.set_title(
+            "%s\nligado ao centro: %d de %d = %.1f%%"
+            % (rotulo, c.sum(), len(idx), 100 * c.mean()),
+            fontsize=10.5,
+            color="w",
+        )
         if j == 0:
             ax.set_ylabel("%s\nt=%.0f" % (nome, t), fontsize=12)
 
     ax = fig.add_subplot(gs[i, 2])
-    for rotulo, mask, cor in [("colonia", col, "#1f77b4"), ("+ limbo", col | limbo, "#ff7f0e")]:
+    for rotulo, mask, cor in [
+        ("colonia", col, "#1f77b4"),
+        ("+ limbo", col | limbo, "#ff7f0e"),
+    ]:
         idx = np.where(mask)[0]
         P = np.column_stack([pa.x[idx], pa.y[idx]])
         fr, re = [], []
         for L in ESCALAS:
             c = conexo(P, L)
             fr.append(100 * c.mean())
-            re.append(np.percentile(np.hypot(P[c, 0], P[c, 1]), 99) / R99 if c.sum() > 5 else 0)
+            re.append(
+                np.percentile(np.hypot(P[c, 0], P[c, 1]), 99) / R99
+                if c.sum() > 5
+                else 0
+            )
         serie.setdefault(nome, {})[rotulo] = (fr, re)
         ax.plot(ESCALAS, fr, "o-", color=cor, label="%s  frac ligada" % rotulo)
-        ax.plot(ESCALAS, [100 * v for v in re], "s--", color=cor, alpha=.55,
-                label="%s  alcance R_conn/R99" % rotulo)
+        ax.plot(
+            ESCALAS,
+            [100 * v for v in re],
+            "s--",
+            color=cor,
+            alpha=0.55,
+            label="%s  alcance R_conn/R99" % rotulo,
+        )
     ax.axvline(1.05, color="k", ls=":", lw=1)
     ax.text(1.07, 94, "contato", fontsize=8.5, rotation=90, va="top")
     ax.set_xlabel("escala de ligacao do grafo (dx)")
     ax.set_ylabel("%")
     ax.set_ylim(0, 100)
-    ax.grid(alpha=.3)
+    ax.grid(alpha=0.3)
     ax.legend(fontsize=8, loc="lower right")
     ax.set_title("varredura de escala (licao #68)", fontsize=10.5)
 
-fig.suptitle("Continuidade — verde = tem caminho de particulas ate o centro a 1.05 dx (contato); "
-             "vermelho = nao tem", fontsize=13)
+fig.suptitle(
+    "Continuidade — verde = tem caminho de particulas ate o centro a 1.05 dx (contato); "
+    "vermelho = nao tem",
+    fontsize=13,
+)
 fig.tight_layout(rect=[0, 0, 1, 0.97])
 fig.savefig(saida, dpi=115, facecolor="w")
 print("->", saida)

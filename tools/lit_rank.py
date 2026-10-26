@@ -20,6 +20,7 @@ Campo:  mediana no corpo e nas baias sobre o teto; valor em 0.9 Rmax e em Rmax;
 Componentes: nas fotos/figuras conta so o maior (tira ruido); nos runs, todos com area >= 1%
 do maior — e o que o tools/rank_runs e o plots/fig_tese medem (bracos soltos entram).
 """
+
 import sys
 
 import numpy as np
@@ -44,15 +45,17 @@ def rtheta(mask, centro=None, nth=NTH, so_maior=True):
     X = cx + r[None, :] * np.cos(th[:, None])
     Y = cy + r[None, :] * np.sin(th[:, None])
     dentro = ndi.map_coordinates(m.astype(float), [Y, X], order=0) > 0.5
-    Rt = np.where(dentro.any(1), r[dentro.shape[1] - 1 - np.argmax(dentro[:, ::-1], 1)], 0.0)
-    ocup = dentro.mean(0)                    # fracao de direcoes com colonia no raio r
-    i = np.argmax(ocup < 0.98)               # nucleo solido: cobre todas as direcoes
+    Rt = np.where(
+        dentro.any(1), r[dentro.shape[1] - 1 - np.argmax(dentro[:, ::-1], 1)], 0.0
+    )
+    ocup = dentro.mean(0)  # fracao de direcoes com colonia no raio r
+    i = np.argmax(ocup < 0.98)  # nucleo solido: cobre todas as direcoes
     Rc = r[i] if i > 0 else (r[-1] if ocup.all() else 0.0)
     return Rt, (cx, cy), m, Rc
 
 
 def dedos(Rt):
-    s = ndi.uniform_filter1d(np.r_[Rt, Rt, Rt], 5)[len(Rt):2 * len(Rt)]
+    s = ndi.uniform_filter1d(np.r_[Rt, Rt, Rt], 5)[len(Rt) : 2 * len(Rt)]
     pk, _ = find_peaks(np.r_[s, s], prominence=0.06 * s.max(), distance=NTH / 36)
     return int(np.sum((pk >= len(s) // 2) & (pk < 3 * len(s) // 2)))
 
@@ -61,17 +64,27 @@ def forma(mask, so_maior=True):
     Rt, centro, m, Rc = rtheta(mask, so_maior=so_maior)
     R1, R0 = Rt.max(), Rt.min()
     edt = ndi.distance_transform_edt(m)
-    gy, gx = np.mgrid[:m.shape[0], :m.shape[1]]
+    gy, gx = np.mgrid[: m.shape[0], : m.shape[1]]
     rr = np.hypot(gx - centro[0], gy - centro[1])
     braco = m & (rr > R0) & (rr < 0.95 * R1)
     larg = 2 * np.median(edt[braco]) if braco.any() else np.nan
-    return dict(R1=R1, R0=R0, rmin_rmax=R0 / R1, nucleo=Rc / R1, n=dedos(Rt),
-                ocup=m.sum() / (np.pi * R1 ** 2), AR=(R1 - R0) / larg if larg else np.nan,
-                centro=centro, mask=m)
+    return dict(
+        R1=R1,
+        R0=R0,
+        rmin_rmax=R0 / R1,
+        nucleo=Rc / R1,
+        n=dedos(Rt),
+        ocup=m.sum() / (np.pi * R1**2),
+        AR=(R1 - R0) / larg if larg else np.nan,
+        centro=centro,
+        mask=m,
+    )
 
 
 def campo_stats(F, mask_col, centro, R1, teto=TETO):
-    baia = ndi.binary_fill_holes(ndi.binary_closing(mask_col, np.ones((int(R1 / 2) | 1,) * 2)))
+    baia = ndi.binary_fill_holes(
+        ndi.binary_closing(mask_col, np.ones((int(R1 / 2) | 1,) * 2))
+    )
     baia &= ~ndi.binary_dilation(mask_col, iterations=2)
     r = np.arange(0.0, 0.995 * min(F.shape) / 2, 0.5)
     th = np.linspace(-np.pi, np.pi, NTH, endpoint=False)
@@ -83,23 +96,37 @@ def campo_stats(F, mask_col, centro, R1, teto=TETO):
     # decaimento medido pela DISTANCIA a borda da colonia (nao pelo raio): imune a forma
     dout = ndi.distance_transform_edt(~mask_col)
     bins = np.arange(0.0, 0.5 * R1, max(1.0, R1 / 40))
-    med = np.array([np.median(F[(dout > a) & (dout <= b)]) if ((dout > a) & (dout <= b)).any()
-                    else np.nan for a, b in zip(bins[:-1], bins[1:])])
+    med = np.array(
+        [
+            np.median(F[(dout > a) & (dout <= b)])
+            if ((dout > a) & (dout <= b)).any()
+            else np.nan
+            for a, b in zip(bins[:-1], bins[1:])
+        ]
+    )
     cen = 0.5 * (bins[:-1] + bins[1:])
     ok = np.isfinite(med) & (med > 0.02 * teto) & (med < 0.9 * teto)
     L = -1.0 / np.polyfit(cen[ok], np.log(med[ok]), 1)[0] if ok.sum() > 3 else np.nan
-    return dict(corpo=np.median(F[mask_col]) / teto,
-                baia=np.median(F[baia]) / teto if baia.any() else np.nan,
-                p90=np.interp(0.9 * R1, r, perf) / teto,
-                ponta=np.interp(R1, r, perf) / teto, halo=r50 / R1, L_R=L / R1)
+    return dict(
+        corpo=np.median(F[mask_col]) / teto,
+        baia=np.median(F[baia]) / teto if baia.any() else np.nan,
+        p90=np.interp(0.9 * R1, r, perf) / teto,
+        ponta=np.interp(R1, r, perf) / teto,
+        halo=r50 / R1,
+        L_R=L / R1,
+    )
 
 
 def linha(nome, f, c=None):
-    s = (f"{nome:24s} nucleo {f['nucleo']:.2f} R | baia {f['rmin_rmax']:.2f} R | dedos "
-         f"{f['n']:3d} | area/disco {f['ocup']:.2f} | AR {f['AR']:.1f}")
+    s = (
+        f"{nome:24s} nucleo {f['nucleo']:.2f} R | baia {f['rmin_rmax']:.2f} R | dedos "
+        f"{f['n']:3d} | area/disco {f['ocup']:.2f} | AR {f['AR']:.1f}"
+    )
     if c:
-        s += (f" || campo: corpo {c['corpo']:.2f} baia {c['baia']:.2f} 0.9R {c['p90']:.2f}"
-              f" ponta {c['ponta']:.2f} | r(50%) {c['halo']:.2f} R | L {c['L_R']:.2f} R")
+        s += (
+            f" || campo: corpo {c['corpo']:.2f} baia {c['baia']:.2f} 0.9R {c['p90']:.2f}"
+            f" ponta {c['ponta']:.2f} | r(50%) {c['halo']:.2f} R | L {c['L_R']:.2f} R"
+        )
     print(s)
 
 
@@ -107,7 +134,7 @@ def linha(nome, f, c=None):
 im = np.asarray(Image.open("assets/reference_result.png").convert("RGB"), float)
 h_box = im[124:305, 1719:1906]
 oliva, azul = np.array([154, 152, 85]), np.array([183, 221, 232])
-col_T = (np.linalg.norm(h_box - oliva, axis=2) < np.linalg.norm(h_box - azul, axis=2))
+col_T = np.linalg.norm(h_box - oliva, axis=2) < np.linalg.norm(h_box - azul, axis=2)
 fT = forma(col_T)
 
 g_box = im[411:591, 1719:1906]
@@ -121,12 +148,16 @@ cT = campo_stats(G, maskG, (fT["centro"][0] * zx, fT["centro"][1] * zy), fT["R1"
 linha("Trinschek (b) fingering", fT, cT)
 
 ref = np.asarray(Image.open("assets/reference.jpg").convert("RGB"), float)
+
+
 def vale(v):
     h, be = np.histogram(v, 64, (0, 256))
     h = ndi.gaussian_filter1d(h.astype(float), 1.5)
     c = (be[:-1] + be[1:]) / 2
     pico = int(np.argmax(h[:32]))
-    mins = [i for i in np.where((h[1:-1] < h[:-2]) & (h[1:-1] < h[2:]))[0] + 1 if i > pico]
+    mins = [
+        i for i in np.where((h[1:-1] < h[:-2]) & (h[1:-1] < h[2:]))[0] + 1 if i > pico
+    ]
     return c[mins[0]] if mins else c[pico] + 40
 
 
@@ -140,6 +171,7 @@ if len(sys.argv) > 1:
     sys.path.insert(0, "plots")
     import fig_tese as FT
     from scipy.spatial import cKDTree
+
     for run in sys.argv[1:]:
         t, f = min(FT.frames(run), key=lambda p: abs(p[0] - 50))
         d = FT.carrega(f)
@@ -152,7 +184,9 @@ if len(sys.argv) > 1:
         gx, gy = np.meshgrid(g, g)
         pts = np.c_[gx.ravel(), gy.ravel()]
         viva = d["is_filler"] < 0.5
-        cs, den = FT.shepard(d["x"][viva], d["y"][viva], d["cs"][viva], vol[viva], pts, 1.8 * FT.DX)
+        cs, den = FT.shepard(
+            d["x"][viva], d["y"][viva], d["cs"][viva], vol[viva], pts, 1.8 * FT.DX
+        )
         vazio = den <= 1e-9
         if vazio.any():
             _, jj = cKDTree(np.c_[d["x"][viva], d["y"][viva]]).query(pts[vazio])
@@ -163,6 +197,8 @@ if len(sys.argv) > 1:
         cR2 = campo_stats(cs2.reshape(n, n), fR["mask"], fR["centro"], fR["R1"])
         nome = run.split("/")[-1][:22]
         linha(nome, fR, cR)
-        print(f"{'':24s} (com filler)                                             "
-              f"   || campo: corpo {cR2['corpo']:.2f} baia {cR2['baia']:.2f} 0.9R {cR2['p90']:.2f}"
-              f" ponta {cR2['ponta']:.2f} | r(50%) {cR2['halo']:.2f} R | L {cR2['L_R']:.2f} R")
+        print(
+            f"{'':24s} (com filler)                                             "
+            f"   || campo: corpo {cR2['corpo']:.2f} baia {cR2['baia']:.2f} 0.9R {cR2['p90']:.2f}"
+            f" ponta {cR2['ponta']:.2f} | r(50%) {cR2['halo']:.2f} R | L {cR2['L_R']:.2f} R"
+        )

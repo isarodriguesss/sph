@@ -10,6 +10,7 @@ Reporta junto os dois cortes de comprimento de onda curto, que sao o ponto da me
   m_dx    = pi*R/dx          — Nyquist das particulas na borda
   m_port  = N_portadores/2   — amostragem pelas celulas VIVAS na frente (licoes #98/#106)
 """
+
 import argparse
 import glob
 import os
@@ -75,16 +76,27 @@ def main():
         R, ncol = r_theta(d)
         if R.max() == 0:
             continue
-        T.append(t); A.append(espectro(R)); RM.append(R.mean())
-        NP.append(n_portadores(d, R)); NC.append(ncol)
-    T = np.array(T); A = np.array(A); RM = np.array(RM)
-    NP = np.array(NP); NC = np.array(NC)
+        T.append(t)
+        A.append(espectro(R))
+        RM.append(R.mean())
+        NP.append(n_portadores(d, R))
+        NC.append(ncol)
+    T = np.array(T)
+    A = np.array(A)
+    RM = np.array(RM)
+    NP = np.array(NP)
+    NC = np.array(NC)
 
     print("run:", args.run)
-    print("%6s %8s %9s %9s %8s %8s" % ("t", "R_medio", "n_col", "n_viva_frente", "m_dx", "m_port"))
+    print(
+        "%6s %8s %9s %9s %8s %8s"
+        % ("t", "R_medio", "n_col", "n_viva_frente", "m_dx", "m_port")
+    )
     for i in range(len(T)):
-        print("%6.2f %8.3f %9d %13d %8.0f %8.1f"
-              % (T[i], RM[i], NC[i], NP[i], np.pi * RM[i] / args.dx, NP[i] / 2.0))
+        print(
+            "%6.2f %8.3f %9d %13d %8.0f %8.1f"
+            % (T[i], RM[i], NC[i], NP[i], np.pi * RM[i] / args.dx, NP[i] / 2.0)
+        )
 
     jan = (T >= args.t0) & (T <= args.t1)
     tt = T[jan]
@@ -96,7 +108,10 @@ def main():
         if ok.sum() >= 3:
             sig[k] = np.polyfit(tt[ok], np.log(y[ok]), 1)[0]
 
-    print("\njanela do ajuste: t em [%.1f, %.1f], %d instantes" % (tt.min(), tt.max(), len(tt)))
+    print(
+        "\njanela do ajuste: t em [%.1f, %.1f], %d instantes"
+        % (tt.min(), tt.max(), len(tt))
+    )
     print("\n%4s %10s %10s %10s" % ("m", "a_m(t0)", "a_m(t1)", "sigma_m"))
     for k, m in enumerate(ms):
         if m <= 30:
@@ -106,11 +121,21 @@ def main():
     if fin.any():
         kmax = int(np.nanargmax(sig))
         print("\nmaximo de sigma(m): m* = %d, sigma = %.4f" % (ms[kmax], sig[kmax]))
-        print("sigma(m) e monotonico crescente ate m=%d? %s"
-              % (args.mmax, bool(np.all(np.diff(sig[fin]) > -1e-9))))
+        print(
+            "sigma(m) e monotonico crescente ate m=%d? %s"
+            % (args.mmax, bool(np.all(np.diff(sig[fin]) > -1e-9)))
+        )
 
-    np.savez(os.path.splitext(args.out)[0] + ".npz",
-             T=T, A=A, RM=RM, NP=NP, NC=NC, ms=ms, sig=sig)
+    np.savez(
+        os.path.splitext(args.out)[0] + ".npz",
+        T=T,
+        A=A,
+        RM=RM,
+        NP=NP,
+        NC=NC,
+        ms=ms,
+        sig=sig,
+    )
     print("\ndados em", os.path.splitext(args.out)[0] + ".npz")
 
 

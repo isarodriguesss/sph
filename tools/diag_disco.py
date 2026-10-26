@@ -31,8 +31,10 @@ L, N = 6.5, 450
 def le(f):
     with h5py.File(f, "r") as h:
         a = h["particles"]["fluid"]["arrays"]
-        d = {k: np.asarray(a[k], float) for k in
-             ("x", "y", "m", "rho", "rho_b_grown", "is_filler", "is_wake", "cs")}
+        d = {
+            k: np.asarray(a[k], float)
+            for k in ("x", "y", "m", "rho", "rho_b_grown", "is_filler", "is_wake", "cs")
+        }
         d["t"] = float(h["solver_data"].attrs["t"])
     return d
 
@@ -80,7 +82,9 @@ def main():
 
         # premissa: indice = identidade (campo distante nao se move)
         far = np.hypot(d0["x"], d0["y"]) > 6.0
-        desloc = np.hypot(d1["x"][:n0][far] - d0["x"][far], d1["y"][:n0][far] - d0["y"][far])
+        desloc = np.hypot(
+            d1["x"][:n0][far] - d0["x"][far], d1["y"][:n0][far] - d0["y"][far]
+        )
 
         g, _, b0, _ = FT.campo(FT.carrega(perto(fr, a.t0)), L, N, False)
         _, _, b1, _ = FT.campo(FT.carrega(perto(fr, a.t1)), L, N, False)
@@ -105,10 +109,14 @@ def main():
         nw = int(np.sum(d1["is_wake"][nova] > 0.5))
 
         print(f"\n=== {run}   t0={d0['t']:.1f} -> t1={d1['t']:.1f}")
-        print(f"premissa indice=identidade: desloc. max no campo distante {desloc.max():.1e} "
-              f"(dx={DX:.3f})")
-        print(f"R_min {R0min:.2f} -> {R1min:.2f}   R_max {R0max:.2f} -> {R1max:.2f}   "
-              f"area de baia engolida F = {F.sum() * cel * cel:.2f} ({F.sum() * cel * cel / DX**2:.0f} dx^2)")
+        print(
+            f"premissa indice=identidade: desloc. max no campo distante {desloc.max():.1e} "
+            f"(dx={DX:.3f})"
+        )
+        print(
+            f"R_min {R0min:.2f} -> {R1min:.2f}   R_max {R0max:.2f} -> {R1max:.2f}   "
+            f"area de baia engolida F = {F.sum() * cel * cel:.2f} ({F.sum() * cel * cel / DX**2:.0f} dx^2)"
+        )
         tot = len(alvo)
         linhas = [
             ("nova — wake", nw),
@@ -125,16 +133,22 @@ def main():
         if len(conv):
             # as convertidas estavam em F ja em t0, ou vieram de fora?
             conv_em_F0 = dentro(g, F, d0["x"][conv], d0["y"][conv])
-            print(f"  convertidas que ja estavam em F em t0: {100 * conv_em_F0.mean():.0f}%")
+            print(
+                f"  convertidas que ja estavam em F em t0: {100 * conv_em_F0.mean():.0f}%"
+            )
             # quem doou: filler ou vivas, no instante medio (so as que ainda eram sub-quorum la)
             sub = conv[(dm["rho_b_grown"][conv] < 0.1) & (dm["is_filler"][conv] < 0.5)]
             if len(sub) > 20:
-                s = np.random.default_rng(0).choice(sub, min(1500, len(sub)), replace=False)
+                s = np.random.default_rng(0).choice(
+                    sub, min(1500, len(sub)), replace=False
+                )
                 wf, wv = doadores(dm, s)
                 frac = wf / np.maximum(wf + wv, 1e-30)
-                print(f"  doador no instante medio (t={dm['t']:.0f}, n={len(s)}): fracao do peso "
-                      f"vinda de FILLER p50 {np.median(frac):.2f}, media {frac.mean():.2f}; "
-                      f"sem doador nenhum {100 * np.mean(wf + wv < 1e-12):.0f}%")
+                print(
+                    f"  doador no instante medio (t={dm['t']:.0f}, n={len(s)}): fracao do peso "
+                    f"vinda de FILLER p50 {np.median(frac):.2f}, media {frac.mean():.2f}; "
+                    f"sem doador nenhum {100 * np.mean(wf + wv < 1e-12):.0f}%"
+                )
 
 
 if __name__ == "__main__":

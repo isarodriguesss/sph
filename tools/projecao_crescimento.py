@@ -29,7 +29,9 @@ R_GROWTH = 0.02
 def dw(r, h):
     s = 10.0 / (7.0 * np.pi * h * h)
     q = r / h
-    d = np.where(q < 1.0, -3.0 * q + 2.25 * q * q, np.where(q < 2.0, -0.75 * (2.0 - q) ** 2, 0.0))
+    d = np.where(
+        q < 1.0, -3.0 * q + 2.25 * q * q, np.where(q < 2.0, -0.75 * (2.0 - q) ** 2, 0.0)
+    )
     return s * d / h
 
 
@@ -108,8 +110,10 @@ def teste():
     for lo, hi in ((0.2, 0.4), (0.4, 0.6), (0.6, 0.8), (0.8, 0.95)):
         b = col & (r >= lo) & (r < hi)
         rm = np.median(r[b])
-        print(f"  r~{rm:.2f}: u_r = {np.median(ur[b]):.5f}  exato {G0 * rm / 2:.5f}  "
-              f"erro {100 * (np.median(ur[b]) / (G0 * rm / 2) - 1):+.1f}%")
+        print(
+            f"  r~{rm:.2f}: u_r = {np.median(ur[b]):.5f}  exato {G0 * rm / 2:.5f}  "
+            f"erro {100 * (np.median(ur[b]) / (G0 * rm / 2) - 1):+.1f}%"
+        )
 
 
 def frame(run, alvo):
@@ -127,9 +131,26 @@ def medir(run, alvos, G):
         with h5py.File(f, "r") as hh:
             t = float(hh["solver_data"].attrs["t"])
             a = hh["particles"]["fluid"]["arrays"]
-            d = {k: np.asarray(a[k], dtype=float) for k in
-                 ("x", "y", "u", "v", "m", "rho", "h", "rho_b_grown", "is_filler", "c_n")}
-            d["is_env"] = np.asarray(a["is_env"], dtype=float) if "is_env" in a else np.zeros_like(d["x"])
+            d = {
+                k: np.asarray(a[k], dtype=float)
+                for k in (
+                    "x",
+                    "y",
+                    "u",
+                    "v",
+                    "m",
+                    "rho",
+                    "h",
+                    "rho_b_grown",
+                    "is_filler",
+                    "c_n",
+                )
+            }
+            d["is_env"] = (
+                np.asarray(a["is_env"], dtype=float)
+                if "is_env" in a
+                else np.zeros_like(d["x"])
+            )
         x, y, rb, isf = d["x"], d["y"], d["rho_b_grown"], d["is_filler"]
         r = np.hypot(x, y)
         R99 = np.percentile(r[rb > 0.1], 99)
@@ -142,16 +163,22 @@ def medir(run, alvos, G):
         ug = ux * ex + uy * ey
         ur = d["u"] * ex + d["v"] * ey
         viva = (isf < 0.5) & (rb > 0.1)
-        print(f"\n=== {run}  t={t:.1f}  R99={R99:.2f}  colonia={colonia.sum()}  "
-              f"int(Gamma dV)={np.sum(gam * V):.4f}  area colonia={np.sum(V[colonia]):.3f}")
-        print(f"{'r/R99':>9} {'n viva':>6} {'Gamma med':>9} | {'u_g (C)':>9} {'u_r real':>9} {'razao':>6}")
+        print(
+            f"\n=== {run}  t={t:.1f}  R99={R99:.2f}  colonia={colonia.sum()}  "
+            f"int(Gamma dV)={np.sum(gam * V):.4f}  area colonia={np.sum(V[colonia]):.3f}"
+        )
+        print(
+            f"{'r/R99':>9} {'n viva':>6} {'Gamma med':>9} | {'u_g (C)':>9} {'u_r real':>9} {'razao':>6}"
+        )
         for lo, hi in ((0.3, 0.5), (0.5, 0.7), (0.7, 0.85), (0.85, 1.0), (1.0, 1.3)):
             b = viva & (r >= lo * R99) & (r < hi * R99)
             if b.sum() < 3:
                 continue
-            print(f"{lo:4.2f}-{hi:4.2f} {b.sum():6d} {np.median(gam[b]):9.5f} | "
-                  f"{np.median(ug[b]):9.5f} {np.median(ur[b]):9.5f} "
-                  f"{np.median(ur[b]) / max(np.median(ug[b]), 1e-12):5.1f}x")
+            print(
+                f"{lo:4.2f}-{hi:4.2f} {b.sum():6d} {np.median(gam[b]):9.5f} | "
+                f"{np.median(ug[b]):9.5f} {np.median(ur[b]):9.5f} "
+                f"{np.median(ur[b]) / max(np.median(ug[b]), 1e-12):5.1f}x"
+            )
 
 
 def main():

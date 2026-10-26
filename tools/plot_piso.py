@@ -21,6 +21,7 @@ uma rota cria portadoras (licao #62).
 
     python tools/plot_piso.py runs/swarm/E5_hillK025 . [saida.png] [t]
 """
+
 import glob
 import sys
 
@@ -35,8 +36,13 @@ from pysph.solver.utils import load
 from scipy import ndimage as ndi
 
 FUNDO = "0.10"
-CORES = (("agar", "#2b2b38"), ("limbo", "#4a4a5e"), ("preenchido", "#ff3b8d"),
-         ("matriz/filler", "#f5a623"), ("biomassa VIVA", "#2ecc71"))
+CORES = (
+    ("agar", "#2b2b38"),
+    ("limbo", "#4a4a5e"),
+    ("preenchido", "#ff3b8d"),
+    ("matriz/filler", "#f5a623"),
+    ("biomassa VIVA", "#2ecc71"),
+)
 
 
 def preenche(pa, corpo, cand, fecha, cell=0.5):
@@ -49,7 +55,7 @@ def preenche(pa, corpo, cand, fecha, cell=0.5):
     A = np.zeros((nc, nc), dtype=bool)
     A[ix[corpo], iy[corpo]] = True
     k = int(np.ceil(fecha / cell))
-    yy, xx = np.mgrid[-k:k + 1, -k:k + 1]
+    yy, xx = np.mgrid[-k : k + 1, -k : k + 1]
     st = (xx * xx + yy * yy) <= k * k  # disco: quadrado deixa borda em degrau
     buraco = ndi.binary_fill_holes(ndi.binary_closing(A, structure=st)) & (~A)
     return cand & buraco[ix, iy]
@@ -63,7 +69,9 @@ def carrega(run, alvo):
 
 
 def painel(runs, out="plots/piso.png", alvo=50.0, zoom=1.5, fecha=None):
-    fig, axes = plt.subplots(3, len(runs), figsize=(6.7 * len(runs), 19.6), squeeze=False)
+    fig, axes = plt.subplots(
+        3, len(runs), figsize=(6.7 * len(runs), 19.6), squeeze=False
+    )
     for c, run in enumerate(runs):
         pa, t = carrega(run, alvo)
         nome = run.rstrip("/").split("/")[-1] or "atual"
@@ -72,8 +80,9 @@ def painel(runs, out="plots/piso.png", alvo=50.0, zoom=1.5, fecha=None):
         env = (pa.is_env > 0.5) if "is_env" in pa.properties else np.zeros(len(x), bool)
         fil = pa.is_filler > 0.5
         if fecha:
-            env = env | preenche(pa, (rb >= 0.1) | fil, (rb < 0.1) & (~fil) & (~env),
-                                 fecha)
+            env = env | preenche(
+                pa, (rb >= 0.1) | fil, (rb < 0.1) & (~fil) & (~env), fecha
+            )
             rb = np.where(env & (rb < 0.1), 0.1, rb)
         corpo = (rb >= 0.1) & (~env)
         R99 = float(np.percentile(r[corpo], 99))
@@ -83,35 +92,64 @@ def painel(runs, out="plots/piso.png", alvo=50.0, zoom=1.5, fecha=None):
         ax = axes[0, c]
         ax.set_facecolor(FUNDO)
         o = np.argsort(rb[s])
-        ax.scatter(x[s][o], y[s][o], c=rb[s][o], s=13, cmap="viridis", vmin=0, vmax=1,
-                   linewidths=0)
+        ax.scatter(
+            x[s][o],
+            y[s][o],
+            c=rb[s][o],
+            s=13,
+            cmap="viridis",
+            vmin=0,
+            vmax=1,
+            linewidths=0,
+        )
         ax.set_title(f"{nome}   t={t:.1f}\nrho_b LINEAR", color="w", fontsize=13)
 
         ax = axes[1, c]
         ax.set_facecolor(FUNDO)
         vv = np.maximum(rb, 1e-6)
         o = np.argsort(vv[s])
-        ax.scatter(x[s][o], y[s][o], c=vv[s][o], s=13, cmap="viridis",
-                   norm=LogNorm(vmin=1e-3, vmax=1), linewidths=0)
+        ax.scatter(
+            x[s][o],
+            y[s][o],
+            c=vv[s][o],
+            s=13,
+            cmap="viridis",
+            norm=LogNorm(vmin=1e-3, vmax=1),
+            linewidths=0,
+        )
         ax.set_title("rho_b LOG (1e-3 .. 1)", color="w", fontsize=13)
 
         ax = axes[2, c]
         ax.set_facecolor(FUNDO)
-        grupos = (s & (rb <= 1e-12) & (~env), s & (rb < 0.1) & (rb > 1e-12) & (~env),
-                  s & env, s & corpo & fil, s & corpo & (~fil))
+        grupos = (
+            s & (rb <= 1e-12) & (~env),
+            s & (rb < 0.1) & (rb > 1e-12) & (~env),
+            s & env,
+            s & corpo & fil,
+            s & corpo & (~fil),
+        )
         hs = []
         for m, (lb, cor) in zip(grupos, CORES):
             if m.any():
                 ax.scatter(x[m], y[m], c=cor, s=13, linewidths=0)
-                hs.append(Line2D([], [], marker="o", ls="", color=cor,
-                                 label=f"{lb}  ({int(m.sum())})"))
+                hs.append(
+                    Line2D(
+                        [],
+                        [],
+                        marker="o",
+                        ls="",
+                        color=cor,
+                        label=f"{lb}  ({int(m.sum())})",
+                    )
+                )
         ax.legend(handles=hs, loc="upper right", fontsize=9, framealpha=0.9)
         ax.set_title("classes", color="w", fontsize=13)
 
         for row in range(3):
             a = axes[row, c]
-            a.add_patch(plt.Circle((0, 0), R99, fill=False, ec="w", ls="--", lw=1.1,
-                                   alpha=0.55))
+            a.add_patch(
+                plt.Circle((0, 0), R99, fill=False, ec="w", ls="--", lw=1.1, alpha=0.55)
+            )
             a.set_xlim(-L, L)
             a.set_ylim(-L, L)
             a.set_aspect("equal")

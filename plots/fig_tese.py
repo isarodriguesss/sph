@@ -41,17 +41,25 @@ CS_MIN, CS_MAX = 1e-3, 0.5
 # paleta do painel (b) de Trinschek et al. 2018 (assets/reference_result.png)
 CMAP_COL = LinearSegmentedColormap.from_list("colonia", ["#b7dde8", "#9a9855"])
 CMAP_COL_CONTORNO = LinearSegmentedColormap.from_list(
-    "colonia_contorno", ["#b7dde8", "#f3f1dc", "#9a9855"])
+    "colonia_contorno", ["#b7dde8", "#f3f1dc", "#9a9855"]
+)
 CMAP_CS = LinearSegmentedColormap.from_list(
-    "cs", ["#156f8c", "#6cb3c8", "#f5f5f5", "#d23a3a", "#8e0000"])
+    "cs", ["#156f8c", "#6cb3c8", "#f5f5f5", "#d23a3a", "#8e0000"]
+)
 COR_BORDA = "#2b2b2b"
 COR_MAX = "#c0272d"
 COR_MIN = "#1b7a98"
 
-plt.rcParams.update({
-    "font.family": "serif", "mathtext.fontset": "cm", "font.size": 9,
-    "axes.linewidth": 0.8, "xtick.direction": "out", "ytick.direction": "out",
-})
+plt.rcParams.update(
+    {
+        "font.family": "serif",
+        "mathtext.fontset": "cm",
+        "font.size": 9,
+        "axes.linewidth": 0.8,
+        "xtick.direction": "out",
+        "ytick.direction": "out",
+    }
+)
 
 
 def frames(run):
@@ -80,8 +88,10 @@ def carrega_pilares(f):
 def carrega(f):
     with h5py.File(f, "r") as h:
         a = h["particles"]["fluid"]["arrays"]
-        d = {k: np.asarray(a[k], float) for k in
-             ("x", "y", "m", "rho", "rho_b_grown", "is_filler", "cs")}
+        d = {
+            k: np.asarray(a[k], float)
+            for k in ("x", "y", "m", "rho", "rho_b_grown", "is_filler", "cs")
+        }
     d["pilar"] = carrega_pilares(f)
     return d
 
@@ -110,8 +120,18 @@ def shepard(x, y, val, vol, pts, h):
     return (w * val[idx]).sum(1) / np.maximum(den, 1e-12), den
 
 
-def campo(d, L, n, limbo, fecha=0.0, r_agar=0.8, ponte_agar=0.0, area_min=4.0,
-          migalha=0.0, agar_iso=0.0):
+def campo(
+    d,
+    L,
+    n,
+    limbo,
+    fecha=0.0,
+    r_agar=0.8,
+    ponte_agar=0.0,
+    area_min=4.0,
+    migalha=0.0,
+    agar_iso=0.0,
+):
     """Colonia na grade: a regiao SEM agar, preenchida.
 
     Agar = `rho_b` = 0 e nao filler. Um ponto e colonia se a particula de agar mais proxima
@@ -143,11 +163,12 @@ def campo(d, L, n, limbo, fecha=0.0, r_agar=0.8, ponte_agar=0.0, area_min=4.0,
     mask_agar = (da <= r_agar * DX).reshape(n, n)
     if ponte_agar > 0:
         kp = max(1, int(round(ponte_agar * DX / cel)))
-        yy, xx = np.mgrid[-kp:kp + 1, -kp:kp + 1]
+        yy, xx = np.mgrid[-kp : kp + 1, -kp : kp + 1]
         # borda estendida com agar: o fechamento nao pode corroer a moldura da janela
         pad = np.pad(mask_agar, kp + 1, constant_values=True)
         mask_agar = ndi.binary_closing(pad, structure=(xx * xx + yy * yy) <= kp * kp)[
-            kp + 1:-kp - 1, kp + 1:-kp - 1]
+            kp + 1 : -kp - 1, kp + 1 : -kp - 1
+        ]
     lab, n_lab = ndi.label(mask_agar)
     if n_lab:
         area = ndi.sum(mask_agar, lab, index=np.arange(1, n_lab + 1)) * cel * cel
@@ -167,7 +188,7 @@ def campo(d, L, n, limbo, fecha=0.0, r_agar=0.8, ponte_agar=0.0, area_min=4.0,
     buraco = np.zeros_like(corpo)
     if fecha > 0:
         k = max(1, int(round(fecha * DX / cel)))
-        yy, xx = np.mgrid[-k:k + 1, -k:k + 1]
+        yy, xx = np.mgrid[-k : k + 1, -k : k + 1]
         fechado = ndi.binary_closing(corpo, structure=(xx * xx + yy * yy) <= k * k)
         lab, n_lab = ndi.label(ndi.binary_fill_holes(corpo) & ~corpo)
         if n_lab:
@@ -185,9 +206,15 @@ def raios(g, borda, nth=360):
     th = np.linspace(-np.pi, np.pi, nth, endpoint=False)
     X = r[None, :] * np.cos(th[:, None])
     Y = r[None, :] * np.sin(th[:, None])
-    dentro = ndi.map_coordinates(borda.astype(float), [(Y - g[0]) / cel, (X - g[0]) / cel],
-                                 order=0) > 0.5
-    Rt = np.where(dentro.any(1), r[dentro.shape[1] - 1 - np.argmax(dentro[:, ::-1], 1)], 0.0)
+    dentro = (
+        ndi.map_coordinates(
+            borda.astype(float), [(Y - g[0]) / cel, (X - g[0]) / cel], order=0
+        )
+        > 0.5
+    )
+    Rt = np.where(
+        dentro.any(1), r[dentro.shape[1] - 1 - np.argmax(dentro[:, ::-1], 1)], 0.0
+    )
     return Rt.max(), Rt.min()
 
 
@@ -213,9 +240,17 @@ def main():
     ap.add_argument("--n", type=int, default=700)
     ap.add_argument("--L", type=float, default=None, help="meia-largura da janela")
     ap.add_argument("--contorno", action="store_true", help="borda clara no painel (a)")
-    ap.add_argument("--borda-preta", action="store_true", help="linha preta na borda do painel (a)")
-    ap.add_argument("--iso", type=float, default=2.0, help="ignora agar isolado (dx); 0 desliga")
-    ap.add_argument("--cs-filler", action="store_true", help="inclui o filler no painel (d) (runs com FILLER_CS_CONDUZ)")
+    ap.add_argument(
+        "--borda-preta", action="store_true", help="linha preta na borda do painel (a)"
+    )
+    ap.add_argument(
+        "--iso", type=float, default=2.0, help="ignora agar isolado (dx); 0 desliga"
+    )
+    ap.add_argument(
+        "--cs-filler",
+        action="store_true",
+        help="inclui o filler no painel (d) (runs com FILLER_CS_CONDUZ)",
+    )
     a = ap.parse_args()
 
     fr = [(t, f) for t, f in frames(a.run) if t <= a.t + 1e-6]
@@ -235,9 +270,15 @@ def main():
 
     g, img, _, area_buraco = campo(d_fim, L, a.n, a.limbo, a.fecha, agar_iso=a.iso)
     ext = [-L, L, -L, L]
-    ax[0, 0].imshow(img, origin="lower", extent=ext,
-                    cmap=CMAP_COL_CONTORNO if a.contorno else CMAP_COL, vmin=0, vmax=1,
-                    interpolation="bilinear")
+    ax[0, 0].imshow(
+        img,
+        origin="lower",
+        extent=ext,
+        cmap=CMAP_COL_CONTORNO if a.contorno else CMAP_COL,
+        vmin=0,
+        vmax=1,
+        interpolation="bilinear",
+    )
     if a.borda_preta:
         ax[0, 0].contour(g, g, img, levels=[0.5], colors=COR_BORDA, linewidths=0.6)
     eixos(ax[0, 0], L)
@@ -251,8 +292,9 @@ def main():
 
     for tt, _ in esc:
         gg, borda = serie[tt]
-        ax[0, 1].contour(gg, gg, borda.astype(float), levels=[0.5], colors=COR_BORDA,
-                         linewidths=0.8)
+        ax[0, 1].contour(
+            gg, gg, borda.astype(float), levels=[0.5], colors=COR_BORDA, linewidths=0.8
+        )
     eixos(ax[0, 1], L)
     ax[0, 1].set_title("(b) borda da colônia", loc="left")
 
@@ -280,16 +322,22 @@ def main():
     pts = np.c_[gx.ravel(), gy.ravel()]
     vol = d_fim["m"] / d_fim["rho"]
     viva = (d_fim["is_filler"] < 0.5) | a.cs_filler
-    cs, den = shepard(d_fim["x"][viva], d_fim["y"][viva], d_fim["cs"][viva], vol[viva],
-                      pts, 1.8 * DX)
+    cs, den = shepard(
+        d_fim["x"][viva], d_fim["y"][viva], d_fim["cs"][viva], vol[viva], pts, 1.8 * DX
+    )
     vazio = den <= 1e-9
     if vazio.any():
         _, j = cKDTree(np.c_[d_fim["x"][viva], d_fim["y"][viva]]).query(pts[vazio])
         cs[vazio] = d_fim["cs"][viva][j]
     cs = cs.reshape(a.n, a.n)
-    im = ax[1, 1].imshow(np.clip(cs, CS_MIN, CS_MAX), origin="lower", extent=ext,
-                         cmap=CMAP_CS, norm=LogNorm(CS_MIN, CS_MAX),
-                         interpolation="bilinear")
+    im = ax[1, 1].imshow(
+        np.clip(cs, CS_MIN, CS_MAX),
+        origin="lower",
+        extent=ext,
+        cmap=CMAP_CS,
+        norm=LogNorm(CS_MIN, CS_MAX),
+        interpolation="bilinear",
+    )
     ax[1, 1].contour(g, g, img, levels=[0.5], colors="k", linewidths=0.6)
     eixos(ax[1, 1], L)
     ax[1, 1].set_title(rf"(d) surfactante $c_s$, $t={t_fim:.0f}$", loc="left")
@@ -298,8 +346,10 @@ def main():
 
     for ext_ in ("pdf", "png"):
         fig.savefig(f"{out}.{ext_}", dpi=300)
-    print(f"{out}.pdf / .png  (L={L}, buracos preenchidos na renderizacao: "
-          f"{area_buraco / DX ** 2:.0f} dx^2, frames: {[round(t, 1) for t, _ in esc]})")
+    print(
+        f"{out}.pdf / .png  (L={L}, buracos preenchidos na renderizacao: "
+        f"{area_buraco / DX**2:.0f} dx^2, frames: {[round(t, 1) for t, _ in esc]})"
+    )
 
 
 if __name__ == "__main__":

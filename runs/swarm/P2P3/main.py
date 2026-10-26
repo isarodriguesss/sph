@@ -213,15 +213,17 @@ LAMBDA_BIO_RATIO = 2.0
 # buraco no rastro. Com o sumidouro `cs_inf` varia DENTRO do braco (0.575 interior, **0.828
 # mid-arm**, 0.193 limbo): o gradiente ao longo do dedo puxa material do nucleo para o
 # mid-arm e empurra o mid-arm para fora. Esteira ao longo do braco, em vez de so a ponta.
-CS_SINK_K = 0.0  # BASELINE E11 (2026-09-11). 200 = P20/P21, REPROVADOS (licoes #80/#84).
+CS_SINK_K = (
+    0.0  # BASELINE E11 (2026-09-11). 200 = P20/P21, REPROVADOS (licoes #80/#84).
+)
 # O sumidouro e o unico mecanismo medido que cria contraste AZIMUTAL: cs(baia)/cs(dedo)
 # 1.00 (teto) -> 0.34 (K=90) / 0.52 (K=200). Licao #80: rota fechada SEM mitose
 # em toda a faixa. Preservado parametrizado (§10) — o mecanismo esta certo, o custo e a forma.
 
-CS_CEILING = 0.5   # BASELINE E11: teto `(1-cs/cs_max)`. 0 so com CS_SINK_K>0.
+CS_CEILING = 0.5  # BASELINE E11: teto `(1-cs/cs_max)`. 0 so com CS_SINK_K>0.
 # 0.5 = base P5 restaurada.
 # 0.5 era o valor de toda a serie ate aqui (P1 reprovou remover o teto SEM substituto).
-CS_PROD_CN = 1.0   # P1 REPROVADA: c_n de volta. 0 = producao nao depende de c_n
+CS_PROD_CN = 1.0  # P1 REPROVADA: c_n de volta. 0 = producao nao depende de c_n
 # `cs_max` tinha DOIS papeis: teto da producao e escala do gate da colonizacao
 # (`0.6*cs_max`). Sem o teto isso quebra — no P1 pus o gate em `cs > 5.0` e os bracos tem
 # `cs` = 0.28, entao DESLIGUEI o recrutamento nos bracos sem querer (VIVAS 178 vs 276).
@@ -243,7 +245,9 @@ CS_PROD_CN = 1.0   # P1 REPROVADA: c_n de volta. 0 = producao nao depende de c_n
 # P5; 179 vivas contra 547) e a rodada testou uma colonia sem recrutamento, nao o sumidouro.
 # Mesmo laco de realimentacao para baixo do P6 (licao #74): menos colonia -> menos `cs` ->
 # menos elegiveis. 0.10 * (0.381/1.130) = 0.034 preserva a FRACAO do campo que e elegivel.
-COL_CS_MIN = 0.3  # BASELINE E11 (= 0.6*cs_max, a forma antiga). 0.030 = P22, sob sumidouro.
+COL_CS_MIN = (
+    0.3  # BASELINE E11 (= 0.6*cs_max, a forma antiga). 0.030 = P22, sob sumidouro.
+)
 # O P20 usou 0.052 (razao dos max) e cortou a colonizacao a 1.7% das candidatas —
 # sob o teto o campo e PLANO (cs p50=0.295 vs max 0.494) e o gate 0.10 era no-op a
 # 100%; sob o sumidouro e ESTRUTURADO (p50=0.0184 vs max 0.256). 0.005 = 96% elegiveis
@@ -327,8 +331,12 @@ HILL_K = 0.25
 # saturacao de `cs` — precisa so da direcao. O gate `[0.2, 0.6]` seleciona 72 particulas de
 # 276 vivas: sao elas que cavalgam 50-77 dx enquanto o corpo anda 7. Alargar distribui a
 # forca por ~230. O K.2 so testou ESTREITAR; alargar nunca foi testado.
-FLAG_GATE_LO = 0.1  # P3 REPROVADA: alargar p/ [0.1,0.8] levou a razao p90/p50 de 5.0 a 6.8
-FLAG_GATE_HI = 0.8  # (forca constante nao move corpo, cria cavaleiros). Preservado parametrizado.
+FLAG_GATE_LO = (
+    0.1  # P3 REPROVADA: alargar p/ [0.1,0.8] levou a razao p90/p50 de 5.0 a 6.8
+)
+FLAG_GATE_HI = (
+    0.8  # (forca constante nao move corpo, cria cavaleiros). Preservado parametrizado.
+)
 FLAG_F0 = 3.0 * MOTOR_SCALE
 sigma = 11.1  # E5: recalibrado p/ producao da biomassa MADURA constante sob K=0.25
 D = 1.5e-3
@@ -392,7 +400,7 @@ k_src = 0.3  # E1 APROVADO (=N1): min_c_n 0.000 -> 0.376, a_mar +29%, biomassa +
 chi = 0.0  # X1/X1b REPROVADOS: transporte com orcamento fixo dilui (licao #54)
 
 dt_global = 0.001
-total_sim_time = 50.0   # BASELINE P2 (E11 + COL_FILLER_DONOR=1).
+total_sim_time = 50.0  # BASELINE P2 (E11 + COL_FILLER_DONOR=1).
 # banda (fade=0 35%->16%, corpo com p!=0 80.9%->87.4%, R99 +12%) mas a adveccao normalizada
 # ficou IGUAL (12% nos dois) — e nao poderia mudar, porque a mitose so arranca em t~12-22.
 # 40 s e a menor janela que cobre a mitose. Controle = P22, mesma config com
@@ -440,11 +448,11 @@ c0 = 0.35
 # ~125 s para voltar a ser elegivel — cada particula dividiria UMA vez na janela. Com 1.3 a
 # filha nasce em 0.65*m0 e volta em ~62 s: DUAS divisoes por particula em 60 s. Antecipa o
 # inicio em so 3 s a menos e dobra a cadencia, que e o que de fato preenche.
-MITOSE_M_RATIO = 1.3      # divide quando m > MITOSE_M_RATIO * m0
-MITOSE_FREQ = 200         # iteracoes entre chamadas
-MITOSE_MAX = 150          # cap por chamada
-MITOSE_EPS = 0.35         # separacao das filhas: +-MITOSE_EPS*h, direcoes OPOSTAS
-MITOSE_RHO_B_MIN = 0.05   # nao divide traco
+MITOSE_M_RATIO = 1.3  # divide quando m > MITOSE_M_RATIO * m0
+MITOSE_FREQ = 200  # iteracoes entre chamadas
+MITOSE_MAX = 150  # cap por chamada
+MITOSE_EPS = 0.35  # separacao das filhas: +-MITOSE_EPS*h, direcoes OPOSTAS
+MITOSE_RHO_B_MIN = 0.05  # nao divide traco
 # P17: gate de DENSIDADE — nao divide onde `rho/rho0` ja esta alto, porque ali nao falta
 # volume, SOBRA. Sem ele o P16 (ganho 3) levou `rho/rho0` p99 a 5.93 e o `dt` a 1/4 do
 # inicial em t=58.8; escalado para ganho 5 isso cairia em **t~35**, quatro segundos ANTES
@@ -461,11 +469,11 @@ MITOSE_RHO_B_MIN = 0.05   # nao divide traco
 # compressao: em 4.0 e no-op (passa 100%), em 2.0 barra 25% arbitrariamente (foi o P17,
 # que cortou a mitose em 83% e nao testou o desenho). Substituido pelo limiar no GANHO
 # (`GROWTH_GAIN_RHO_B_MIN`), que ataca o mecanismo medido. Preservado parametrizado (§10).
-MITOSE_RHO_MAX = 99.0     # em unidades de rho0; 99 = desligado
-RHO0_NOMINAL = 1.0        # = o `rho0` da BiomassEOS em src/scheme.py
+MITOSE_RHO_MAX = 99.0  # em unidades de rho0; 99 = desligado
+RHO0_NOMINAL = 1.0  # = o `rho0` da BiomassEOS em src/scheme.py
 
 prob_of_splitting = 0.03  # usado so pelo bloco antigo, preservado desligado
-use_splitting = False     # bloco antigo (bugado) — mantido desligado, ver §10
+use_splitting = False  # bloco antigo (bugado) — mantido desligado, ver §10
 use_mitose = False  # BASELINE E11. True = P15-P22 / serie I (licoes #81, #85, #86).
 
 use_shift = True
@@ -624,18 +632,20 @@ FLOOR_FREQ = 100
 #   agar engolido  1090 -> 241      agar limpo na baia 44.5% -> 48.7% (sem piso: 49.8%)
 # O enclausuramento vazava porque o raio (6.9 dx) e comparavel a largura da baia no anel
 # medio; iterar so piorava (17 dedos -> 5 em um passo).
-FLOOR_FECHA = 3.5     # vao maximo fechado antes da inundacao, em multiplos de dx
-FLOOR_CELL = 0.5      # lado da celula da grade, em multiplos de dx
+FLOOR_FECHA = 3.5  # vao maximo fechado antes da inundacao, em multiplos de dx
+FLOOR_CELL = 0.5  # lado da celula da grade, em multiplos de dx
 
 use_bridge = False  # REPROVADO: metrica circular (ver licao #68)
 BRIDGE_FREQ = 100
-BRIDGE_VALUE = 0.3      # fade da EOS = 0.5 (coesao real); em 0.1 exato o fade e ZERO
-BRIDGE_MIN_COMP = 8     # componente menor que isto e ruido, nao braco
-BRIDGE_MAX_COST = 6     # nao construir ponte longa: acima disso o braco esta solto mesmo
-BRIDGE_LINK = 1.5       # multiplos de h para a aresta do grafo
+BRIDGE_VALUE = 0.3  # fade da EOS = 0.5 (coesao real); em 0.1 exato o fade e ZERO
+BRIDGE_MIN_COMP = 8  # componente menor que isto e ruido, nao braco
+BRIDGE_MAX_COST = 6  # nao construir ponte longa: acima disso o braco esta solto mesmo
+BRIDGE_LINK = 1.5  # multiplos de h para a aresta do grafo
 
-use_matrix = False  # serie M REVERTIDA: reprovou no §11 (regressao fingering -> modulated)
-MATRIX_VALUE = 0.3   # fade da EOS = 0.5; equilibrio c_n = k_src/(k_src+k_n*rho_b)
+use_matrix = (
+    False  # serie M REVERTIDA: reprovou no §11 (regressao fingering -> modulated)
+)
+MATRIX_VALUE = 0.3  # fade da EOS = 0.5; equilibrio c_n = k_src/(k_src+k_n*rho_b)
 MATRIX_FREQ = 50
 MATRIX_ENV = 1.5  # M4 (ponto de operacao). M6 testou 3.0: converteu 96% do agar e a
 # colonia virou disco compacto (1 dedo, AR 0.13, ocupacao 2.05) — extremo do trade-off.
@@ -666,7 +676,9 @@ WAKE_RHO_B_MIN = 0.05
 # Piso de coesao da fase passiva (matriz/EPS, [T2] Srinivasan): o filler herda o rho_b
 # da mae, e mae sub-quorum gera filler com fade_rep=fade_att=0 na BiomassEOS — inerte
 # para sempre, porque filler nao cresce. Medido no C4: fade mediano 0.016 na juncao.
-FILLER_RHO_B_FLOOR = 0.0  # teste do piso concluido (runs/F_floor); desligado p/ isolar a conversao
+FILLER_RHO_B_FLOOR = (
+    0.0  # teste do piso concluido (runs/F_floor); desligado p/ isolar a conversao
+)
 WAKE_MAX = 150
 WAKE_MODE = 2
 WAKE_CLUSTER_MAX = 7
@@ -1045,7 +1057,8 @@ class SwarmApp(Application):
                     _ic = int(np.argmin(np.hypot(_X, _Y) + 1e9 * (~_B)))
                     _nuc = _lb[_ic]
                     _alvos = [
-                        i for i in range(_nc)
+                        i
+                        for i in range(_nc)
                         if _tam[i] >= BRIDGE_MIN_COMP and i != _nuc
                     ]
                     if _alvos:
@@ -1418,19 +1431,35 @@ class SwarmApp(Application):
                 # `is_filler`, `c_n`, `noise`, `x_dep`. Acumuladores (a_*, au, av, grad_*,
                 # L*, M*, shift_*) sao recomputados a cada passo e vao a zero.
                 herda = [
-                    "rho_b_grown", "cs", "c_n", "c_o", "noise", "h", "rho", "m0",
-                    "u", "v", "phi_m" if "phi_m" in fluid.properties else "rho_b_grown",
-                    "is_filler", "is_wake", "is_matrix", "is_conv", "is_env", "gen",
+                    "rho_b_grown",
+                    "cs",
+                    "c_n",
+                    "c_o",
+                    "noise",
+                    "h",
+                    "rho",
+                    "m0",
+                    "u",
+                    "v",
+                    "phi_m" if "phi_m" in fluid.properties else "rho_b_grown",
+                    "is_filler",
+                    "is_wake",
+                    "is_matrix",
+                    "is_conv",
+                    "is_env",
+                    "gen",
                 ]
                 herda = list(dict.fromkeys(p for p in herda if p in fluid.properties))
 
                 ang = np.random.rand(len(idx)) * 2.0 * np.pi
                 off = MITOSE_EPS * fluid.h[idx]
                 # filhas em direcoes OPOSTAS: centro de massa preservado
-                nx = np.concatenate([fluid.x[idx] + off * np.cos(ang),
-                                     fluid.x[idx] - off * np.cos(ang)])
-                ny = np.concatenate([fluid.y[idx] + off * np.sin(ang),
-                                     fluid.y[idx] - off * np.sin(ang)])
+                nx = np.concatenate(
+                    [fluid.x[idx] + off * np.cos(ang), fluid.x[idx] - off * np.cos(ang)]
+                )
+                ny = np.concatenate(
+                    [fluid.y[idx] + off * np.sin(ang), fluid.y[idx] - off * np.sin(ang)]
+                )
 
                 data = {"x": nx, "y": ny}
                 for p in herda:
@@ -1451,7 +1480,9 @@ class SwarmApp(Application):
                 fluid.remove_particles(idx)
                 solver.nnps.update()
 
-                self._mitose_since_log = getattr(self, "_mitose_since_log", 0) + len(idx)
+                self._mitose_since_log = getattr(self, "_mitose_since_log", 0) + len(
+                    idx
+                )
                 print(f"mitose t={solver.t:.1f}s: {len(idx)} divisoes")
 
         if use_splitting:
@@ -1717,7 +1748,9 @@ class SwarmApp(Application):
                         "m": [m_target] * n_ins,
                         "h": list(fluid.h[p]),
                         "rho": list(fluid.rho[p]),
-                        "rho_b_grown": list(np.maximum(fluid.rho_b_grown[p], FILLER_RHO_B_FLOOR)),
+                        "rho_b_grown": list(
+                            np.maximum(fluid.rho_b_grown[p], FILLER_RHO_B_FLOOR)
+                        ),
                         "cs": list(fluid.cs[p]),
                         "c_o": list(fluid.c_o[p]),
                         "c_n": list(fluid.c_n[p]),
@@ -1728,8 +1761,8 @@ class SwarmApp(Application):
                         "is_wake": [0.0] * n_ins,
                         "is_matrix": [0.0] * n_ins,
                         "is_conv": [0.0] * n_ins,
-                            "is_env": [0.0] * n_ins,
-                            "rho_b_pre": [0.0] * n_ins,
+                        "is_env": [0.0] * n_ins,
+                        "rho_b_pre": [0.0] * n_ins,
                         "x_dep": new_x,
                         "y_dep": new_y,
                     }
@@ -1784,7 +1817,7 @@ class SwarmApp(Application):
                         if dd < prox_sq:
                             return False
                         if dd < d_min * d_min:
-                            d_min = dd ** 0.5
+                            d_min = dd**0.5
                     if WAKE_ATTACH > 0.0 and d_min > WAKE_ATTACH * dx:
                         return False
                     return True
@@ -1921,7 +1954,9 @@ class SwarmApp(Application):
                             "m": [m_target] * n_ins,
                             "h": list(fluid.h[p]),
                             "rho": list(fluid.rho[p]),
-                            "rho_b_grown": list(np.maximum(fluid.rho_b_grown[p], FILLER_RHO_B_FLOOR)),
+                            "rho_b_grown": list(
+                                np.maximum(fluid.rho_b_grown[p], FILLER_RHO_B_FLOOR)
+                            ),
                             "cs": list(fluid.cs[p]),
                             "c_o": list(fluid.c_o[p]),
                             "c_n": list(fluid.c_n[p]),

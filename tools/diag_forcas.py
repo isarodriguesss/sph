@@ -26,7 +26,9 @@ def dw(r, h):
     """dW/dr do CubicSpline 2D do PySPH."""
     s = 10.0 / (7.0 * np.pi * h * h)
     q = r / h
-    d = np.where(q < 1.0, -3.0 * q + 2.25 * q * q, np.where(q < 2.0, -0.75 * (2.0 - q) ** 2, 0.0))
+    d = np.where(
+        q < 1.0, -3.0 * q + 2.25 * q * q, np.where(q < 2.0, -0.75 * (2.0 - q) ** 2, 0.0)
+    )
     return s * d / h
 
 
@@ -45,8 +47,23 @@ def carrega(run, alvo):
     with h5py.File(f, "r") as h:
         t = float(h["solver_data"].attrs["t"])
         a = h["particles"]["fluid"]["arrays"]
-        ks = ("x", "y", "u", "v", "m", "rho", "p", "h", "cs", "c_n", "rho_b_grown",
-              "is_filler", "is_wake", "au_flag", "au_mar")
+        ks = (
+            "x",
+            "y",
+            "u",
+            "v",
+            "m",
+            "rho",
+            "p",
+            "h",
+            "cs",
+            "c_n",
+            "rho_b_grown",
+            "is_filler",
+            "is_wake",
+            "au_flag",
+            "au_mar",
+        )
         d = {k: np.asarray(a[k], dtype=float) for k in ks}
         # runs anteriores a limpeza de 2026-09-14 ainda gravam as flags das series revertidas
         for k in ("is_matrix", "is_env"):
@@ -70,7 +87,7 @@ def forcas(d, sel):
     r = np.hypot(xij, yij)
     hij = 0.5 * (d["h"][di] + d["h"][jj])
     g = dw(r, hij) / np.maximum(r, 1e-12)
-    DX, DY = g * xij, g * yij                      # grad_i W_ij
+    DX, DY = g * xij, g * yij  # grad_i W_ij
     mj, rj, ri = d["m"][jj], d["rho"][jj], d["rho"][di]
     vol = mj / rj
     n = len(sel)
@@ -115,7 +132,9 @@ def forcas(d, sel):
     dest = (d["is_filler"][sel] < 0.5) | (d["is_matrix"][sel] > 0.5)
     dcs = (d["cs"][jj] - d["cs"][di]) * fonte
     gcx, gcy = acc(vol * dcs * DX), acc(vol * dcs * DY)
-    gate_m = np.where(grb >= MAR_LO, smooth((grb - MAR_LO) / (MAR_HI - MAR_LO)), 0.0) * dest
+    gate_m = (
+        np.where(grb >= MAR_LO, smooth((grb - MAR_LO) / (MAR_HI - MAR_LO)), 0.0) * dest
+    )
     ncx = Lxx * gcx + Lxy * gcy
     ncy = Lyx * gcx + Lyy * gcy
     amar = (-BETA * gate_m * ncx, -BETA * gate_m * ncy)
@@ -123,7 +142,9 @@ def forcas(d, sel):
     # flagelar (gradiente SEM KGC, como no solver)
     rbs = d["rho_b_grown"][sel]
     mid = 0.5 * (FLAG_LO + FLAG_HI)
-    tt = np.where(rbs < mid, (rbs - FLAG_LO) / (mid - FLAG_LO), (FLAG_HI - rbs) / (FLAG_HI - mid))
+    tt = np.where(
+        rbs < mid, (rbs - FLAG_LO) / (mid - FLAG_LO), (FLAG_HI - rbs) / (FLAG_HI - mid)
+    )
     gate_f = np.where((rbs >= FLAG_LO) & (rbs <= FLAG_HI), smooth(tt), 0.0)
     gate_f *= d["is_filler"][sel] < 0.5
     mag = np.hypot(gcx, gcy) + 1e-9
@@ -133,8 +154,18 @@ def forcas(d, sel):
     ge = GAMMA + 1.5 * GAMMA * rbs**2
     adrag = (-ge * d["u"][sel], -ge * d["v"][sel])
 
-    return dict(p=ap, av=aav, vis=avis, mar=amar, flag=aflag, drag=adrag,
-                gate_m=gate_m, gate_f=gate_f, grb=grb, ge=ge)
+    return dict(
+        p=ap,
+        av=aav,
+        vis=avis,
+        mar=amar,
+        flag=aflag,
+        drag=adrag,
+        gate_m=gate_m,
+        gate_f=gate_f,
+        grb=grb,
+        ge=ge,
+    )
 
 
 def main():
@@ -149,11 +180,16 @@ def main():
         r = np.hypot(x, y)
         R99 = np.percentile(r[rb > 0.1], 99)
         viva = (d["is_filler"] < 0.5) & (rb > 0.1)
-        pin = ((rb >= 0.8) | (d["c_n"] < 0.6) | (d["is_filler"] > 0.5)) & (d["is_wake"] < 0.5)
+        pin = ((rb >= 0.8) | (d["c_n"] < 0.6) | (d["is_filler"] > 0.5)) & (
+            d["is_wake"] < 0.5
+        )
         sel = np.where(viva & (r < 1.3 * R99))[0]
         F = forcas(d, sel)
         ex, ey = x[sel] / np.maximum(r[sel], 1e-12), y[sel] / np.maximum(r[sel], 1e-12)
-        rad = {k: F[k][0] * ex + F[k][1] * ey for k in ("p", "av", "vis", "mar", "flag", "drag")}
+        rad = {
+            k: F[k][0] * ex + F[k][1] * ey
+            for k in ("p", "av", "vis", "mar", "flag", "drag")
+        }
         tot = F["p"][0] * 0
         motor = rad["mar"] + rad["flag"]
         soma = sum(rad[k] for k in ("p", "av", "vis", "mar", "flag"))
@@ -166,39 +202,49 @@ def main():
         vm = np.corrcoef(mm, d["au_mar"][sel])[0, 1]
         vf = np.corrcoef(mf, d["au_flag"][sel])[0, 1]
         print(f"\n=== t={t:.1f}  R99={R99:.2f}  vivas analisadas={len(sel)}")
-        print(f"validacao: corr(|a_mar| recalc, au_mar)={vm:.3f}  mediana {np.median(mm):.3f} vs "
-              f"{np.median(d['au_mar'][sel]):.3f} | corr(|a_flag|, au_flag)={vf:.3f}  "
-              f"mediana {np.median(mf):.3f} vs {np.median(d['au_flag'][sel]):.3f}")
+        print(
+            f"validacao: corr(|a_mar| recalc, au_mar)={vm:.3f}  mediana {np.median(mm):.3f} vs "
+            f"{np.median(d['au_mar'][sel]):.3f} | corr(|a_flag|, au_flag)={vf:.3f}  "
+            f"mediana {np.median(mf):.3f} vs {np.median(d['au_flag'][sel]):.3f}"
+        )
 
-        print(f"{'r/R99':>9} {'n':>5} {'%pin':>5} {'rho_b':>5} {'gateF>0':>7} {'gateM>0':>7} "
-              f"{'|grb|':>6} | {'a_mar':>7} {'a_flag':>7} {'a_p':>8} {'a_av':>8} {'a_vis':>8} | "
-              f"{'soma':>7} {'g*u_r':>7} {'u_r':>8}")
+        print(
+            f"{'r/R99':>9} {'n':>5} {'%pin':>5} {'rho_b':>5} {'gateF>0':>7} {'gateM>0':>7} "
+            f"{'|grb|':>6} | {'a_mar':>7} {'a_flag':>7} {'a_p':>8} {'a_av':>8} {'a_vis':>8} | "
+            f"{'soma':>7} {'g*u_r':>7} {'u_r':>8}"
+        )
         for lo, hi in ((0.3, 0.5), (0.5, 0.7), (0.7, 0.85), (0.85, 1.0), (1.0, 1.3)):
             b = (r[sel] >= lo * R99) & (r[sel] < hi * R99)
             if b.sum() < 3:
                 continue
             md = lambda a: np.median(a[b])  # noqa: E731
             livre = b & ~pin[sel]
-            print(f"{lo:4.2f}-{hi:4.2f} {b.sum():5d} {100 * np.mean(pin[sel][b]):4.0f}% "
-                  f"{md(rb[sel]):5.2f} {100 * np.mean(F['gate_f'][b] > 0):6.0f}% "
-                  f"{100 * np.mean(F['gate_m'][b] > 0):6.0f}% {md(F['grb']):6.2f} | "
-                  f"{md(rad['mar']):7.3f} {md(rad['flag']):7.3f} {md(rad['p']):8.2e} "
-                  f"{md(rad['av']):8.2e} {md(rad['vis']):8.2e} | {md(soma):7.3f} "
-                  f"{np.median((F['ge'] * ur)[b]):7.3f} {np.median(ur[livre]) if livre.sum() else np.nan:8.2e}")
+            print(
+                f"{lo:4.2f}-{hi:4.2f} {b.sum():5d} {100 * np.mean(pin[sel][b]):4.0f}% "
+                f"{md(rb[sel]):5.2f} {100 * np.mean(F['gate_f'][b] > 0):6.0f}% "
+                f"{100 * np.mean(F['gate_m'][b] > 0):6.0f}% {md(F['grb']):6.2f} | "
+                f"{md(rad['mar']):7.3f} {md(rad['flag']):7.3f} {md(rad['p']):8.2e} "
+                f"{md(rad['av']):8.2e} {md(rad['vis']):8.2e} | {md(soma):7.3f} "
+                f"{np.median((F['ge'] * ur)[b]):7.3f} {np.median(ur[livre]) if livre.sum() else np.nan:8.2e}"
+            )
 
         # decomposicao por gate flagelar (a hipotese): quem esta fora do gate anda devagar?
         print("  por classe de gate (bandas 0.3-0.85 R99, nao pinadas):")
         meio = (r[sel] >= 0.3 * R99) & (r[sel] < 0.85 * R99) & ~pin[sel]
-        for nome, m in (("gate flagelar = 0", meio & (F["gate_f"] == 0)),
-                        ("gate flagelar > 0", meio & (F["gate_f"] > 0)),
-                        ("gate Marangoni = 0", meio & (F["gate_m"] == 0)),
-                        ("gate Marangoni > 0", meio & (F["gate_m"] > 0))):
+        for nome, m in (
+            ("gate flagelar = 0", meio & (F["gate_f"] == 0)),
+            ("gate flagelar > 0", meio & (F["gate_f"] > 0)),
+            ("gate Marangoni = 0", meio & (F["gate_m"] == 0)),
+            ("gate Marangoni > 0", meio & (F["gate_m"] > 0)),
+        ):
             if m.sum() < 3:
                 print(f"    {nome:20s} n={m.sum()}")
                 continue
-            print(f"    {nome:20s} n={m.sum():5d} ({100 * m.sum() / meio.sum():4.0f}%)  "
-                  f"rho_b {np.median(rb[sel][m]):.2f}  a_motor_r {np.median(motor[m]):7.3f}  "
-                  f"u_r {np.median(ur[m]):8.2e}")
+            print(
+                f"    {nome:20s} n={m.sum():5d} ({100 * m.sum() / meio.sum():4.0f}%)  "
+                f"rho_b {np.median(rb[sel][m]):.2f}  a_motor_r {np.median(motor[m]):7.3f}  "
+                f"u_r {np.median(ur[m]):8.2e}"
+            )
 
 
 if __name__ == "__main__":

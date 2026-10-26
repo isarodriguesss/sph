@@ -14,6 +14,7 @@ DESVIO sobre t em [35, 50] — valor de instante nao e comparavel entre rodadas.
 
     python tools/plot_trajetoria.py runs/swarm/E5_hillK025 [saida.png]
 """
+
 import glob
 import sys
 
@@ -41,7 +42,9 @@ def serie(run):
         pa = d["arrays"]["fluid"]
         rb = pa.rho_b_grown
         fil = pa.is_filler > 0.5
-        env = (pa.is_env > 0.5) if "is_env" in pa.properties else np.zeros(len(rb), bool)
+        env = (
+            (pa.is_env > 0.5) if "is_env" in pa.properties else np.zeros(len(rb), bool)
+        )
         r = np.hypot(pa.x, pa.y)
         corpo = (rb >= 0.1) & (~env)
         if corpo.sum() < 20:
@@ -54,20 +57,25 @@ def serie(run):
         nn = len(i)
         _, lab = connected_components(
             coo_matrix((np.ones(len(pp)), (pp[:, 0], pp[:, 1])), shape=(nn, nn)),
-            directed=False)
+            directed=False,
+        )
         nuc = lab == lab[int(np.argmin(np.hypot(P[:, 0], P[:, 1])))]
         R99 = float(np.percentile(r[corpo], 99))
         b = (r >= JU[0]) & (r < JU[1])
         lim = b & (rb > 1e-12) & (rb < 0.1) & (~fil) & (~env)
         area = np.pi * (JU[1] ** 2 - JU[0] ** 2) / DX / DX
-        out.append(dict(
-            t=d["solver_data"]["t"], f=f, R99=R99,
-            c5a=float(np.hypot(P[nuc, 0], P[nuc, 1]).max()) / R99,
-            c5b=100.0 * float(np.count_nonzero(nuc)) / nn,
-            ocup=float(np.count_nonzero(b & (corpo | fil | env)) / area),
-            nq=int(np.count_nonzero(b & corpo & (~fil))),
-            lim=float(np.median(rb[lim])) if lim.sum() else 0.0,
-        ))
+        out.append(
+            dict(
+                t=d["solver_data"]["t"],
+                f=f,
+                R99=R99,
+                c5a=float(np.hypot(P[nuc, 0], P[nuc, 1]).max()) / R99,
+                c5b=100.0 * float(np.count_nonzero(nuc)) / nn,
+                ocup=float(np.count_nonzero(b & (corpo | fil | env)) / area),
+                nq=int(np.count_nonzero(b & corpo & (~fil))),
+                lim=float(np.median(rb[lim])) if lim.sum() else 0.0,
+            )
+        )
     return out
 
 
@@ -89,22 +97,38 @@ def painel(run, out="plots/trajetoria.png", nsnap=4):
         ax.set_facecolor("0.10")
         vv = np.maximum(rb, 1e-6)
         o = np.argsort(vv[s])
-        ax.scatter(pa.x[s][o], pa.y[s][o], c=vv[s][o], s=9, cmap="viridis",
-                   norm=LogNorm(vmin=1e-3, vmax=1), linewidths=0)
+        ax.scatter(
+            pa.x[s][o],
+            pa.y[s][o],
+            c=vv[s][o],
+            s=9,
+            cmap="viridis",
+            norm=LogNorm(vmin=1e-3, vmax=1),
+            linewidths=0,
+        )
         for rad, cor in ((JU[0], "#ff3b8d"), (JU[1], "#ff3b8d"), (S[k]["R99"], "w")):
-            ax.add_patch(plt.Circle((0, 0), rad, fill=False, ec=cor, ls="--", lw=1.0,
-                                    alpha=0.55))
-        ax.set_title(f't = {S[k]["t"]:.0f} s\nR99={S[k]["R99"]:.2f}   '
-                     f'ocup juncao={S[k]["ocup"]:.2f}', color="w", fontsize=13)
+            ax.add_patch(
+                plt.Circle((0, 0), rad, fill=False, ec=cor, ls="--", lw=1.0, alpha=0.55)
+            )
+        ax.set_title(
+            f"t = {S[k]['t']:.0f} s\nR99={S[k]['R99']:.2f}   "
+            f"ocup juncao={S[k]['ocup']:.2f}",
+            color="w",
+            fontsize=13,
+        )
         ax.set_xlim(-L, L)
         ax.set_ylim(-L, L)
         ax.set_aspect("equal")
         ax.set_xticks([])
         ax.set_yticks([])
-    for c, (ch, lb, cor) in enumerate((("R99", "R99 (raio da colonia)", "#4ec9f5"),
-                                       ("c5a", "C5a  R_conn / R99   (alvo 1.0)", "#ff5555"),
-                                       ("c5b", "C5b  frac_conn %   (alvo 100)", "#ff9f43"),
-                                       ("lim", "rho_b mediano do limbo", "#f5a623"))):
+    for c, (ch, lb, cor) in enumerate(
+        (
+            ("R99", "R99 (raio da colonia)", "#4ec9f5"),
+            ("c5a", "C5a  R_conn / R99   (alvo 1.0)", "#ff5555"),
+            ("c5b", "C5b  frac_conn %   (alvo 100)", "#ff9f43"),
+            ("lim", "rho_b mediano do limbo", "#f5a623"),
+        )
+    ):
         ax = fig.add_subplot(gs[1, c])
         v = [s[ch] for s in S]
         ax.plot(ts, v, "-o", color=cor, ms=3.5, lw=1.8)
@@ -126,9 +150,11 @@ def painel(run, out="plots/trajetoria.png", nsnap=4):
     if jan:
         a = np.array([s["c5a"] for s in jan])
         b = np.array([s["c5b"] for s in jan])
-        print(f"C5 em t[35,50] ({len(jan)} amostras): "
-              f"C5a = {a.mean():.2f} +- {a.std():.2f}   "
-              f"C5b = {b.mean():.1f}% +- {b.std():.1f}")
+        print(
+            f"C5 em t[35,50] ({len(jan)} amostras): "
+            f"C5a = {a.mean():.2f} +- {a.std():.2f}   "
+            f"C5b = {b.mean():.1f}% +- {b.std():.1f}"
+        )
     print("->", out)
 
 

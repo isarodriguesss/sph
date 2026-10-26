@@ -136,7 +136,9 @@ def kernel_w(r, h):
     w = np.zeros_like(q, dtype=float)
     if KERNEL == "wendland_c2":
         m = q < 2.0
-        w[m] = (7.0 / (4.0 * np.pi * h * h)) * (1.0 - 0.5 * q[m]) ** 4 * (2.0 * q[m] + 1.0)
+        w[m] = (
+            (7.0 / (4.0 * np.pi * h * h)) * (1.0 - 0.5 * q[m]) ** 4 * (2.0 * q[m] + 1.0)
+        )
         return w
     fac = 10.0 / (7.0 * np.pi * h * h)
     m1 = q <= 1.0
@@ -324,7 +326,9 @@ class SwarmApp(Application):
         )
 
     def create_solver(self):
-        kernel = WendlandQuintic(dim=2) if KERNEL == "wendland_c2" else CubicSpline(dim=2)
+        kernel = (
+            WendlandQuintic(dim=2) if KERNEL == "wendland_c2" else CubicSpline(dim=2)
+        )
         solver = Solver(
             dim=2,
             integrator=self.scheme.get_integrator(),
@@ -445,7 +449,9 @@ class SwarmApp(Application):
                         rho_b_dip = v
                         rho_b_dip_r = float(r0)
 
-        n_shift_gate = int(np.sum((rb >= SHIFT_RHO_B_MIN) & (rb < 0.8) & (fluid.c_n >= 0.6)))
+        n_shift_gate = int(
+            np.sum((rb >= SHIFT_RHO_B_MIN) & (rb < 0.8) & (fluid.c_n >= 0.6))
+        )
 
         vol = fluid.m[viva] / np.maximum(fluid.rho[viva], 1e-9)
         biomass_total = float(np.sum(rb[viva] * vol))
@@ -460,7 +466,11 @@ class SwarmApp(Application):
                 cs_bio_arms = float(np.mean(fluid.cs[arm_bio]))
                 c_n_bio_arms = float(np.mean(fluid.c_n[arm_bio]))
                 biomass_arms = float(
-                    np.sum(rb[arm_bio] * fluid.m[arm_bio] / np.maximum(fluid.rho[arm_bio], 1e-9))
+                    np.sum(
+                        rb[arm_bio]
+                        * fluid.m[arm_bio]
+                        / np.maximum(fluid.rho[arm_bio], 1e-9)
+                    )
                 )
             else:
                 cs_bio_arms = c_n_bio_arms = biomass_arms = 0.0
@@ -476,7 +486,9 @@ class SwarmApp(Application):
             f"sigma_a braços (n={n_bio_arms}): min={min_sig_bio:.3f} mean={mean_sig_bio:.3f} "
             f"frac<0.85={frac_lowsig_bio:.2%} | c/ filler: mean={mean_sig_all:.3f}"
         )
-        print(f"vazio areal: >0.7dx={vf[0.7]:.2%} >1.0dx={vf[1.0]:.2%} >1.5dx={vf[1.5]:.2%}")
+        print(
+            f"vazio areal: >0.7dx={vf[0.7]:.2%} >1.0dx={vf[1.0]:.2%} >1.5dx={vf[1.5]:.2%}"
+        )
         print(
             f"motor na biomassa: a_mar med={a_mar_bio_med:.3f} p95={a_mar_bio_p95:.2f} | "
             f"biomassa={biomass_total:.4f} bracos={biomass_arms:.4f} | pinadas={n_pinned}"
@@ -572,7 +584,10 @@ class SwarmApp(Application):
                 d_existing, _ = tree.query([vx, vy])
                 if d_existing < prox:
                     continue
-                if any((vx - ax) ** 2 + (vy - ay) ** 2 < prox_sq for ax, ay in zip(new_x, new_y)):
+                if any(
+                    (vx - ax) ** 2 + (vy - ay) ** 2 < prox_sq
+                    for ax, ay in zip(new_x, new_y)
+                ):
                     continue
                 new_x.append(vx)
                 new_y.append(vy)
@@ -589,7 +604,9 @@ class SwarmApp(Application):
         m_target = dx * dx
 
         disp = np.hypot(fluid.x - fluid.x_dep, fluid.y - fluid.y_dep)
-        wake_idx = np.where((fluid.rho_b_grown > WAKE_RHO_B_MIN) & (disp >= WAKE_DISP * dx))[0]
+        wake_idx = np.where(
+            (fluid.rho_b_grown > WAKE_RHO_B_MIN) & (disp >= WAKE_DISP * dx)
+        )[0]
         # orcamento conta so a massa que o wake adicionou, nao o crescimento
         if self._wake_mass_added >= WAKE_MASS_BUDGET * self._m_initial:
             return
@@ -610,7 +627,10 @@ class SwarmApp(Application):
             d_ex, _ = tree.query([px, py])
             if d_ex < prox:
                 return False
-            return not any((px - ax) ** 2 + (py - ay) ** 2 < prox_sq for ax, ay in zip(new_x, new_y))
+            return not any(
+                (px - ax) ** 2 + (py - ay) ** 2 < prox_sq
+                for ax, ay in zip(new_x, new_y)
+            )
 
         for k in wake_idx:
             sx = float(fluid.x_dep[k])

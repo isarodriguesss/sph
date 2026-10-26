@@ -7,7 +7,9 @@ class BiomassGrowth(Equation):
         self.rho_max = rho_max
         super(BiomassGrowth, self).__init__(dest, sources)
 
-    def loop(self, d_idx, d_rho_b_grown, d_a_rho_b_grown, d_m, d_am, d_c_n, d_is_filler):
+    def loop(
+        self, d_idx, d_rho_b_grown, d_a_rho_b_grown, d_m, d_am, d_c_n, d_is_filler
+    ):
         d_a_rho_b_grown[d_idx] = 0.0
         d_am[d_idx] = 0.0
         if (
@@ -24,7 +26,9 @@ class BiomassGrowth(Equation):
                 t = (c_n - 0.4) / 0.4
                 c_n_factor = t * t * (3.0 - 2.0 * t)
 
-            rate = self.r_growth * (1.0 - d_rho_b_grown[d_idx] / self.rho_max) * c_n_factor
+            rate = (
+                self.r_growth * (1.0 - d_rho_b_grown[d_idx] / self.rho_max) * c_n_factor
+            )
             d_a_rho_b_grown[d_idx] = rate * d_rho_b_grown[d_idx]
             d_am[d_idx] = d_m[d_idx] * d_a_rho_b_grown[d_idx] / self.rho_max
 
@@ -169,7 +173,9 @@ class KernelGradientCorrection(Equation):
 
 
 class ParticleShift(Equation):
-    def __init__(self, dest, sources, shift_coeff, shift_cap, rho_b_min=0.6, rho_b_pin=0.8):
+    def __init__(
+        self, dest, sources, shift_coeff, shift_cap, rho_b_min=0.6, rho_b_pin=0.8
+    ):
         self.shift_coeff = shift_coeff
         self.shift_cap = shift_cap
         self.rho_b_min = rho_b_min
@@ -186,7 +192,14 @@ class ParticleShift(Equation):
         d_shift_dC_y[d_idx] += vol_j * DWIJ[1]
 
     def post_loop(
-        self, d_idx, d_shift_dC_x, d_shift_dC_y, d_shift_x, d_shift_y, d_rho_b_grown, d_h
+        self,
+        d_idx,
+        d_shift_dC_x,
+        d_shift_dC_y,
+        d_shift_x,
+        d_shift_y,
+        d_rho_b_grown,
+        d_h,
     ):
         rho_b = d_rho_b_grown[d_idx]
         sx = 0.0
@@ -285,7 +298,9 @@ class SurfactantEquation(Equation):
             term = (s_m[s_idx] / s_rho[s_idx]) * (cs_ij / rij_sq) * dot_product
             d_a_c_s[d_idx] += 2.0 * D_eff * term
 
-    def post_loop(self, d_idx, d_rho_b_grown, d_a_c_s, d_cs, d_noise, d_c_n, d_is_filler):
+    def post_loop(
+        self, d_idx, d_rho_b_grown, d_a_c_s, d_cs, d_noise, d_c_n, d_is_filler
+    ):
         if d_is_filler[d_idx] > 0.5:
             if self.filler_conduz > 0.5:
                 sink_f = self.lambda_ * 0.5 * d_cs[d_idx]
@@ -347,7 +362,11 @@ class MarangoniForce(Equation):
         DWIJ,
     ):
         grad_mag = d_grad_rho_b_mag[d_idx]
-        if grad_mag >= self.grad_low and d_is_filler[d_idx] < 0.5 and s_is_filler[s_idx] < 0.5:
+        if (
+            grad_mag >= self.grad_low
+            and d_is_filler[d_idx] < 0.5
+            and s_is_filler[s_idx] < 0.5
+        ):
             gate_raw = (grad_mag - self.grad_low) / (self.grad_high - self.grad_low)
             if gate_raw > 1.0:
                 gate = 1.0
@@ -380,7 +399,18 @@ class LinearDrag(Equation):
         self.gamma_mature = -gamma_mature
         super(LinearDrag, self).__init__(dest, sources)
 
-    def loop(self, d_idx, d_u, d_v, d_au, d_av, d_au_drag, d_rho_b_grown, d_ax_drag, d_ay_drag):
+    def loop(
+        self,
+        d_idx,
+        d_u,
+        d_v,
+        d_au,
+        d_av,
+        d_au_drag,
+        d_rho_b_grown,
+        d_ax_drag,
+        d_ay_drag,
+    ):
         rho_b = d_rho_b_grown[d_idx]
         gamma_eff = self.gamma_base + self.gamma_mature * rho_b * rho_b
         acc_x = gamma_eff * d_u[d_idx]
@@ -518,7 +548,9 @@ class FlagellarForce(Equation):
         self.gate_mid = 0.5 * (gate_lo + gate_hi)
         super().__init__(dest, sources)
 
-    def initialize(self, d_idx, d_au_flag, d_ax_flag, d_ay_flag, d_grad_cs_x, d_grad_cs_y):
+    def initialize(
+        self, d_idx, d_au_flag, d_ax_flag, d_ay_flag, d_grad_cs_x, d_grad_cs_y
+    ):
         d_au_flag[d_idx] = 0.0
         d_ax_flag[d_idx] = 0.0
         d_ay_flag[d_idx] = 0.0

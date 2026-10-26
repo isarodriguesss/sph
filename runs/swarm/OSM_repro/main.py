@@ -316,18 +316,20 @@ FLOOR_FREQ = 100
 #   agar engolido  1090 -> 241      agar limpo na baia 44.5% -> 48.7% (sem piso: 49.8%)
 # O enclausuramento vazava porque o raio (6.9 dx) e comparavel a largura da baia no anel
 # medio; iterar so piorava (17 dedos -> 5 em um passo).
-FLOOR_FECHA = 3.5     # vao maximo fechado antes da inundacao, em multiplos de dx
-FLOOR_CELL = 0.5      # lado da celula da grade, em multiplos de dx
+FLOOR_FECHA = 3.5  # vao maximo fechado antes da inundacao, em multiplos de dx
+FLOOR_CELL = 0.5  # lado da celula da grade, em multiplos de dx
 
 use_bridge = False  # REPROVADO: metrica circular (ver licao #68)
 BRIDGE_FREQ = 100
-BRIDGE_VALUE = 0.3      # fade da EOS = 0.5 (coesao real); em 0.1 exato o fade e ZERO
-BRIDGE_MIN_COMP = 8     # componente menor que isto e ruido, nao braco
-BRIDGE_MAX_COST = 6     # nao construir ponte longa: acima disso o braco esta solto mesmo
-BRIDGE_LINK = 1.5       # multiplos de h para a aresta do grafo
+BRIDGE_VALUE = 0.3  # fade da EOS = 0.5 (coesao real); em 0.1 exato o fade e ZERO
+BRIDGE_MIN_COMP = 8  # componente menor que isto e ruido, nao braco
+BRIDGE_MAX_COST = 6  # nao construir ponte longa: acima disso o braco esta solto mesmo
+BRIDGE_LINK = 1.5  # multiplos de h para a aresta do grafo
 
-use_matrix = False  # serie M REVERTIDA: reprovou no §11 (regressao fingering -> modulated)
-MATRIX_VALUE = 0.3   # fade da EOS = 0.5; equilibrio c_n = k_src/(k_src+k_n*rho_b)
+use_matrix = (
+    False  # serie M REVERTIDA: reprovou no §11 (regressao fingering -> modulated)
+)
+MATRIX_VALUE = 0.3  # fade da EOS = 0.5; equilibrio c_n = k_src/(k_src+k_n*rho_b)
 MATRIX_FREQ = 50
 MATRIX_ENV = 1.5  # M4 (ponto de operacao). M6 testou 3.0: converteu 96% do agar e a
 # colonia virou disco compacto (1 dedo, AR 0.13, ocupacao 2.05) — extremo do trade-off.
@@ -354,7 +356,9 @@ WAKE_RHO_B_MIN = 0.05
 # Piso de coesao da fase passiva (matriz/EPS, [T2] Srinivasan): o filler herda o rho_b
 # da mae, e mae sub-quorum gera filler com fade_rep=fade_att=0 na BiomassEOS — inerte
 # para sempre, porque filler nao cresce. Medido no C4: fade mediano 0.016 na juncao.
-FILLER_RHO_B_FLOOR = 0.0  # teste do piso concluido (runs/F_floor); desligado p/ isolar a conversao
+FILLER_RHO_B_FLOOR = (
+    0.0  # teste do piso concluido (runs/F_floor); desligado p/ isolar a conversao
+)
 WAKE_MAX = 150
 WAKE_MODE = 2
 WAKE_CLUSTER_MAX = 7
@@ -646,7 +650,8 @@ class SwarmApp(Application):
                     _ic = int(np.argmin(np.hypot(_X, _Y) + 1e9 * (~_B)))
                     _nuc = _lb[_ic]
                     _alvos = [
-                        i for i in range(_nc)
+                        i
+                        for i in range(_nc)
                         if _tam[i] >= BRIDGE_MIN_COMP and i != _nuc
                     ]
                     if _alvos:
@@ -1259,7 +1264,9 @@ class SwarmApp(Application):
                         "m": [m_target] * n_ins,
                         "h": list(fluid.h[p]),
                         "rho": list(fluid.rho[p]),
-                        "rho_b_grown": list(np.maximum(fluid.rho_b_grown[p], FILLER_RHO_B_FLOOR)),
+                        "rho_b_grown": list(
+                            np.maximum(fluid.rho_b_grown[p], FILLER_RHO_B_FLOOR)
+                        ),
                         "cs": list(fluid.cs[p]),
                         "c_o": list(fluid.c_o[p]),
                         "c_n": list(fluid.c_n[p]),
@@ -1270,8 +1277,8 @@ class SwarmApp(Application):
                         "is_wake": [0.0] * n_ins,
                         "is_matrix": [0.0] * n_ins,
                         "is_conv": [0.0] * n_ins,
-                            "is_env": [0.0] * n_ins,
-                            "rho_b_pre": [0.0] * n_ins,
+                        "is_env": [0.0] * n_ins,
+                        "rho_b_pre": [0.0] * n_ins,
                         "x_dep": new_x,
                         "y_dep": new_y,
                     }
@@ -1427,7 +1434,9 @@ class SwarmApp(Application):
                             "m": [m_target] * n_ins,
                             "h": list(fluid.h[p]),
                             "rho": list(fluid.rho[p]),
-                            "rho_b_grown": list(np.maximum(fluid.rho_b_grown[p], FILLER_RHO_B_FLOOR)),
+                            "rho_b_grown": list(
+                                np.maximum(fluid.rho_b_grown[p], FILLER_RHO_B_FLOOR)
+                            ),
                             "cs": list(fluid.cs[p]),
                             "c_o": list(fluid.c_o[p]),
                             "c_n": list(fluid.c_n[p]),

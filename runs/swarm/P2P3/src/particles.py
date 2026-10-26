@@ -3,7 +3,9 @@ from pysph.base.utils import get_particle_array
 
 
 SEED_AMP = 0.06  # P19 testou 0.0 (sem semente) e REPROVOU — ver licao #83
-SEED_MODE = 8  # M5 (N=16) nao se sustentou: dedos finos mas ocos, agar cercado 417 vs 181
+SEED_MODE = (
+    8  # M5 (N=16) nao se sustentou: dedos finos mas ocos, agar cercado 417 vs 181
+)
 
 # SEED_FRAC e a modulacao RELATIVA do raio (so o "plato" a usa). A "quartica" fica na
 # forma historica `0.30 + SEED_AMP*cos`: `0.30*(1 + SEED_FRAC*cos)` e igual so na

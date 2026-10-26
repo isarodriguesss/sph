@@ -100,7 +100,9 @@ def main(argv):
             i += 1
     runs = [r for r in runs if os.path.isdir(r)]
     if not runs:
-        print("nenhuma rodada; uso: python tools/compare_frames.py runs/swarm/R0 runs/swarm/R1")
+        print(
+            "nenhuma rodada; uso: python tools/compare_frames.py runs/swarm/R0 runs/swarm/R1"
+        )
         return
 
     nrow = len(runs) + 1  # +1 para a linha das referencias

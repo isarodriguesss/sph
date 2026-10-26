@@ -48,9 +48,13 @@ def campo(lam_dx, a_dx, jitter, seed, rot=0.0):
     cy = lam * (np.sqrt(3.0) / 2.0) * j.ravel()
     cx, cy = (cx * np.cos(ang) - cy * np.sin(ang), cx * np.sin(ang) + cy * np.cos(ang))
     b = 2.0 * DX
-    ok = ((cx > -DOM + rp + b) & (cx < DOM - rp - b)
-          & (cy > -DOM + rp + b) & (cy < DOM - rp - b)
-          & (np.hypot(cx, cy) >= R_EXCL))
+    ok = (
+        (cx > -DOM + rp + b)
+        & (cx < DOM - rp - b)
+        & (cy > -DOM + rp + b)
+        & (cy < DOM - rp - b)
+        & (np.hypot(cx, cy) >= R_EXCL)
+    )
     base = np.column_stack([cx[ok], cy[ok]])
     if jitter <= 0.0:
         return base, rp
@@ -58,9 +62,13 @@ def campo(lam_dx, a_dx, jitter, seed, rot=0.0):
     amp = jitter * lam
 
     def valido(p):
-        v = ((p[:, 0] > -DOM + rp + b) & (p[:, 0] < DOM - rp - b)
-             & (p[:, 1] > -DOM + rp + b) & (p[:, 1] < DOM - rp - b)
-             & (np.hypot(p[:, 0], p[:, 1]) >= R_EXCL))
+        v = (
+            (p[:, 0] > -DOM + rp + b)
+            & (p[:, 0] < DOM - rp - b)
+            & (p[:, 1] > -DOM + rp + b)
+            & (p[:, 1] < DOM - rp - b)
+            & (np.hypot(p[:, 0], p[:, 1]) >= R_EXCL)
+        )
         par = cKDTree(p).query_pairs(2.0 * rp, output_type="ndarray")
         if len(par):
             v[np.unique(par[:, 1])] = False
@@ -112,23 +120,31 @@ def raios(C, rp, rmax, captura):
 
 def modo(f, m):
     F = np.fft.rfft(f)
-    return 2.0 * np.abs(F[m]) / np.abs(F[0]), np.degrees(-np.angle(F[m]) / m) % (360.0 / m)
+    return 2.0 * np.abs(F[m]) / np.abs(F[0]), np.degrees(-np.angle(F[m]) / m) % (
+        360.0 / m
+    )
 
 
 def main():
     p = argparse.ArgumentParser()
     p.add_argument("--lam", type=float, default=28.0)
     p.add_argument("--a", type=float, default=10.0)
-    p.add_argument("--jitter", type=float, nargs="+", default=[0.0, 0.05, 0.1, 0.2, 0.3])
+    p.add_argument(
+        "--jitter", type=float, nargs="+", default=[0.0, 0.05, 0.1, 0.2, 0.3]
+    )
     p.add_argument("--seed", type=int, default=20261006)
     p.add_argument("--rmax", type=float, default=3.852)
     a = p.parse_args()
 
-    print(f"Lambda = {a.lam:.0f} dx, A = {a.a:.0f} dx, r_max = {a.rmax:.3f}, "
-          f"braco = 5.4 dx, semente {a.seed}\n")
-    print(f"{'jitter':>7} {'N':>4} {'phi':>6} | {'garganta p10/p50/p90 (dx)':>25} {'desvio':>7}"
-          f" | {'<braco':>6} {'perc%':>6} | {'contatos':>8} {'>=1':>5}"
-          f" | {'a6':>6} {'fase':>6} {'a12':>6}")
+    print(
+        f"Lambda = {a.lam:.0f} dx, A = {a.a:.0f} dx, r_max = {a.rmax:.3f}, "
+        f"braco = 5.4 dx, semente {a.seed}\n"
+    )
+    print(
+        f"{'jitter':>7} {'N':>4} {'phi':>6} | {'garganta p10/p50/p90 (dx)':>25} {'desvio':>7}"
+        f" | {'<braco':>6} {'perc%':>6} | {'contatos':>8} {'>=1':>5}"
+        f" | {'a6':>6} {'fase':>6} {'a12':>6}"
+    )
     for jt in a.jitter:
         C, rp = campo(a.lam, a.a, jt, a.seed)
         phi = len(C) * np.pi * rp**2 / (2 * DOM) ** 2
@@ -138,13 +154,19 @@ def main():
         d1, ncont = raios(C, rp, a.rmax, rp + BRACO / 2)
         a6, f6 = modo(d1, 6)
         a12, _ = modo(d1, 12)
-        print(f"{jt:7.2f} {len(C):4d} {100*phi:5.1f}% | "
-              f"{np.percentile(g,10)/DX:7.2f} {np.median(g)/DX:7.2f} {np.percentile(g,90)/DX:7.2f}"
-              f" {np.std(g)/DX:7.2f} | {estreito:5.1f}% {100*frac:5.0f}% | "
-              f"{ncont.mean():8.2f} {100*(ncont>=1).mean():4.0f}% | "
-              f"{a6:6.3f} {f6:6.1f} {a12:6.3f}")
-    print("\n`<braco` = fracao das gargantas mais estreitas que o braco (intransponiveis sem")
-    print("deformar);  `perc%` = fracao dos nos no maior componente do subgrafo de gargantas")
+        print(
+            f"{jt:7.2f} {len(C):4d} {100 * phi:5.1f}% | "
+            f"{np.percentile(g, 10) / DX:7.2f} {np.median(g) / DX:7.2f} {np.percentile(g, 90) / DX:7.2f}"
+            f" {np.std(g) / DX:7.2f} | {estreito:5.1f}% {100 * frac:5.0f}% | "
+            f"{ncont.mean():8.2f} {100 * (ncont >= 1).mean():4.0f}% | "
+            f"{a6:6.3f} {f6:6.1f} {a12:6.3f}"
+        )
+    print(
+        "\n`<braco` = fracao das gargantas mais estreitas que o braco (intransponiveis sem"
+    )
+    print(
+        "deformar);  `perc%` = fracao dos nos no maior componente do subgrafo de gargantas"
+    )
     print("largas;  `a6/fase` = anisotropia do MEIO (azimute do primeiro pilar).")
 
 

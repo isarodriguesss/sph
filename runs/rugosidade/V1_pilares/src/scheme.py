@@ -212,9 +212,18 @@ class MyBiomassScheme(Scheme):
                 BiomassGradient(dest="fluid", sources=["fluid"]),
                 MarangoniForce(dest="fluid", sources=["fluid"], beta=self.beta),
                 ViscousForce(dest="fluid", sources=src_par, mu=self.mu),
-                *([ForcaContornoPilar(dest="fluid", sources=self.pilares,
-                                      K=self.pilar_k, hw=self.pilar_hw)]
-                  if self.pilares else []),
+                *(
+                    [
+                        ForcaContornoPilar(
+                            dest="fluid",
+                            sources=self.pilares,
+                            K=self.pilar_k,
+                            hw=self.pilar_hw,
+                        )
+                    ]
+                    if self.pilares
+                    else []
+                ),
                 LinearDrag(
                     dest="fluid",
                     sources=None,

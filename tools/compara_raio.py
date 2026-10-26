@@ -33,7 +33,9 @@ def fcn(c):
 def bio(f, G):
     with h5py.File(f, "r") as h:
         a = h["particles"]["fluid"]["arrays"]
-        x, y, rb, isf, cn = (np.asarray(a[k]) for k in ("x", "y", "rho_b_grown", "is_filler", "c_n"))
+        x, y, rb, isf, cn = (
+            np.asarray(a[k]) for k in ("x", "y", "rho_b_grown", "is_filler", "c_n")
+        )
         isw = np.asarray(a["is_wake"]) if "is_wake" in a else np.zeros_like(x)
     r = np.hypot(x, y)
     R99 = np.percentile(r[rb > 0.1], 99)
@@ -43,21 +45,35 @@ def bio(f, G):
     frente = r >= 0.85 * R99
     nv, nf = (viva & frente).sum(), ((isf > 0.5) & frente).sum()
     pin = ((rb >= 0.8) | (cn < 0.6)) & (isw < 0.5)
-    return dict(k=k, viva_frente=int(nv), frac_frente=nv / max(nv + nf, 1),
-                cn_viva=np.median(cn[viva]), pin_viva=np.mean(pin[viva]), n_viva=int(viva.sum()))
+    return dict(
+        k=k,
+        viva_frente=int(nv),
+        frac_frente=nv / max(nv + nf, 1),
+        cn_viva=np.median(cn[viva]),
+        pin_viva=np.mean(pin[viva]),
+        n_viva=int(viva.sum()),
+    )
 
 
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--runs", nargs="+", required=True)
     ap.add_argument("--rotulos", nargs="+", required=True)
-    ap.add_argument("--ganho", nargs="+", type=float, required=True, help="GROWTH_MASS_GAIN de cada run")
+    ap.add_argument(
+        "--ganho",
+        nargs="+",
+        type=float,
+        required=True,
+        help="GROWTH_MASS_GAIN de cada run",
+    )
     ap.add_argument("--raios", nargs="+", type=float, default=[1.2, 1.6, 2.0, 2.4])
     args = ap.parse_args()
 
-    print(f"{'run':>10} {'R99':>4} {'t':>5} {'dR/dt':>6} {'amp':>6} {'dedos':>5} {'R99/R90':>7} | "
-          f"{'vivas':>5} {'k_med':>7} {'razao':>6} | {'vivas>.85R':>10} {'frac viva':>9} "
-          f"{'c_n viva':>8} {'%pin':>5}")
+    print(
+        f"{'run':>10} {'R99':>4} {'t':>5} {'dR/dt':>6} {'amp':>6} {'dedos':>5} {'R99/R90':>7} | "
+        f"{'vivas':>5} {'k_med':>7} {'razao':>6} | {'vivas>.85R':>10} {'frac viva':>9} "
+        f"{'c_n viva':>8} {'%pin':>5}"
+    )
     for run, rot, G in zip(args.runs, args.rotulos, args.ganho):
         S = serie(run)
         if len(S) == 0:
@@ -71,7 +87,9 @@ def main():
         t, R99, R90, amp, ded = S.T
         for Ra in args.raios:
             if R99.max() < Ra:
-                print(f"{rot:>10} {Ra:4.1f}  ainda nao alcancou (R99 atual {R99[-1]:.2f}, t={t[-1]:.1f})")
+                print(
+                    f"{rot:>10} {Ra:4.1f}  ainda nao alcancou (R99 atual {R99[-1]:.2f}, t={t[-1]:.1f})"
+                )
                 break
             i = int(np.argmax(R99 >= Ra))
             w = np.abs(t - t[i]) <= 4.0
@@ -79,10 +97,12 @@ def main():
             j = slice(max(0, i - 1), i + 2)
             B = bio(fs[int(np.argmin(np.abs(ts - t[i])))], G)
             razao = 2 * rate / (R99[i] * B["k"]) if B["k"] > 0 else np.nan
-            print(f"{rot:>10} {Ra:4.1f} {t[i]:5.1f} {rate:6.3f} {np.median(amp[j]):6.3f} "
-                  f"{np.median(ded[j]):5.0f} {R99[i] / R90[i]:7.2f} | {B['n_viva']:5d} {B['k']:7.4f} "
-                  f"{razao:5.1f}x | {B['viva_frente']:10d} {100 * B['frac_frente']:8.0f}% "
-                  f"{B['cn_viva']:8.2f} {100 * B['pin_viva']:4.0f}%")
+            print(
+                f"{rot:>10} {Ra:4.1f} {t[i]:5.1f} {rate:6.3f} {np.median(amp[j]):6.3f} "
+                f"{np.median(ded[j]):5.0f} {R99[i] / R90[i]:7.2f} | {B['n_viva']:5d} {B['k']:7.4f} "
+                f"{razao:5.1f}x | {B['viva_frente']:10d} {100 * B['frac_frente']:8.0f}% "
+                f"{B['cn_viva']:8.2f} {100 * B['pin_viva']:4.0f}%"
+            )
 
 
 if __name__ == "__main__":

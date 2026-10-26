@@ -895,3 +895,142 @@ contra o liso, e o liso mudaria), e **o canal quimico ficaria cego** — medir a
 pilar sobre um campo 35% mais curto e medir sinal sobre ruido.
 
 **Enquanto a serie R1-R4 estiver aberta, o motor do liso nao se mexe.**
+
+---
+
+## 18. SOMBRA QUÍMICA EM VOLTA DOS PILARES — medida no R1 (2026-10-26)
+
+A verificação que o plano §1 previa ("`c_s` e `c_n` num anel de 2 dx em volta dos pilares contra o
+mesmo raio longe deles") e que nunca tinha sido feita. Responde ao canal químico da seção 3
+(predição 2). `tools/sombra_quimica.py runs/rugosidade/R1_lambda28 runs/swarm/P2R23_conduz`,
+pós-processamento puro.
+
+### 18.1 Régua — e o que foi decidido antes e depois de olhar
+
+Fixado **antes**: anel = fluido a (0, 2 dx] da superfície; montante/jusante = cos ≤ −0.5 / ≥ +0.5
+em relação à direção radial do pilar; assimetria `S = ln(média montante / média jusante)`;
+**pareamento** — o mesmo `S` no liso, nas mesmas posições, no quadro de `t` mais próximo, e o efeito
+é `dS = S_R1 − S_liso` (o gradiente radial natural cancela); classes `dentro` (centro em r < 0.9 R99)
+e `frente` (R99 ≤ r < R99 + 1.03 — o halo, onde o bloqueio ANTES do toque apareceria).
+
+Acrescentado **depois** do primeiro resultado, e por isso declarado: um controle de **pilares
+falsos** — as mesmas posições giradas 30° em torno da origem, mantidas só as cujo anel fica a mais
+de 2 dx da superfície de qualquer pilar real (o primeiro filtro, 4 dx, não deixava nenhum falso
+nas faixas de raio). Motivo: o R1 tem mais `c_s` que o liso em toda parte (seção 10.3), e um campo
+apenas mais íngreme daria `dS > 0` sem pilar.
+
+### 18.2 Na FRENTE (halo, antes do toque): o pilar deixa sombra, com a magnitude da teoria
+
+| t | `dS` real | `dS` falso (controle) |
+|---:|---:|---:|
+| 4.2 | +0.861 | +0.035 |
+| 8.2 | +0.588 | −0.004 |
+| 12.4 | +0.484 | +0.022 |
+| 16.6 | +0.594 | +0.152 |
+| **janela [35,50]** | **+0.417 ± 0.028** (montante/jusante ×1.52) | — (nenhum falso nessa faixa de raio) |
+
+Real 0.48–0.86 contra controle −0.004–0.15 nos quatro quadros em que os dois existem. O pilar
+**enriquece o lado de dentro e sombreia o de fora** no halo, antes de a colônia chegar a ele.
+
+**A magnitude é a da solução clássica**, não um número a explicar. Para um cilindro isolante num
+gradiente uniforme, em regime permanente, a perturbação do campo é dipolar e multiplica a
+assimetria local por `1 + R²/r²`. Com `R` = 5 dx e o anel em ~6 dx: **1.69** previsto. Medido na
+janela: `(S_liso + dS) / S_liso = (0.631 + 0.417) / 0.631` = **1.66**. É ao mesmo tempo resultado
+e **verificação da implementação** do fluxo zero (contorno adiabático de Cleary & Monaghan 1999):
+omitir os pilares das somas de Brookshaw reproduz a física do contorno isolante.
+
+**O nível não muda:** `N` (média do anel R1/liso) é +0.12 nos reais e +0.10 a +0.24 nos falsos — a
+diferença de nível é global entre os runs (seção 10.3), não local ao pilar. Coerente com a
+perturbação dipolar, que tem média zero em volta do cilindro.
+
+**`c_n` na frente: nenhum efeito** (`dS` = −0.001 ± 0.003). O nutriente à frente é ~1 e uniforme; sem
+gradiente não há o que sombrear.
+
+### 18.3 DENTRO da colônia: inconclusivo
+
+| janela [35,50] | real | falso |
+|---|---:|---:|
+| `c_s` `dS` | +0.108 ± 0.031 | **−0.171 ± 0.040** |
+| `c_n` `dS` | −0.106 ± 0.070 | +0.086 ± 0.032 |
+
+O controle **não é plano** dentro da colônia: o `dS` dos falsos deriva de +0.07 (t=20) a −0.22 (t=50),
+porque a colônia do R1 é outra realização, com braços 35% mais largos (seção 10.4). O sinal real
+(0.11) fica dentro da variação do controle, e os falsos são só 6 numa faixa de raio. **Não atribuível.**
+
+### 18.4 O que isto corrige e o que deixa em aberto
+
+**Corrige a estimativa ex-ante do plano §1** ("diferença montante/jusante de `c_s` < 30%"). Ela
+raciocinava por `R_p/L`, mas o fator relevante é `1 + R²/r²`, que **não depende de `L`**: qualquer
+obstáculo isolante amplifica ~1.7× a assimetria local no seu anel. No halo isso dá ×1.52 em
+montante/jusante — acima dos 30%.
+
+**Responde à pergunta 2 da série pela metade.** O bloqueio químico **existe como perturbação do
+campo antes do toque** — mas é **local** (dipolo decai como `R²/r²`, alcance de ~1 raio de pilar) e
+não há, no R1, efeito dele sobre a expansão (`dR/dt` −3.1%, seção 10.2).
+
+**Hipótese, NÃO medida:** o acúmulo a montante cria entre o líder que chega e o pilar um `c_s`
+crescente em direção ao pilar, ou seja `−∇c_s` apontando **para longe do pilar** — uma repulsão
+química que freia o líder antes do contato mecânico. Se existir, contribui para a PARADA da seção 15
+e para a queda de `a_mar_bio_p95` da seção 10.4, que nunca foi separada por medição. Teste:
+componente radial de `au_mar` dos líderes em função da distância ao pilar, real × falso.
+
+**Para R2/R3:** a amplificação por pilar é a mesma (`R` fixo em todas as doses); o que muda é quantos
+pilares o halo atravessa. Rodar esta ferramenta nas duas doses, com o mesmo controle.
+
+### 18.5 A REPULSÃO QUÍMICA — hipótese da 18.4 testada e CONFIRMADA (2026-10-26)
+
+`tools/repulsao_quimica.py runs/rugosidade/R1_lambda28 runs/swarm/P2R23_conduz`. Régua fixada antes
+de rodar (docstring): líderes como em `desfecho_contato.py`; só o pilar mais próximo **à frente**
+do líder; `cos_g` = cosseno entre `−∇c_s` (direção do flagelo) e a direção líder→pilar; `a_p` =
+Marangoni projetada nessa direção; **pareado** com os líderes do liso contra as mesmas posições.
+
+**As direções foram reconstruídas.** O HDF5 grava só as magnitudes (`au_mar`, `au_flag`); `ax_mar`,
+`grad_cs_x` etc. estão vazios. A reconstrução usa as fórmulas do solver (fontes = fluido, pilar
+fora; filler fora como fonte de `c_s`; KGC com todo o fluido; gate por `|∇ρ_b|`) e foi validada:
+`|a_mar|` reconstruída × `au_mar` gravada, **correlação 0.9999 (R1) e 1.0000 (liso)**, razão
+mediana 0.9999.
+
+| d à superfície | n R1 | `cos_g` R1 | n liso | `cos_g` liso | diferença | `a_p` R1 | `a_p` liso |
+|---:|---:|---:|---:|---:|---:|---:|---:|
+| 0-1 dx | 4 | **−0.195** | 14 | +0.820 | **−1.015** | **−0.398** | +2.803 |
+| 1-2 dx | 14 | **−0.022** | 6 | +0.938 | **−0.960** | **−0.265** | +3.556 |
+| 2-3 dx | 18 | +0.135 | 13 | +0.772 | −0.637 | +0.281 | +1.425 |
+| 3-5 dx | 37 | +0.415 | 18 | +0.946 | −0.531 | +1.001 | +2.049 |
+| 5-7 dx | 33 | +0.771 | 28 | +0.542 | +0.229 | +1.558 | +1.472 |
+| 7-10 dx | 74 | +0.726 | 60 | +0.568 | +0.158 | +1.012 | +0.861 |
+| 10-15 dx | 34 | +0.636 | 7 | +0.494 | +0.141 | +0.631 | +0.758 |
+
+Erro da mediana de `cos_g` do R1: 0.03-0.11 por faixa.
+
+**A forma por distância é a prova (lição #68), e ela está lá:** a diferença vale −1.0 a 1-2 dx,
+encolhe para −0.5 a 3-5 dx e **troca de sinal** a partir de 5 dx, assentando num resíduo pequeno e
+constante (+0.14 a +0.23) — que é a diferença global entre as duas realizações, não o pilar. O
+critério pré-registrado ("R1 abaixo do liso em d < 3, diferença sumindo em d ≥ 7") passa, com a
+ressalva de que o resíduo distante não é zero.
+
+**O que isto quer dizer:**
+1. No liso, o motor de um líder que vai em direção àquele ponto aponta PARA ele (`cos_g` +0.8 a
+   +0.95). No R1, a menos de ~2 dx do pilar, o motor aponta **de lado ou para trás** (`cos_g` ≈ 0 a
+   −0.2) e **a Marangoni passa a empurrar para LONGE do pilar** (`a_p` −0.27 a −0.40, contra +2.8 a
+   +3.6 no liso).
+2. **O alcance químico (~5 dx) é cinco vezes o mecânico** (o kernel de contato zera a 1 dx). O
+   líder começa a ser freado pelo campo antes de qualquer força de contato existir.
+3. A PARADA da seção 15 é **químico-mecânica**, não só mecânica: P(parada | contato) a 1 dx (10.8×)
+   cai exatamente na faixa em que o motor se inverte. E o "não desvia" da 15.2 fica coerente: a
+   repulsão tem o pilar à frente, então ela aponta majoritariamente **para trás**, freando, e não
+   para o lado, desviando.
+4. Mecanismo é o da 18.2: o pilar isolante acumula `c_s` no lado de montante; entre o líder e o
+   pilar, `c_s` passa a crescer em direção ao pilar.
+
+**Ressalva de operador, declarada.** Perto do pilar o suporte do kernel é truncado (o pilar não é
+fonte). No gradiente SEM correção, usado pelo flagelo, parte da rotação de `cos_g` pode ser
+**viés de truncamento**, não campo. A Marangoni usa KGC, que restaura a consistência de 1ª ordem
+sob suporte truncado (Bonet & Lok 1999; teste-ouro do §12 do CLAUDE.md) — logo a inversão de
+`a_p`, que sai da Marangoni corrigida, é do **campo**. Exceção: onde `det(M) < 0.25` a KGC cai para
+identidade; a fração de líderes nesse fallback a < 2 dx não foi medida. Amostragem: n = 4 a 0-1 dx;
+a conclusão se apoia nas faixas 1-5 dx (n = 14-37), não na primeira.
+
+**Consequência para a pergunta 2 da série:** o bloqueio químico não aparece na expansão média do
+R1 (−3.1%), mas **existe e age sobre o líder**, antes do toque e com alcance maior que o do contato.
+Em φ = 11.6% ele é raro porque o contato é raro (seção 15.4). Para R2/R3: a repulsão por pilar
+deve ser a mesma (`R_p` fixo); o que cresce é quantos líderes entram no raio de ~5 dx.

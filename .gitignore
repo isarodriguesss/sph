@@ -23,3 +23,6 @@ log.csv
 
 # Trava de simulacao em andamento (por maquina, nao versionar)
 .sph_rodando
+
+# Cache do plots/serie_rugosidade.py
+plots/_cache_serie/

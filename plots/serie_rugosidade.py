@@ -584,7 +584,7 @@ def fig_quimica(DS, cores, out):
         a.set_title(f"{D['nome']}: em volta do pilar ({n} pilares × quadros)", loc="left", fontsize=8)
         a.legend(fontsize=6.5)
         ins = a.inset_axes([0.04, 0.06, 0.22, 0.32])
-        ins.add_patch(plt.Circle((0, 0), 1.0, color="#989894", lw=0))
+        ins.add_patch(plt.Circle((0, 0), 1.0, color="#5c5c5c", lw=0))
         ins.add_patch(plt.Circle((0, 0), 1.4, fill=False, ls="--", lw=0.8, color=c))
         ins.annotate("", xy=(2.1, -1.75), xytext=(0.6, -1.75),
                      arrowprops=dict(arrowstyle="->", lw=0.7))
@@ -597,7 +597,7 @@ def fig_quimica(DS, cores, out):
         ins.axis("off")
 
         a = ax[f"p{i}"]
-        a.axvspan(-1, 1, color="#989894", alpha=0.45, lw=0, label=f"pilar (só no {D['nome']})")
+        a.axvspan(-1, 1, color="#5c5c5c", alpha=0.35, lw=0, label=f"pilar (só no {D['nome']})")
         with np.errstate(invalid="ignore"):
             a.plot(g, np.nanmean(Ml[faixa], 0), color="k", lw=1.2, label="liso, mesmo lugar")
             a.plot(g, np.nanmean(M[faixa], 0), color=c, lw=1.6, label=D["nome"])
@@ -651,7 +651,7 @@ def fig_painel(DS, out, t_alvo=50.0, L=5.0, n=500):
         if geo is not None:
             for cx, cy in geo["c"]:
                 if abs(cx) < L + 0.5 and abs(cy) < L + 0.5:
-                    a.add_patch(plt.Circle((cx, cy), geo["R"], color="#989894", lw=0))
+                    a.add_patch(plt.Circle((cx, cy), geo["R"], color="#5c5c5c", lw=0))
         col = ((d["rho_b_grown"] >= 0.1) | (d["is_filler"] > 0.5)) & janela
         sc = a.scatter(
             d["x"][col],

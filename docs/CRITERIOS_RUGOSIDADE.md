@@ -1504,3 +1504,64 @@ Os da §6, mais os herdados do R1″:
 - **Ferramentas:** `tools/desfecho_contato.py`, `tools/anisotropia.py`, `tools/repulsao_quimica.py`,
   `tools/sombra_quimica.py`, réguas de forma em janela com os pilares descontados (§20.7),
   `plots/fig_tese.py --t 50`.
+
+### 21.6 RESULTADO — R2 (`runs/rugosidade/R2_lambda20`, 2026-10-28; 1 thread, 1072 s, 180 pilares)
+
+**Aborto:** `n_pen` = 0; força de contato máxima ≤ 1.45; 53 iterações por unidade de t (R1″: 59). O
+critério 3 (pinada se aproximando > 0.05 dx) **disparou em 3 partículas**, mas não pelo risco que ele
+vigia: elas estão a 8.2–8.6 dx do centro do pilar (3.6–4 dx do anel), na **borda externa do alcance
+da projeção** (2h = 3.6 dx do anel), e derivam até entrar nele — duas já pararam em 8.20 dx
+(8.20 → 8.20). A deriva se auto-limita longe do contato. **O critério estava escrito mais estrito que
+o risco** (deveria vigiar a < 2h do anel, não a < 2h + 1 dx); a rodada é válida.
+
+| grandeza | liso | R1″ | **predição R2** | **R2** | |
+|---|---:|---:|---|---:|---|
+| `R99` médio t ∈ [35, 48], Δ vs liso (ruído 1.1%) | 3.337 | −5.7% | −7% a −13% | **3.014 (−9.7%)** | ✅ monotônico |
+| `dR/dt` [25, 48], Δ vs liso (ruído 5.8%) | 0.0743 | −4.4% | −6% a −12% | **0.0613 (−17.5%)** | ❌ mais forte; **sai do ruído** |
+| largura EDT (dx) | 5.48 | 6.16 | ≥ 6.2 | **4.96 ±0.09** | ❌ mais estreito que o liso |
+| área / disco | 0.43 | 0.48 | ≥ 0.48 | **0.45 ±0.04** | ❌ |
+| área / (disco − pilares) | 0.43 | 0.54 | — | 0.56 ±0.05 | |
+| dedos | 14.0 | 14.0 | 11–14 | **12.5 ±1.6** | ✅ |
+| núcleo / R, baía / R | 0.42 / 0.40 | 0.40 / 0.41 | 0.36–0.44 | **0.45 / 0.44** | ≈ (no limite) |
+| AR | 8.1 | 6.4 | — | 7.7 ±1.4 | |
+| fundo da baía (painel c) | sobe contínuo | travado em 1.23 (t 20–44) | travado perto de 1.6 desde t ≈ 27 | **travado em ~1.58 de t ≈ 29 a 50** | ✅ |
+| `a_mar_bio_p95` (mediana t > 30) | 0.725 | 0.625 | 0.50–0.70 | **0.556** | ✅ monotônico |
+| razão de parada a 3 dx | — | 1.8× | 1.3–2.5× | **4.4×** | ❌ (ver leitura) |
+| P(parada \| contato) a 3 dx | — | 21.0% ±4.5 | — | **27.3% ±4.5** | |
+| P(parada \| livre) | — | 11.4% | — | **6.2%** | |
+| razão a 1 / 1.5 / 2 dx | — | 4.6 / 2.7 / 2.2× | cresce quando aperta | **5.7 / 5.1 / 5.1×** | ✅ |
+| observações em contato a 3 dx | — | 81 | 120–170 | **99** | ❌ |
+| deixa de ser líder: contato / livre | — | 73% / 23% | ≥ 60% / 20–30% | **59% / 20%** | ≈ |
+| arco com sinal (quiralidade) | — | +0.35 ±0.24 | vigiar | **−0.48 ±0.35** | **sinal inverte: sem quiralidade** |
+| repulsão `cos_g` a 0–1 / 1–2 / 2–3 dx | +0.86 / +0.89 / +0.72 | ≈ 0 | ≈ 0 | **+0.15 / −0.08 / +0.27** | ✅ |
+| m=6: fase no pico | — | 27.9° | ≈ 0° | **0.5°** (média t ≥ 35: 57.2° ≡ −2.8°) | ✅ a rede trava a forma |
+| m=6: pico em `R_med` / coroa | — | 0.99 | ≈ 0.99 (`R_med` ≈ 1.85) | **0.78** (`R_med` = 1.45, t = 24.7), a₆ = 0.13 | ❌ mais cedo e mais fraco |
+| extinções de grupo | — | 19 | — | 8 | |
+
+**Leitura.**
+
+1. **A resposta à dose é monotônica no raio e no motor** — os primários da §1:
+   `R99` −5.7% → −9.7%, `a_mar_bio_p95` 0.625 → 0.556. E **na dose do R2 a taxa de expansão também
+   responde** (−17.5%, 3× o ruído), o que o R1″ não mostrava. A pergunta da série ("a rugosidade
+   atrapalha?") tem agora resposta afirmativa em duas doses, com efeito crescente.
+2. **A hipótese "efeito por contato constante" se mantém no valor absoluto e cai na razão.**
+   P(parada | contato) a 3 dx vai de 21% a 27% (dentro de ~1.3σ); a razão sobe de 1.8× para 4.4×
+   **porque o controle caiu** (P(parada | livre) 11.4% → 6.2%) — os líderes livres no R2 são os que
+   estão em canais desobstruídos. **A razão não é boa medida entre doses**; comparar sempre o absoluto.
+   Corrige a predição do §15.4/15.5.
+3. **O alargamento do dedo não é efeito monotônico da dose:** R1″ alargou (+12%), o R2 estreitou
+   (−9%). Hipótese não testada: com Λ = 20 a fresta entre pilares é 10 dx (superfície a superfície),
+   e o dedo passa espremido; com Λ = 28 (18 dx) ele contorna e engorda. **Não interpretar a largura
+   do R1″ como efeito da rugosidade** até o R3 (fresta 6 dx) mostrar a tendência.
+4. **Quiralidade: fechada como negativa.** O sinal do arco inverte entre doses (+0.35 → −0.48), com
+   erro da mesma ordem. Responde à sugestão do professor com duas doses.
+5. **A rede imprime a forma e o campo:** fase do m=6 em ~0°, como previsto para Λ = 20 (vira 30° em
+   relação ao R1), e o halo de `c_s` no ágar sai hexagonal (painel d). Mas o pico veio **mais cedo e
+   mais fraco** que o previsto (R_med/coroa 0.78, a₆ 0.13 contra 0.25 do R1″): a abscissa da §14.1
+   não sincroniza as doses tão bem quanto se supôs.
+6. **O fundo da baía trava na primeira coroa presente nas duas doses** (1.23 no R1″, 1.58 no R2) — é
+   o mecanismo mais direto do raio menor: a colônia não perde o avanço das pontas, perde o
+   enchimento entre elas, e o corpo engole os pilares em vez de contorná-los.
+
+**Para o R3 (Λ = 16):** manter as predições de raio e motor (monotônicas), usar P(parada | contato)
+**absoluto** em vez da razão, e ler a largura como teste da hipótese da fresta (item 3).

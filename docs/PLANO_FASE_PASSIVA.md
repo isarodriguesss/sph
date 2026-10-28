@@ -228,3 +228,75 @@ precoce** que aborta a rodada.
    execução (1 thread, como o R1).
 5. **Pré-requisito estrutural antes do O2:** separar densidade mecânica e biológica (#61). Sem isso, a
    série O cai na #57 qualquer que seja a fonte.
+
+## 7. Portões offline EXECUTADOS (2026-10-28, sobre o P2R23, t ≥ 35; nenhuma rodada)
+
+### 7.1 Portão da #39 — o filler como fonte do gradiente de `c_s` (F1)
+
+Marangoni reconstruída com a fórmula do solver (gate de |∇`rho_b`|, KGC), nas duas versões da fonte.
+Validação: a versão atual reproduz a `au_mar` gravada (correlação 0.9999, razão 1.0001).
+
+| | sem filler na fonte (hoje) | com filler na fonte (F1) | |
+|---|---:|---:|---|
+| **líderes** (n = 92): \|a\| p50 / p95 | 4.58 / 9.47 | **3.51 / 9.45** | razão p50 **0.86**; direção igual (cos 1.000) |
+| **vivas do corpo** (n = 2802): \|a\| p50 / p95 | 0.081 / 0.51 | **0.291 / 1.59** | **3.3×** |
+| vivas do corpo: componente para fora p50 | +0.068 | **+0.262** | para fora em 92% (94% hoje) |
+
+**Veredito:** o critério pré-registrado (diferença < 10% nos líderes) **reprova por pouco: −14%**.
+O p95 e a direção não mudam. O efeito grande é outro e é favorável: **o corpo da colônia ganha motor
+(força para fora ×3.9)**, que é o que a lição #86 identificou como ausente ("o meio anda devagar por
+falta de motor"). Predição do F1 revista: motor nos líderes −10 a −15% (não "sobe"); motor no corpo
+×3–4. **O critério de aborto do F1 passa a ser `a_mar_bio_p95` < 0.55**, não 0.6.
+
+### 7.2 Portão do laço da #90 — exposição do ágar de baía ao filler
+
+| t | ágar de baía (0.5–0.7 R99) | já a < 2h do filler | novo se a lateral andar +0.4 dx / +3 dx | `c_s` do ágar novo: > 0.30 / > 0.25 / p99 |
+|---:|---:|---:|---:|---|
+| 35.8 | 298 | 95% | 12 / 16 | 0.000 / 0.125 / 0.277 |
+| 41.7 | 761 | 86% | 37 / 107 | 0.000 / 0.047 / 0.273 |
+| 50.0 | 1810 | 75% | 85 / 406 | 0.000 / 0.020 / 0.267 |
+
+**Veredito: a exposição não é o limitante** — 75–95% do ágar de baía já está ao alcance do filler.
+O laço está fechado pelo **gate de `c_s`** da colonização: nenhum ágar de baía passa de 0.30, mas o
+p99 fica em 0.27–0.29 (a margem zero do §2 do `CRITERIOS_RUGOSIDADE.md`). **O sinal precoce do F1 é o
+`c_s` máximo do ágar a < 2h do corpo**, não a geometria: se o filler móvel carregar `c_s` para a
+baía e esse máximo passar de 0.30, o laço do disco reabre.
+
+### 7.3 O0 — influxo de van't Hoff, calibração e transporte
+
+V₀ = Q₀·(φ/(1−φ) − φ₀/(1−φ₀))₊, φ = fração de vivas entre as partículas de colônia no suporte 2h,
+limitado a 0.8. Q₀ calibrado para ∫V₀ dA = produção atual de fase passiva (290 partículas = 0.84 de
+área por unidade de t).
+
+| t | φ₀ | partículas-fonte | Q₀ | influxo em r < 0.3 R99 | 0.3–0.5 R99 | > 0.7 R99 |
+|---:|---:|---:|---:|---:|---:|---:|
+| 41.7 | 0.05 | 2575 | 0.45 | 66% | 32% | 1.9% |
+| 41.7 | 0.10 | 2041 | 0.55 | 69% | 29% | 2.1% |
+| 41.7 | 0.20 | 1135 | 0.85 | 75% | 22% | 2.7% |
+| 50.0 | 0.05 | 3228 | 0.53 | 79% | 21% | 0.1% |
+| 50.0 | 0.10 | 2374 | 0.70 | 84% | 16% | 0.0% |
+| 50.0 | 0.20 | 879 | 1.20 | 93% | 7% | 0.0% |
+
+**O influxo cai quase todo no núcleo** (66–93% dentro de 0.3 R99; < 3% além de 0.7 R99), qualquer
+que seja φ₀. A distância média ponderada da fonte até 0.85 R99 é **2.1–2.75 (40–51 dx)**: mesmo
+andando na velocidade da frente, a água levaria **28–36 unidades de t** para chegar — a janela inteira.
+
+**O que o transporte exige, por continuidade.** Para entregar 0.84 de área por unidade de t através
+do anel r ≈ 1.5, por onde a fase passiva só passa pelos ~14 dedos de ~6 dx (~4.5 de perímetro), a
+velocidade de escoamento tem de ser **v ≈ 0.84/4.5 ≈ 0.19** — **2.5× a velocidade da frente**. Com a
+força que o F1 daria ao corpo (|a| p50 ≈ 0.29), isso exige **γ_f ≈ 1.5**, contra ~70 hoje no filler
+(γ·(1 + 1.5·0.4²)): **~50× menos arrasto**.
+
+**Veredito do O0:** numericamente viável (o limite explícito do arrasto, dt < 2/γ_f ≈ 1.3, fica muito
+acima do dt ≈ 0.016), mas **é uma mudança de regime**: a fase passiva passaria a escoar quase sem
+atrito, 2.5× mais rápido que a frente. Consequências a vigiar no O1: espalhamento lateral (a janela
+F_w da §1.4 foi medida em força e continua válida, mas a lateral móvel tem de ser re-medida),
+pareamento (a cascata da §88 é de filler) e o fosso em volta do núcleo pinado (#73).
+
+### 7.4 O que os portões mudam no plano
+
+1. **F1 continua de pé**, com predição corrigida (líderes −10 a −15%, corpo ×3–4) e dois sinais
+   precoces: `a_mar_bio_p95` < 0.55 e `c_s` máximo do ágar vizinho > 0.30.
+2. **O O1 é o passo decisivo da série O**: sem fase passiva ~50× mais móvel, o influxo de [T2] incha o
+   núcleo. Antes do O1, medir no F1 (quando rodar) a velocidade real do filler do corpo, para ancorar
+   γ_f em dado dinâmico e não na estimativa estática acima.

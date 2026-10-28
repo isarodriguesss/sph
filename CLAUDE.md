@@ -2638,6 +2638,41 @@ Calibracao pos-Passes A-I.7. **MARCO I.7:** Transicao blob→dendritico confirma
     de qualquer rodada, pre-registrar os sinais precoces de la — agar na faixa 0.5-0.7 R99 e
     limbo novo por frame — alem de largura e AR.
 
+109. **`beta` E AUTO-LIMITANTE: mais coeficiente de Marangoni da MENOS forca nos lideres, porque
+    a colonia cresce e dilui o proprio gradiente — e a licao #43 em outro eixo (velocidade em vez
+    de densidade)** (P2R26, `beta` 5.0 -> 6.5, alavanca unica sobre o P2R23, medido em 2026-10-07;
+    numeros reconferidos nos logs em 2026-10-28; `docs/CRITERIOS_RUGOSIDADE.md` §17):
+
+    | | P2R23 (`beta` 5.0) | P2R26 (`beta` 6.5) | |
+    |---|---:|---:|---|
+    | `a_mar_bio_p95` (mediana t > 30) | 0.725 | **0.587** | **−19%** com `beta` +30% |
+    | `\|grad c_s\|` | — | — | ~−38% |
+    | halo `L`/R | 0.17 | 0.11 | −35% |
+    | `R99` medio t ∈ [35, 48] | 3.337 | 4.299 | +29% |
+    | `mean_v` (mediana t > 30) | 3.8e-4 | 5.6e-4 | +47% |
+
+    **A cadeia:** `beta` maior -> colonia 26-29% maior e mais rapida -> a mesma producao de `c_s`
+    espalhada em mais area -> gradiente menor (~−38%) -> forca liquida menor, apesar do coeficiente
+    maior (1.3 x 0.62 ≈ 0.81: a conta fecha com os −19%). Sob o teto `(1 − c_s/c_s_max)` a producao
+    nao acompanha a area (licao #77), entao nao ha como o campo se manter.
+
+    **O `mean_v` +47% NAO e ganho de motor — e contaminacao de composicao** (mais uma ocorrencia da
+    familia #46/#53/#56/#62): a media cobre todas as particulas, e uma colonia maior tem mais
+    particulas em movimento. A forca por lider caiu. **Medir motor sempre por `a_mar_bio_p95` nas
+    vivas, nunca por `mean_v`.**
+
+    **Regra:** subir uma alavanca de motor (`beta`, `f0`, `sigma`) nao aumenta a forca nos lideres
+    se ela tambem aumenta o alcance da colonia sem aumentar a producao do campo — o ganho e diluido
+    pela propria expansao. E a mesma parede das licoes #43 (mais biomassa achata o gradiente) e #77
+    (`cs_inf` cego a quantidade sob o teto), vista agora pela velocidade.
+
+    **Consequencia de criterio:** o P2R26 foi reprovado originalmente pelo piso de halo `L`/R >= 0.17,
+    que nao tinha ancora (o 0.18 vinha do painel de modelo do Trinschek; as ancoras experimentais vao
+    de 0.051 a 1.519). O piso foi substituido em 2026-10-28 por motor (`a_mar_bio_p95` >= 0.70) e as
+    cinco reguas de forma (#95/#99); o P2R26 reprova em **seis de seis** (motor 0.587, dedos 17 contra
+    9-15, area/disco 0.32 contra 0.35-0.39, AR 13.7 contra 3.8-11.2, nucleo 0.28 contra ~0.36, baia
+    0.25 contra ~0.34). `beta` = 5.0 mantido.
+
 75. **A LARGURA DO BRACO: cintura em r/R99=0.65, barriga em 0.83, razao 2.1x — e a barriga
     ACOMPANHA A FRENTE. Quatro alavancas refutadas por medicao antes de rodar, e o
     `contrast_cs` invalidado como orcamento** (diagnostico sobre o P5, 2026-09-03):

@@ -8,6 +8,7 @@ from scipy.sparse.csgraph import connected_components
 from scipy.spatial import cKDTree
 from pysph.solver.application import Application
 from pysph.base.kernels import CubicSpline, WendlandQuintic
+from pysph.base.utils import get_particle_array
 from pysph.solver.solver import Solver
 
 from src.particles import SEED_MODE, create_initial_state
@@ -135,9 +136,22 @@ PILAR_SEED = 20261006
 PILAR_K = (
     0.005  # forca de contato (Monaghan & Kajtar 2009); calibrada no plano, secao 4
 )
-PILAR_HW = (
-    0.5  # h do kernel de contato, em dx (alcance 2*h_w = 1 dx: zero na rede inicial)
-)
+# pass-l-aprovado: forma do contorno de contato (docs/CRITERIOS_RUGOSIDADE.md §19).
+# calibracao-sem-log-ok: PILAR_BETA e a razao de espacamento fluido/parede de Monaghan & Kajtar
+# (2009), parametro NUMERICO do contorno, nao o beta da Marangoni; analise preditiva na §19.
+# "grade": o disco de pontos da grade e contato E densidade, beta=1, h_w=0.5 dx — reproduz o R1.
+# "anel": contato so por um anel sobre a curva, espacamento dx/PILAR_BETA (Delta < h_w, eq. 2.6
+# de Monaghan & Kajtar), forca dividida por PILAR_BETA (eq. 4.1); a grade fica so para
+# densidade, viscosidade e shifting ate PILAR_DENS_R, e o fluido comeca alem de PILAR_FLUIDO_R
+# para a forca ser zero em t=0 (licao #40). Raios em dx, medidos do centro do pilar.
+PILAR_CONTORNO = "anel"
+PILAR_BETA = 4.0
+PILAR_ANEL_R = 4.6
+PILAR_DENS_R = 4.9
+PILAR_FLUIDO_R = 5.4
+PILAR_HW = 0.4 if PILAR_CONTORNO == "anel" else 0.5  # h do kernel de contato, em dx
+# pass-l-aprovado: anula o shifting para dentro da parede no modo anel (CRITERIOS §20).
+PILAR_SHIFT_PAREDE = True
 
 
 LOG_FILE = "log.csv"
@@ -362,6 +376,9 @@ class SwarmApp(Application):
                     "y_dep",
                 ):
                     pa.add_property(prop)
+                if use_pilares:  # pass-l-aprovado: normal da parede (CRITERIOS §20)
+                    pa.add_property("wall_nx")
+                    pa.add_property("wall_ny")
                 pa.sigma_a[:] = 1.0
                 pa.Lxx[:] = 1.0
                 pa.Lyy[:] = 1.0
@@ -396,7 +413,7 @@ class SwarmApp(Application):
                 pa.add_property("p")
 
         if use_pilares:
-            fluid_solid.append(self._faz_pilares(fluid_solid[0]))
+            fluid_solid.extend(self._faz_pilares(fluid_solid[0]))
 
         return fluid_solid
 
@@ -493,25 +510,48 @@ class SwarmApp(Application):
         if PILAR_JITTER > 0.0:
             cx, cy = self._desordena(cx, cy, lam, rp)
 
+        anel = PILAR_CONTORNO == "anel"
+        r_dens = PILAR_DENS_R * dx if anel else rp
+        r_fluido = PILAR_FLUIDO_R * dx if anel else rp
+
+        def dentro(r):
+            q = tree.query_ball_point(np.column_stack([cx, cy]), r)
+            return np.asarray(np.unique(np.concatenate(q)), dtype=int)
+
         tree = cKDTree(np.column_stack([fluid.x, fluid.y]))
-        idx = np.unique(
-            np.concatenate(tree.query_ball_point(np.column_stack([cx, cy]), rp))
-        )
-        idx = np.asarray(idx, dtype=int)
+        idx = dentro(r_dens)
+        idx_fora = dentro(r_fluido)
         pilar = fluid.extract_particles(idx)
         pilar.set_name("pilar")
         pilar.u[:] = 0.0
         pilar.v[:] = 0.0
         pilar.add_output_arrays(["m", "rho"])
+        pts = [np.column_stack([np.asarray(pilar.x), np.asarray(pilar.y)])]
+        sup = None
+        n_anel = 0
+        if anel:
+            ra = PILAR_ANEL_R * dx
+            n_anel = int(round(2.0 * np.pi * ra / (dx / PILAR_BETA)))
+            th = np.arange(n_anel) * (2.0 * np.pi / n_anel)
+            ax = (cx[:, None] + ra * np.cos(th)[None, :]).ravel()
+            ay = (cy[:, None] + ra * np.sin(th)[None, :]).ravel()
+            sup = get_particle_array(
+                name="pilar_sup",
+                x=ax,
+                y=ay,
+                m=np.full(ax.size, dx * dx),
+                h=np.full(ax.size, float(fluid.h[0])),
+                rho=np.ones(ax.size),
+            )
+            sup.add_output_arrays(["m"])
+            pts.append(np.column_stack([ax, ay]))
         # pass-l-aprovado: duas representacoes da mesma geometria — o disco analitico
         # (centro, raio) para as mascaras de metrica, e o conjunto de particulas para as
         # guardas de deposicao, que reusam o mesmo teste de proximidade do fluido.
         self._pilar_c = np.column_stack([cx, cy])
         self._pilar_rp = rp
-        self._pilar_pts = cKDTree(
-            np.column_stack([np.asarray(pilar.x), np.asarray(pilar.y)])
-        )
-        fluid.remove_particles(idx)
+        self._pilar_pts = cKDTree(np.vstack(pts))
+        fluid.remove_particles(idx_fora)
 
         out = os.path.join(self.output_dir, "pilares.json")
         os.makedirs(self.output_dir, exist_ok=True)
@@ -527,6 +567,13 @@ class SwarmApp(Application):
                     "jitter": PILAR_JITTER,
                     "semente": PILAR_SEED if PILAR_JITTER > 0.0 else None,
                     "gargantas_dx": self._gargantas(cx, cy, rp),
+                    "contorno": PILAR_CONTORNO,
+                    "hw_dx": PILAR_HW,
+                    "beta": PILAR_BETA if anel else 1.0,
+                    "anel_raio": PILAR_ANEL_R * dx if anel else None,
+                    "n_anel_por_pilar": n_anel,
+                    "dens_raio": r_dens,
+                    "fluido_raio": r_fluido,
                 },
                 fp,
             )
@@ -534,15 +581,21 @@ class SwarmApp(Application):
             f"pilares: {len(cx)} centros, {len(idx)} particulas, raio {rp / dx:.1f} dx, "
             f"lambda {lam / dx:.0f} dx, area {100 * len(idx) / (len(idx) + len(fluid.x)):.1f}%"
         )
-        return pilar
+        return [pilar] if sup is None else [pilar, sup]
 
     def create_scheme(self):
         return MyBiomassScheme(
             fluids=["fluid"],
             solids=["solid"],
             pilares=["pilar"] if use_pilares else (),
-            pilar_k=PILAR_K,
+            pilar_k=PILAR_K / (PILAR_BETA if PILAR_CONTORNO == "anel" else 1.0),
             pilar_hw=PILAR_HW * dx,
+            pilares_contato=(
+                (["pilar_sup"] if PILAR_CONTORNO == "anel" else ["pilar"])
+                if use_pilares
+                else ()
+            ),
+            shift_parede=(use_pilares and PILAR_CONTORNO == "anel" and PILAR_SHIFT_PAREDE),
             dim=2,
             mu=mu,
             gamma=gamma,

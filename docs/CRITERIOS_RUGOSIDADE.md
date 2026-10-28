@@ -740,6 +740,41 @@ rugosidade mata o líder que ela encontra, e em φ = 11.6% ela encontra poucos".
 > n=11. Para R2/R3 o `n` sobe pela frequência de contato, não pela resolução — a leitura continua
 > sendo a **forma da varredura**, não o valor num limiar.
 
+### 15.5 CORREÇÃO (2026-10-28) — os números de 15.1–15.4 vêm de uma parede com dois artefatos
+
+O R1 rodou com a parede em **grade** (contorno em degraus, atrito numérico de até 390% na
+tangencial, §19.1). O R1′ corrigiu a parede mas trouxe um artefato oposto (o shifting empurrava o
+líder contra ela, §20.1). **O R1″ (anel + projeção do shifting, §20.6) é a medida válida.** O que
+muda em cada subseção:
+
+| | R1 (grade) | R1′ | **R1″ (válido)** |
+|---|---:|---:|---:|
+| razão de parada a 1 / 1.5 / 2 dx | 10.8× / 7.8× / 5.3× | 1.6× / 1.2× / 1.1× | **4.6× / 2.7× / 2.2×** |
+| razão a 3 dx (ponto de operação) | 3.0× | 2.2× | **1.8×** |
+| P(parada \| contato) a 1 dx | 90.9% ±8.7 (n=11) | 20.0% ±10.3 | **53.3% ±12.9 (n=15)** |
+| avanço em contato / livre, 1 → 4 dx | 0.12 → 0.90 | 0.24–0.29 | **0.18 → 0.63** |
+| deixa de ser líder: contato / livre | 45.5% / 15.8% | 80.0% / 23.7% | **73.3% / 23.2%** |
+| \|arco\| azimutal: contato / livre | 0.48 / 0.40 dx | 0.12 / 0.32 | **0.22 / 0.37** |
+| arco com sinal (quiralidade) | +0.32 ±0.37 | +0.51 ±0.32 | **+0.35 ±0.24** |
+| divisões / fusões / extinções de grupo | 13 / 0 / 10 | 17 / 3 / 19 | **17 / 1 / 19** |
+
+- **15.1 (parada):** continua o desfecho dominante e continua de curto alcance (a razão cresce
+  quando o limiar aperta), mas é **cerca de metade** do que o R1 mediu: 4.6× a 1 dx, não 10.8×. A
+  outra metade era o atrito da parede em degraus.
+- **15.1, "deixa de ser líder":** fica **mais** forte, não menos (73% contra 23%, 3.2×). O líder em
+  contato quase sempre perde a liderança, mesmo quando não para por completo: fica para trás porque
+  avança a 18–37% do livre nos últimos 2 dx.
+- **15.2 (desvio):** continua ausente — o arco em contato fica **abaixo** do livre. O líder não
+  contorna o pilar.
+- **15.2 (quiralidade):** o arco com sinal ficou +0.32 / +0.51 / +0.35 nas três versões, sempre
+  positivo e agora com erro menor que o valor (+0.35 ±0.24, ~1.5σ). **Ainda não é detecção**, mas
+  deixou de ser negativo limpo. Vigiar em R2/R3.
+- **15.3:** a parede corrigida dá mais extinções de grupo (19 contra 10) e algumas fusões.
+- **15.4 (síntese):** "a rugosidade mata o líder que ela encontra" continua — pela perda de
+  liderança, não pela parada. O "−3.1%" que 15.4 explicava não é mais o número: ver §20.7.
+- **A predição para R2/R3 (razão aproximadamente constante com a dose, frequência de contato
+  crescendo) se mantém**, ancorada agora no R1″: razão 1.8× a 3 dx e 4.6× a 1 dx.
+
 ---
 
 ## 16. MEIO COMO GRAFO — gerador estocástico implementado e caracterizado (2026-10-06)
@@ -870,10 +905,10 @@ Portanto a distancia 0.44 x 0.99 **nao mede um defeito** — mede uma diferenca 
 
 Nessa grandeza **ja estamos no alvo**: 0.17-0.18 contra 0.18 do Trinschek.
 
-> ### PISO PRE-REGISTRADO: `L`/R >= 0.17
+> ### ~~PISO PRE-REGISTRADO: `L`/R >= 0.17~~ — SUBSTITUÍDO em 2026-10-28 (ver 17.5)
 >
-> Nenhuma alavanca de morfologia pode levar o halo abaixo disso. Reportar junto `0.9R` e
-> `ponta`, que sao o campo onde a Marangoni de fato trabalha.
+> ~~Nenhuma alavanca de morfologia pode levar o halo abaixo disso. Reportar junto `0.9R` e
+> `ponta`, que sao o campo onde a Marangoni de fato trabalha.~~
 
 ### 17.3 Consequencia imediata: `beta` = 6.5 REPROVADO
 
@@ -895,6 +930,44 @@ contra o liso, e o liso mudaria), e **o canal quimico ficaria cego** — medir a
 pilar sobre um campo 35% mais curto e medir sinal sobre ruido.
 
 **Enquanto a serie R1-R4 estiver aberta, o motor do liso nao se mexe.**
+
+### 17.5 SUBSTITUIÇÃO DO PISO (2026-10-28): motor + réguas de forma; o halo vira grandeza reportada
+
+**Por que o piso de `L`/R caiu.** Ele tinha uma única âncora numérica, o 0.18 do painel (b) do
+Trinschek — e esse painel é resultado de **modelo**, desqualificado como alvo de campo pela mesma
+razão do 17.1 (lição #99: Γ advectado com o filme). As âncoras experimentais disponíveis para o
+alcance relativo do surfactante vão de **0.051 a 1.519** — uma faixa de 30×, que não sustenta piso
+nenhum. Um critério sem âncora é escolha livre (lição #101: régua persistida não é régua validada).
+
+**O que entra no lugar — dois critérios, os dois ancorados:**
+
+| | critério | âncora |
+|---|---|---|
+| **(i) motor** | `a_mar_bio_p95` (mediana t > 30) **≥ 0.70** | o baseline P2R23 (0.73); é a força que de fato move os líderes, medida nas células vivas (§2.5.1 do CLAUDE.md), e não depende de formulação do campo |
+| **(ii) forma** | as cinco réguas das lições #95/#99 **dentro da faixa da literatura**: dedos 9–15, área/disco 0.35–0.39, AR 3.8–11.2, núcleo ~0.36 R, baía ~0.34 R | fotos de PA14 e [T12] (morfometria experimental), medidas com o mesmo algoritmo dos runs |
+
+**O halo (`L`/R, `0.9R`, `ponta`) continua sendo reportado** em toda rodada, sem piso: ele
+descreve o campo, mas não decide aprovação.
+
+**Escopo:** (i) e (ii) são **guardas para alavancas do modelo liso** (motor, campo, forma). Na série
+de rugosidade o pilar é a perturbação que se está medindo; lá `a_mar_bio_p95` é **resposta** (o
+canal químico da §3, item 2), não guarda. Ex.: o R1″ tem `a_mar_bio_p95` = 0.63 (−13% contra o
+liso), e isso é resultado da série, não reprovação.
+
+**O P2R26 (`beta` 6.5) continua REPROVADO pelos critérios novos** — por razões diferentes das
+originais, e mais fortes, porque cada uma tem âncora:
+
+| | P2R26 | faixa da literatura | |
+|---|---:|---:|---|
+| (i) `a_mar_bio_p95` | **0.587** | ≥ 0.70 | ❌ |
+| dedos | **17** | 9–15 | ❌ |
+| área / disco | **0.32** | 0.35–0.39 | ❌ |
+| AR | **13.7** | 3.8–11.2 | ❌ |
+| núcleo / R | **0.28** | ~0.36 | ❌ |
+| baía / R | **0.25** | ~0.34 | ❌ |
+
+Seis de seis fora. A reprovação original (halo −35%) segue registrada no 17.3 como descrição, não
+como critério. O mecanismo por trás está na lição #109 do CLAUDE.md (*`beta` é auto-limitante*).
 
 ---
 
@@ -1034,3 +1107,400 @@ a conclusão se apoia nas faixas 1-5 dx (n = 14-37), não na primeira.
 R1 (−3.1%), mas **existe e age sobre o líder**, antes do toque e com alcance maior que o do contato.
 Em φ = 11.6% ele é raro porque o contato é raro (seção 15.4). Para R2/R3: a repulsão por pilar
 deve ser a mesma (`R_p` fixo); o que cresce é quantos líderes entram no raio de ~5 dx.
+
+---
+
+## 19. CORREÇÃO DO CONTORNO DE CONTATO — análise preditiva, implementação e pré-registro do R1′ (2026-10-27)
+
+### 19.1 O defeito, contra a referência
+
+Monaghan & Kajtar (2009) provam, pela fórmula de soma de Poisson (eq. 2.4–2.6), que forças radiais
+somadas sobre partículas de contorno imitam uma força **normal e uniforme** quando o espaçamento da
+parede é menor que o comprimento do kernel (`Δ < h`); recomendam β = 3 para kernels cúbicos (§3,
+Tabelas 1–8: `tang/perp` e `dperp/perp` < 10⁻⁵). A implementação do R1 tem **Δ = dx = 2·h_w**, com
+o contorno feito do disco de pontos da grade (escada), e não de partículas sobre a curva.
+
+Medido com a fórmula do código (repetição dos testes da §3 do artigo):
+
+| | var. da normal | tang/normal |
+|---|---:|---:|
+| parede reta, R1, a 0.5 dx | 136% | 47% |
+| pilar real do R1, na distância de parada (0.75–0.9 dx) | normal vai de 0 ao máximo | **75% a 390%** |
+| artigo (β = 3), a 1 dp | ~10⁻⁵ | ~10⁻⁵ |
+
+E medido no R1: a colônia em contato para a **0.82–0.90 dx** da partícula de pilar mais próxima,
+a 5.32 dx do centro na mediana e **4.79 dx no p1** — ela entra nos degraus da escada.
+
+**A parede do R1 é impenetrável (`n_pen` = 0), mas é um cilindro rugoso na escala de 1 dx**, com
+empurrões tangenciais que podem agir como atrito numérico. Esse atrito **não foi separado** da
+PARADA medida na seção 15.
+
+### 19.2 Restrições e alternativas (análise preditiva offline, sem solver)
+
+| | restrição | fonte |
+|---|---|---|
+| R-a | Δ < h_w, partículas sobre a curva, força ÷ β | artigo, eq. (2.6), (4.1), §3 |
+| R-b | força **zero** no ágar em t = 0 | lição #40 |
+| R-c | mesmo raio efetivo (mesma dose) | seção 1 |
+| R-d | σ_a e densidade perto do pilar | Violeau §3.6; C2 do §2.5 |
+| R-e | a colônia não para em cima de partícula que não a repele | — |
+
+| alternativa | R-a | R-b | R-c | R-d | R-e | veredito |
+|---|---|---|---|---|---|---|
+| C0 (R1): grade, β=1, h_w=0.5 dx | ✗ | ✓ | ✓ | ✓ | ✓ | não conforme |
+| C1: grade com h_w = 1 dx (Δ = h, artigo literal) | ✗ 49–94% de tangencial (escada) | ✗ **48 partículas de ágar/pilar empurradas em t=0** (até 5.7) | — | ✓ | ✓ | rejeitada |
+| C2 com vão de 1 dx (anel 4.4, interior ≤ 4.4) | ✓ | ✓ | ✓ | ✗ σ_a 0.71 | ✓ | rejeitada |
+| C2 com interior ≤ 5.1 dx | ✓ | ✓ | ✓ | ✓ 0.91 | ✗ colônia a 0.05–0.13 dx de partícula de densidade | rejeitada |
+| **C2 adotada** | ✓ | ✓ | ✓ | ~ | ✓ | **adotada** |
+
+**C2 adotada:** anel de contato sobre a curva em **4.6 dx**, espaçamento **dx/4 (β = 4)**,
+**h_w = 0.4 dx**, força **÷ β**, `d` = 0; interior da grade **≤ 4.9 dx** só para densidade,
+viscosidade e *shifting*; fluido **> 5.4 dx**.
+
+- β = 4 (Δ/h_w = 0.62), não 3 (0.83): a 0.45 dx, var 0.03% / tang 0.06% contra 2.5% / 0.9%.
+- `d` = 0 basta: no meio do vão, a 0.05 dx de profundidade, a força normal é 117 (C0: 5.7).
+- K ÷ β mantém a força **média** por distância igual à do C0 (é o propósito do fator na eq. 4.1),
+  logo a calibração de K (plano §4) continua válida: muda a uniformidade, não a intensidade.
+- Raio de parada previsto 5.05–5.23 dx (C0: ~5.1–5.3); φ efetiva cai até ~7%. Anel em 4.6 é o
+  mais externo compatível com R-b.
+- **Compromisso aceito (R-d):** σ_a do ágar **parado** em volta do pilar cai a 0.75. Ele tem
+  pressão nula (não se move) e nunca dispara inserção (gate `ρ_b` > 0.5). A colônia, quando chega,
+  ocupa esse vão e fica a 0.58–0.76 dx da partícula de densidade mais próxima (C0: 0.82–0.90).
+
+**Conformidade:** partículas sobre a curva ✓; Δ < h ✓; ÷ β ✓; `d` = 0 ✓; kernel cúbico com a
+normalização absorvida em K ✓; K por equilíbrio com a força que empurra o fluido contra a parede ✓
+(eq. 4.7, com a força motriz no lugar da hidrostática). **Desvios declarados:** h_w = 0.4 dx em vez
+de h ~ dp (lição #40); parede na densidade por interior da grade (o artigo usa continuidade; nós,
+`SummationDensity` — Adami 2012); não-deslizamento pela `ViscousForce`, não por Π_aj.
+
+### 19.3 Implementação
+
+- `main.py`: `PILAR_CONTORNO` (`"grade"` reproduz o R1; `"anel"` é o padrão novo), `PILAR_BETA` = 4,
+  `PILAR_ANEL_R` = 4.6, `PILAR_DENS_R` = 4.9, `PILAR_FLUIDO_R` = 5.4 (em dx),
+  `PILAR_HW` = 0.4 (anel) / 0.5 (grade). `_faz_pilares` cria o array novo `pilar_sup` (o anel) e
+  devolve `[pilar, pilar_sup]`; grava em `pilares.json` `contorno`, `hw_dx`, `beta`, `anel_raio`,
+  `n_anel_por_pilar`, `dens_raio`, `fluido_raio`. `"raio"` continua o nominal (5 dx): máscaras,
+  `n_pen` e ferramentas não mudam.
+- `src/scheme.py`: `pilares_contato` (padrão = `pilares`); a `ForcaContornoPilar` usa
+  `["pilar_sup"]` no modo anel e recebe K ÷ β.
+- Guardas de deposição e `n_contato`: a árvore de pilar inclui interior + anel.
+- **`n_pen` mantém a definição pré-registrada** (centro < R_p − 0.5 dx = 4.5 dx, abaixo do anel).
+
+### 19.4 Verificação offline — FEITA (construção das partículas, sem solver)
+
+| verificação | resultado |
+|---|---|
+| modo `"grade"` × quadro inicial do R1 | fluido 61 127 e pilar 6 994 partículas, **posições bit-a-bit iguais** |
+| R-b: menor distância fluido–anel em t=0 | **0.807 dx** ≥ alcance 0.80 dx → força **zero** (margem de 0.007 dx: os centros caem em posições arbitrárias da grade) |
+| R-a sobre os 92 pilares construídos | pior pilar: 0.027% / 0.059% a 0.45 dx; 0.84% / 0.22% a 0.63 dx |
+| R-d: σ_a do ágar a < 1.5 dx da borda | min 0.754; 39% abaixo de 0.85 (previsto, aceito) |
+| partículas | fluido 59 515 (−1 612 em relação à grade), densidade 6 774, anel 10 672 (116/pilar) |
+
+**Rodadas curtas — FEITAS (2026-10-27, autorizadas; 1 thread como o R1, `OMP_NUM_THREADS`=10 sem `--openmp`):**
+
+| teste | resultado |
+|---|---|
+| **V0**: código atual × `HEAD` (e8034d6), ambos com `use_pilares = False`, até a iteração 600 | as **81 arrays do HDF5 idênticas** nas iterações 0/200/400/600 (`t` = 4.1658 / 7.3000 / 11.2183 iguais) e **`log.csv` idêntico** — o modo anel e o `RASTRO_W_RAZAO` não tocam o baseline liso |
+| **modo anel, 200 iterações** (t = 4.22) | compila e roda com `pilar_sup` (79 069 partículas); `ax_rep`/`ay_rep` = **0 exato** em todo o fluido nos quadros 0 e 200; `n_pen` = 0 (menor distância fluido–centro 5.41 dx); anel parado; ágar a < 1 dx da superfície deslocou no máximo 1.3e-7 dx — **o aborto extra da 19.5 não disparou** |
+
+**Limite do teste:** em t = 4.2 a colônia tem `R99` = 0.75 e o pilar mais próximo está a 1.24 da
+origem — **nenhum contato aconteceu**. O comportamento da parede lisa sob contato só é medido no R1′.
+
+### 19.5 PRÉ-REGISTRO — R1′ (Λ = 28 dx, modo anel; mesma semente 20260806, 10 threads, t = 50)
+
+O liso (P2R23) não muda. A rede, φ nominal e a força média também não; muda a uniformidade da parede.
+
+| grandeza | predição | leitura |
+|---|---|---|
+| `dR/dt` t∈[25,50], `R99`(t=50) | dentro do ruído do R1 (0.0733; 3.852) | a parede não mudou de intensidade média |
+| fase do m=6 no pico | 27–30° | a rede não mudou |
+| **P(parada \| contato) a 3 dx (R1: 24.6% ±5.5, razão 3.0×)** | **razão mantida ≥ ~2×** se a parada é químico-mecânica (§18.5) | **se cair para ~1×, parte da parada do R1 era atrito numérico da parede rugosa** e a §15 tem de ser corrigida |
+| varredura da razão por limiar | ainda cresce quando o limiar aperta | forma da curva é a prova (#68) |
+| repulsão química (§18.5): `cos_g` a 1–3 dx | negativo/≈0 como no R1 | é do campo, não da parede |
+| raio de parada (centro) em contato | 5.05–5.23 dx, sem valores < 4.9 | some a entrada nos degraus |
+| `n_pen` | 0 em todos os quadros | aborto 2 |
+
+Critérios de aborto: os da seção 6, mais **`a_rep` > 0 no ágar fora do alcance da colônia nas
+primeiras 200 iterações** (R-b violada na prática).
+
+**Consequência para a série:** o R1 deixa de ser o ponto da dose mais baixa; R1′ o substitui, e
+R2/R3 rodam no modo anel. O R1 fica arquivado como medição da parede rugosa.
+
+### 19.6 RESULTADO — R1′ (`runs/rugosidade/R1p_lambda28_anel`, 2026-10-27; 1 thread como o R1, 1784 s)
+
+| grandeza | predição (19.5) | R1 | **R1′** | liso (P2R23) | |
+|---|---|---:|---:|---:|---|
+| `R99`(t=50) (quadros, colônia = quorum ou filler) | ≈ R1 | 3.852 | **3.821** | 4.067 | ✅ |
+| `dR/dt` t∈[25,50] | ≈ R1 | 0.0733 | **0.0751** | 0.0756 | ✅ (ver nota) |
+| m=6: pico de a₆ / fase no pico | fase 27–30° | 0.223 (t=25.6) / 29° | **0.258 (t=27.8) / 28.7°** | — | ✅ |
+| `n_pen` | 0 | 0 | **0** | — | ✅ |
+| menor distância fluido móvel–centro (t 39→50) | sem < 4.9 dx | 4.77 dx | **5.06 dx** | — | ✅ some a entrada nos degraus |
+| repulsão química `cos_g` a 0–3 dx | ≈ 0 / negativo | ≈ 0 / negativo | **−0.04 / −0.04 / +0.03** (liso +0.77 a +0.94) | | ✅ do campo, não da parede |
+| **P(parada \| contato) a 3 dx** | razão ≥ ~2× | 24.6% / 8.2% = **3.0×** | 23.7% ±4.4 / 10.8% = **2.2×** | | ✅ no limite |
+| **varredura: a razão cresce quando o limiar aperta** | sim | 10.8× / 7.8× / 5.3× (1 / 1.5 / 2 dx) | **1.6× / 1.2× / 1.1×** | | ❌ |
+
+**Leitura.** A previsão que separava as duas hipóteses era a forma da varredura, e ela mudou. No R1 a
+parada se concentrava a ≤ 2 dx da superfície (91% de parada a 1 dx); com a parede lisa, a ≤ 2 dx a
+taxa de parada (15–20%) fica dentro do erro do controle (12.8%). **A parada dura de curto alcance do
+R1 era atrito numérico da parede rugosa** (§19.1). O que sobrevive tem alcance de 3–4 dx — razão
+2.2× a 3 e 4 dx, 1.3× a 7–10 dx —, o mesmo alcance da repulsão química (§18.5, reproduzida acima).
+
+**O que o contato ainda faz:** o avanço radial do líder em contato fica em **0.24–0.29× o do líder
+livre em TODOS os limiares de 1 a 4 dx** (R1: 0.12 a 1 dx subindo a 0.71 a 3 dx) — frenagem forte,
+plana na distância, sem parada completa. A mediana em contato (0.58 dx) cai em cima do limiar de
+PARADA (0.25 × 2.44 = 0.61 dx): **a fração de "parada" é sensível a esse limiar e não deve ser lida
+sozinha**; o avanço relativo é a medida robusta. E o líder em contato **deixa de ser líder** em
+80% ±10 das observações, contra 23.7% ±1.9 livre (3.4×; R1: 2.9×) — a perda de dedo persiste,
+pela frenagem e não pela parada.
+
+**A §15 tem de ser corrigida:** onde ela atribui ao contato mecânico uma parada de curto alcance
+(10.8× a 1 dx), o mecanismo medido com a parede conforme é **frenagem de alcance químico**.
+
+**Nota sobre `dR/dt`:** os três valores ficam dentro de 3% um do outro; a forma de medir (ajuste
+linear de `R99` dos quadros em t∈[25,50]) não separa R1 de liso nesta dose. O efeito no raio
+aparece no valor final (−6%), não na taxa da janela.
+
+**DEFEITO NOVO — partícula pinada derivando para o anel por shifting (não dispara aborto, mas
+precisa ser corrigido antes do R2).** `a_rep_max` sobe nos três últimos quadros (5.6 → 14.1 →
+17.3). Não é contato dinâmico: as duas partículas com a força alta estão **pinadas** (`|u|` = 0;
+um filler da inserção e uma célula com `c_n` < 0.6) e se aproximam do anel 0.63 → 0.44 dx entre
+t = 42.8 e 49.8. Como o pin zera a velocidade a cada passo, a força de contato não age sobre elas;
+o único termo que as move é o `ParticleShift` (aplicado depois do pin). No modo anel, a grade de
+densidade termina em 4.9 dx e o fluido começa em 5.4 dx — o vão de 0.5 dx baixa a concentração
+`C` junto ao pilar e `−∇C` aponta para dentro. Contraprova: as 3 pinadas a < 6.5 dx de um centro se
+**aproximam** 0.33–0.55 dx em t 39→50 no R1′ e se **afastam** 0.16–0.56 dx no R1 (grade sem vão).
+São poucas (3) e lentas (~0.05 dx por unidade de t), por isso o R1′ fecha em t = 50 sem `n_pen`;
+mas com mais pilares (R2, R3) e sem nada que as segure, chegam ao anel. Correções candidatas (não
+implementadas — exigem análise preditiva e aprovação): (a) incluir o anel nas fontes do
+`ParticleShift` (a parede entra na concentração `C`, pela mesma razão que a grade do pilar já entra — comentário do `ParticleShift` em `src/scheme.py`); (b) não deslocar
+partícula pinada a menos de ~1.5 dx do anel. `a_rep_max` dos três últimos quadros do R1′ é efeito
+desse defeito e não entra em nenhuma leitura.
+
+## 20. CORREÇÃO DO SHIFTING NA PAREDE — análise preditiva, implementação e pré-registro (2026-10-28)
+
+### 20.1 O defeito, medido de novo (reconstrução offline do `ParticleShift` em quadros do R1′)
+
+Fontes como no solver (fluido + grade de densidade do pilar), kernel CubicSpline, h mediano, limite
+`SHIFT_CAP`·h; população = partículas no gate do shifting (`rho_b` ∈ [0.1, 0.8)) a < 2h do anel.
+
+| t | n | pinadas | a < 1 dx do anel | componente normal / limite (p50) | fração para dentro | idem a < 1 dx |
+|---|---:|---:|---:|---:|---:|---:|
+| 27.8 | 498 | 1 | 56 | −0.37 | 62% | −0.62 |
+| 42.8 | 1244 | 21 | 204 | −0.31 | 61% | −0.65 |
+| 49.8 | 1639 | **53** | 303 | −0.19 | 58% | −0.73 |
+
+**O número de pinadas expostas cresce com a colônia** (1 → 21 → 53): o §19.6 contou só as que
+estavam perto nos dois quadros comparados. E **as móveis também são empurradas para dentro**: o
+empurrão equivale a ~0.0007 dx por passo, ou seja, a uma velocidade de ~0.0023 (dt ≈ 0.016); o
+arrasto γ = 60 vezes essa velocidade dá ~0.14, que é a `a_rep_med` medida no R1′ (0.10–0.16).
+**A força de contato mediana do R1′ estava segurando o shifting, não o motor.**
+
+### 20.2 Alternativas
+
+| opção | efeito (offline, mesmos quadros) | veredito |
+|---|---|---|
+| (a) anel nas fontes de `C` | normal / limite = **+1.00** em 93–96% das partículas a < 2h: empurra para fora no limite, sempre — repulsão artificial que afasta a colônia da parede | rejeitada |
+| (b) não deslocar partícula pinada | resolve a deriva das pinadas, mas mantém a carga de ~0.14 nas móveis | parcial |
+| **(c) anular só a componente normal para dentro** | 0% para dentro; deslocamento cai a 0.89–0.92 do limite; componente tangencial preservada | **adotada** |
+| (d) estender a grade de densidade até o fluido | conta densidade em dobro sob o fluido que encosta (motivo da R-d, §19.2) | rejeitada |
+
+(c) é o tratamento de superfície de Lind et al. (2012) [T8] — suprimir a componente normal do
+deslocamento junto ao contorno — e equivale à "rejeição de movimento para dentro do sólido" do
+modelo de Cesgrav (2026, §2.7).
+
+### 20.3 Implementação
+
+- `src/equations.py`, `ProjecaoShiftParede` (fontes: `pilar_sup`): normal n = Σ_j W_ij (x_i − x_j)
+  normalizada, nula além de 2h do anel; se `shift`·n < 0, subtrai a componente normal. Roda no mesmo
+  `Group` do `ParticleShift`, depois dele.
+- `src/scheme.py`: parâmetro `shift_parede`; a equação só entra com ele ligado **e** com fontes de contato.
+- `main.py`: `PILAR_SHIFT_PAREDE = True`; ligado só com `use_pilares` e `PILAR_CONTORNO == "anel"`.
+  Propriedades `wall_nx`, `wall_ny` só com `use_pilares`.
+- **Liso e modo `"grade"` intocados por construção** (equação ausente, propriedades ausentes no liso).
+
+### 20.4 PRÉ-REGISTRO — testes curtos (exigem autorização)
+
+1. **V0′**: `use_pilares = False`, até a iteração 600, contra o V0 do §19.4 (`HEAD` e8034d6): 81 arrays e `log.csv` idênticos.
+2. **200 iterações no modo anel**: compila com a equação nova; `a_rep` = 0 no ágar; `n_pen` = 0.
+
+### 20.5 PRÉ-REGISTRO — R1″ (Λ = 28 dx, modo anel + projeção; mesma semente, mesmo modo de execução do R1′, t = 50)
+
+O R1′ roda com o defeito e deixa de ser o ponto da série: **R2/R3 rodam com a projeção, então a
+dose mais baixa tem de ser refeita com o mesmo código** (pareamento). O R1′ fica arquivado.
+
+| grandeza | R1′ | predição R1″ | leitura se falhar |
+|---|---:|---|---|
+| pinadas a < 2h do anel: aproximação do centro, t 39→50 | +0.33 a +0.55 dx | **≤ 0.05 dx** | a projeção não pega a deriva |
+| `a_rep_med` (t > 30, mediana) | 0.16 | **≤ 0.05** (sem a carga do shifting) | a carga não vinha do shifting (§20.1 errada) |
+| `a_rep_max` nos três últimos quadros | 5.6 / 14.1 / 17.3 | **< 3**, sem crescimento | idem |
+| avanço do líder em contato / livre, 1–4 dx | 0.24–0.29 | **0.24–0.32** (o empurrão é 3–5% da velocidade do líder) | a frenagem dependia do shifting |
+| razão P(parada \| contato) a 3 dx | 2.2× | 1.7–2.7× | idem |
+| `R99`(t=50), `dR/dt`[25,50] | 3.821, 0.0751 | dentro de ±3% do R1′ | — |
+| `n_pen` | 0 | 0 | aborto |
+
+### 20.6 RESULTADO — R1″ (`runs/rugosidade/R1pp_lambda28_anel_shift`, 2026-10-28; 1 thread, 1295 s)
+
+| grandeza | predição (20.5) | R1 (grade) | R1′ (anel, shifting para dentro) | **R1″ (anel + projeção)** | liso | |
+|---|---|---:|---:|---:|---:|---|
+| pinadas a < 2h do anel: aproximação, t ≈ 39→50 (n = 8) | ≤ 0.05 dx | — | máx +0.55 dx | **máx 0.000 dx** | — | ✅ |
+| `a_rep_med` (t > 30) | ≤ 0.05 | — | 0.162 | **0.038** | — | ✅ |
+| `a_rep_max`, três últimos quadros | < 3 | — | 5.6 / 14.1 / 17.3 | **0.36 / 1.48 / 0.65** | — | ✅ |
+| `n_pen` | 0 | 0 | 0 | **0** | — | ✅ |
+| m=6: pico / fase | fase 27–30° | 0.223 / 29° | 0.258 / 28.7° | **0.254 (t=23.2) / 27.9°** | — | ✅ |
+| repulsão química `cos_g` a 0–3 dx | ≈ 0 | ≈ 0 | ≈ 0 | **+0.07 / −0.14 / +0.15** (liso +0.77 a +0.94) | | ✅ |
+| razão P(parada \| contato) a 3 dx | 1.7–2.7× | 3.0× | 2.2× | **1.8×** | | ✅ |
+| `R99`(t=50) | ±3% do R1′ | 3.852 | 3.821 | **3.682 (−3.6%)** | 4.067 | ❌ no limite |
+| `dR/dt` t∈[25,50] | ±3% do R1′ | 0.0733 | 0.0751 | **0.0698 (−7%)** | 0.0756 | ❌ |
+| avanço em contato / livre, 1 → 4 dx | 0.24–0.32, plano | 0.12 → 0.90 | 0.24–0.29 (plano) | **0.18 / 0.27 / 0.37 / 0.56 / 0.63** | | ❌ |
+| razão P(parada \| contato) a 1 / 1.5 / 2 dx | — | 10.8× / 7.8× / 5.3× | 1.6× / 1.2× / 1.1× | **4.6× / 2.7× / 2.2×** | | |
+
+**A correção funciona:** as pinadas param de derivar, e a força de contato mediana cai a 0.038 — a
+carga do shifting (§20.1) sumiu.
+
+**E ela muda a leitura do §19.6.** Eu havia previsto que tirar o empurrão do shifting não mexeria na
+frenagem (o empurrão é 3–5% da velocidade do líder). Errado: com a projeção, a frenagem **volta a
+depender da distância** (0.18 a 1 dx subindo a 0.63 a 4 dx) e a parada de curto alcance **reaparece**
+(4.6× a 1 dx). O shifting do R1′ empurrava o líder **em direção à parede e ao longo dela** justamente
+no último 1–2 dx, onde a parada se decide; isso mascarava a parada. Ou seja, o R1′ errou para o lado
+oposto ao do R1:
+
+| | parede | shifting | razão a 1 dx |
+|---|---|---|---:|
+| R1 | rugosa (atrito numérico) | sem vão | 10.8× (inflada) |
+| R1′ | lisa | para dentro (empurra o líder contra a parede) | 1.6× (mascarada) |
+| **R1″** | **lisa** | **sem componente para dentro** | **4.6×** |
+
+**Leitura corrigida (substitui a do §19.6):** existe parada mecânica de curto alcance no contato,
+cerca de **metade** da que o R1 mediu (4.6× contra 10.8× a 1 dx); a outra metade era a parede rugosa.
+Sobre ela se soma a frenagem de alcance químico (razão ~1.8× até 5 dx, repulsão reproduzida). A 1 dx
+são só 15 observações (±13 pontos), então o valor 4.6× tem incerteza grande — a FORMA da varredura
+(cresce quando o limiar aperta) é a evidência robusta (#68).
+
+~~**Efeito na expansão é maior que no R1′:** contra o liso, `R99` −9.5% e `dR/dt` −8% (R1′: −6% e −1%).~~
+**RETIRADO no §20.7:** medido num instante só (t = 50), onde o liso salta +6%. Na janela, R1′ e R1″
+dão o mesmo raio (−6.0% e −5.7%), e o `dR/dt` do R1″ (−4.4%) fica dentro do ruído (5.8%).
+
+**Consequências:** (1) o R1″ é o ponto de dose mais baixa da série; R1 e R1′ ficam arquivados como
+medições de artefatos de contorno. (2) A §15 tem de ser corrigida com estes números (não com os do
+R1′). (3) R2 e R3 rodam com o código do R1″.
+
+### 20.7 Ruído entre realizações e morfologia do R1″ (2026-10-28, pós-processamento)
+
+**Não existe segunda realização do P2R23.** A `P2R23_t100_pareamento` é idêntica a ela até t = 48
+(mesmo log, mesmos raios): mesmo código e mesmo modo de execução, logo é a mesma realização. O piso
+disponível continua sendo o par do P2 (§4): `P2_fillerdonor` (10 threads) × `P2_t100` (5 threads).
+
+**`R99` num instante só é instável.** O liso salta de 3.84 (t = 48.3) para 4.07 (t = 50): +6% em 1.7
+unidades de t. Por isso os números abaixo usam a janela, interpolada numa grade comum, e os
+"−9.5% em t = 50" e "R1″ atrasa mais que o R1′" do §20.6 ficam **retirados**.
+
+| | `R99` médio, t ∈ [35, 48] | Δ vs liso | `dR/dt`, [25, 48] | Δ vs liso |
+|---|---:|---:|---:|---:|
+| ruído (P2 × P2, duas realizações) | 3.179 / 3.214 | **1.1%** | 0.0758 / 0.0803 | **5.8%** |
+| liso (P2R23) | 3.337 | — | 0.0743 | — |
+| R1 (grade) | 3.210 | −3.8% | 0.0735 | −1.1% |
+| R1′ | 3.136 | −6.0% | 0.0728 | −2.0% |
+| **R1″** | **3.146** | **−5.7% (5× o ruído)** | **0.0710** | **−4.4% (no ruído)** |
+
+**Na dose mais baixa, o raio é menor de forma destacável do ruído; a taxa de expansão não.**
+R1′ e R1″ não diferem no raio.
+
+**Réguas de forma, média ± desvio sobre os quadros de t ∈ [35, 50]** (`lit_rank.forma`, máscara da
+`fig_tese`). **Correção de régua:** a máscara usada pela forma fecha todos os buracos, e com isso um
+pilar engolido pela colônia voltava a contar como colônia (área e largura EDT). Os números abaixo
+descontam os pilares da máscara; a área ocupada sai nas duas convenções.
+
+| | núcleo / R | baía / R | dedos | área / disco | área / (disco − pilares) | largura EDT (dx) | AR |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| P2 (realização 1) | 0.43 ±0.01 | 0.42 ±0.01 | 6.7 | 0.25 | — | 2.80 ±0.30 | 15.2 ±3.0 |
+| P2 (realização 2) | 0.41 ±0.02 | 0.40 ±0.03 | 6.6 | 0.25 | — | 4.27 ±0.61 | 9.9 ±1.2 |
+| liso (P2R23) | 0.42 ±0.03 | 0.40 ±0.03 | 14.0 ±1.0 | 0.43 ±0.03 | 0.43 | 5.48 ±0.13 | 8.1 ±1.4 |
+| R1 (grade) | 0.32 ±0.03 | 0.32 ±0.03 | 13.5 ±0.5 | 0.44 ±0.03 | 0.50 | 5.92 ±0.23 | 8.2 ±1.0 |
+| R1′ | 0.40 ±0.06 | 0.39 ±0.06 | 14.3 ±1.0 | — | 0.53 ±0.03 | 5.97 ±0.20 | 7.0 ±0.6 |
+| **R1″** | **0.40 ±0.06** | **0.41 ±0.05** | **14.0 ±0.9** | **0.48 ±0.02** | **0.54 ±0.03** | **6.16 ±0.26** | **6.4 ±0.3** |
+
+- **Núcleo, baía e número de dedos: iguais ao liso.** O núcleo menor do R1 (0.32) era da parede em grade.
+- **Dedos ~12% mais largos** (5.5 → 6.2 dx) e **colônia mais compacta** (área/disco 0.43 → 0.48).
+- **AR 8.1 → 6.4 (−21%)**, ainda dentro da faixa de [T12]/PA14 (3.8–11.2). O AR varia 35% entre as
+  duas realizações do P2, então **a queda não é atribuível com segurança**; a largura, com desvio
+  interno de 0.13–0.26 dx, é a medida mais firme. (O P2 não serve bem de piso para a largura: lá ela
+  não é fixada pelo rastro, como no P2R23.)
+
+**Leitura visual (§11; `plots/fig_R1pp_lambda28_anel_shift.png` × `plots/fig_tese_P2R23.png`,
+atenção: eixos ±4.5 × ±5):** a classe continua *fingering* (13–14 dedos radiais a partir de um
+núcleo). Os dedos ficam mais largos e de contorno mais irregular, e o corpo central engole o primeiro
+anel de 6 pilares (r ≈ 1.5). **O painel (c) mostra o mecanismo do raio menor:** o raio mínimo (fundo
+da baía) fica **travado em 1.23 de t = 20 a t = 44** e só então salta para 1.85, enquanto no liso
+sobe continuamente de 1.0 a 1.65 — a baía mais funda parou contra o anel de pilares.
+
+**Consequência para o pré-registro do R2:** a resposta da dose mais baixa é **raio −5.7%, taxa no
+ruído, dedos mais largos, forma preservada**. A monotonicidade R1″ → R2 → R3 vai ser lida
+principalmente no `R99` de janela e na largura, não no `dR/dt`, que não separa do ruído nesta dose.
+
+## 21. PRÉ-REGISTRO DO R2 — Λ = 20 dx (2026-10-28, escrito ANTES de rodar)
+
+### 21.1 Especificação
+
+- **Código:** o do R1″, idêntico (`main.py` e `src/` verificados por `diff` contra
+  `runs/rugosidade/R1pp_lambda28_anel_shift` em 2026-10-28). **Única mudança: `PILAR_LAMBDA` 28 → 20.**
+  Contorno em anel com projeção do shifting (§19, §20); `PILAR_A` = 10, `PILAR_R_EXCL` = 1.2,
+  `PILAR_JITTER` = 0, `SEED` = 20260806, `PILAR_SEED` = 20261006.
+- **Execução:** mesmo modo do R1′/R1″ (`python main.py -d ...`, sem `--openmp`, 1 thread), t = 50,
+  pasta `runs/rugosidade/R2_lambda20`. Duração estimada 25–40 min.
+- **Comparação:** contra o liso P2R23 e contra o R1″, com o par P2 × P2 como piso de ruído (§20.7).
+  **Toda métrica em janela** (raio: média em t ∈ [35, 48] interpolada; forma: média ± desvio dos
+  quadros em t ∈ [35, 50]), nunca num instante só.
+
+### 21.2 Geometria (calculada offline, varredura de 20 000 raios, braço de 5.4–6.2 dx)
+
+| | R1″ (Λ = 28) | **R2 (Λ = 20)** |
+|---|---:|---:|
+| contatos por braço, alcance 3.3–3.5 | 1.10–1.16 | **1.60–1.91** |
+| braços que interceptam ≥ 1 pilar | 84–88% | **100%** |
+| fração sólida dentro de r = 3.4 | 0.113 | **0.188** |
+| pilares dentro de r = 3.4 | 18 | 30 |
+| primeira coroa presente (centro) / superfície | 1.508 / 1.239 | **1.865 / 1.596** (a coroa 1 cai na exclusão, §14.1) |
+| colônia chega à primeira superfície (liso) | t ≈ 21 | **t ≈ 27** |
+
+### 21.3 Predições quantitativas
+
+A âncora é o R1″ (§20.6, §20.7). A hipótese de trabalho é a do §15.4/15.5: **o efeito por contato é
+constante; o que cresce com a dose é o número de contatos** (×1.5–1.7 do R1″ para o R2).
+
+| grandeza | liso | R1″ | **predição R2** | o que a refuta |
+|---|---:|---:|---|---|
+| `R99` médio t ∈ [35, 48], Δ vs liso | — | −5.7% | **−7% a −13%** | Δ ≥ −5.7% (não monotônico: checar primeiro o artefato de largada, §14.1, item 4) |
+| `dR/dt` [25, 48], Δ vs liso (ruído 5.8%) | — | −4.4% | **−6% a −12%** | dentro do ruído de novo → a taxa não responde a dose nesta faixa |
+| largura EDT do dedo (dx) | 5.48 | 6.16 | **≥ 6.2** (6.2–7.0) | < 6.0 → o alargamento do R1″ não era efeito do pilar |
+| área / disco | 0.43 | 0.48 | **≥ 0.48** | — |
+| dedos | 14.0 | 14.0 | **11–14** | < 11 → extinção por contato mais forte que linear |
+| núcleo / R, baía / R | 0.42 / 0.40 | 0.40 / 0.41 | **0.36–0.44** (sem mudança) | — |
+| fundo da baía (raio mínimo, painel (c)) | sobe contínuo | travado em 1.23 de t = 20 a 44 | **travado perto de 1.6 a partir de t ≈ 27** por ≥ 10 unidades de t | sem patamar → o travamento do R1″ era acaso |
+| razão P(parada \| contato) a 3 dx | — | 1.8× | **1.3–2.5×** (constante com a dose) | cair abaixo de 1.3× → mecanismo novo (retenção, §15.4) |
+| razão a 1 / 1.5 / 2 dx | — | 4.6× / 2.7× / 2.2× | **cresce quando o limiar aperta** | forma plana |
+| observações em contato a 3 dx | — | 81 | **120–170** | — |
+| deixa de ser líder: contato / livre | — | 73% / 23% | **≥ 60% / 20–30%** | — |
+| arco com sinal (quiralidade) | — | +0.35 ±0.24 | sem predição; **vigiar** se fica positivo com erro menor | — |
+| repulsão química `cos_g` a 0–3 dx | +0.77–0.94 | ≈ 0 | **≈ 0** (propriedade do contato) | positivo como no liso |
+| m=6: fase no pico | — | 27.9° | **≈ 0° (mod 60°)**, pico em `R_med`/coroa ≈ 0.99, ou seja `R_med` ≈ 1.85 (§12, §14.1) | fase ~30° → a rede não está travando a forma |
+| `a_mar_bio_p95` (mediana t > 30) | 0.73 | 0.63 | **0.50–0.70** | < 0.5 → canal químico (§3, item 2) |
+
+### 21.4 Critérios de aborto (verificar a cada quadro)
+
+Os da §6, mais os herdados do R1″:
+1. `n_pen` > 0 em qualquer quadro.
+2. força de contato > 0 no ágar antes de a colônia chegar (primeiros 200 passos).
+3. partícula pinada a < 2h do anel se aproximando do centro do pilar (> 0.05 dx entre quadros).
+4. `a_rep_max` > 3 sustentado em 2 quadros seguidos.
+5. pares < 0.05 dx ou iterações por unidade de t acima de 1.5× o R1″ no mesmo t.
+
+### 21.5 Leitura
+
+- **Se as predições de raio, largura e contato se confirmarem:** a resposta à dose é monotônica e
+  mediada pela frequência de contato; segue o R3 com o mesmo desenho.
+- **Se o raio não piorar em relação ao R1″:** antes de qualquer conclusão, refazer a leitura em
+  `R_med/r_coroa` (§14.1) — o R2 tem a largada mais livre das três doses. Só depois a §1 se aplica
+  (réplicas).
+- **Ferramentas:** `tools/desfecho_contato.py`, `tools/anisotropia.py`, `tools/repulsao_quimica.py`,
+  `tools/sombra_quimica.py`, réguas de forma em janela com os pilares descontados (§20.7),
+  `plots/fig_tese.py --t 50`.

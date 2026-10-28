@@ -19,6 +19,7 @@ from .equations import (
     NutrientSource,
     OxigenConsumption,
     ParticleShift,
+    ProjecaoShiftParede,
     SurfactantEquation,
     ViscousForce,
 )
@@ -119,6 +120,8 @@ class MyBiomassScheme(Scheme):
         pilar_k=0.005,
         pilar_hw=0.0269,
         pilares=(),  # pass-l-aprovado: Pass L desbloqueado em 2026-09-17 (CLAUDE.md §12)
+        pilares_contato=None,  # pass-l-aprovado: fontes da forca de contato (CRITERIOS §19)
+        shift_parede=False,  # pass-l-aprovado: projecao do shifting na parede (CRITERIOS §20)
     ):
         self.mu = mu
         self.gamma = gamma
@@ -156,7 +159,11 @@ class MyBiomassScheme(Scheme):
         self.filler_cs_lambda = filler_cs_lambda
         self.agar_cs_lambda = agar_cs_lambda
         self.pilares = list(pilares)
+        self.pilares_contato = (
+            list(pilares) if pilares_contato is None else list(pilares_contato)
+        )
         self.pilar_k = pilar_k
+        self.shift_parede = shift_parede
         self.pilar_hw = pilar_hw
         super(MyBiomassScheme, self).__init__(fluids, solids, dim=dim)
 
@@ -216,12 +223,12 @@ class MyBiomassScheme(Scheme):
                     [
                         ForcaContornoPilar(
                             dest="fluid",
-                            sources=self.pilares,
+                            sources=self.pilares_contato,
                             K=self.pilar_k,
                             hw=self.pilar_hw,
                         )
                     ]
-                    if self.pilares
+                    if self.pilares_contato
                     else []
                 ),
                 LinearDrag(
@@ -294,6 +301,15 @@ class MyBiomassScheme(Scheme):
                             shift_coeff=self.shift_coeff,
                             shift_cap=self.shift_cap,
                             rho_b_min=self.shift_rho_b_min,
+                        ),
+                        *(
+                            [
+                                ProjecaoShiftParede(
+                                    dest="fluid", sources=self.pilares_contato
+                                )
+                            ]
+                            if self.shift_parede and self.pilares_contato
+                            else []
                         ),
                     ],
                 )

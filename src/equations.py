@@ -220,6 +220,33 @@ class ParticleShift(Equation):
         d_shift_y[d_idx] = sy
 
 
+class ProjecaoShiftParede(Equation):
+    # pass-l-aprovado: CRITERIOS_RUGOSIDADE.md §20. No modo anel a grade de densidade do pilar para
+    # 0.5 dx antes do fluido; o deficit de C faz o -grad C do ParticleShift apontar para dentro da
+    # parede, e particula pinada (u=v=0) deriva ate o anel sem que a forca de contato a segure.
+    # Remove a componente normal para dentro (Lind et al. 2012 [T8]); a normal e a soma dos vetores
+    # anel->particula ponderada pelo kernel, nula alem de 2h do anel.
+    def initialize(self, d_idx, d_wall_nx, d_wall_ny):
+        d_wall_nx[d_idx] = 0.0
+        d_wall_ny[d_idx] = 0.0
+
+    def loop(self, d_idx, XIJ, WIJ, d_wall_nx, d_wall_ny):
+        d_wall_nx[d_idx] += WIJ * XIJ[0]
+        d_wall_ny[d_idx] += WIJ * XIJ[1]
+
+    def post_loop(self, d_idx, d_wall_nx, d_wall_ny, d_shift_x, d_shift_y):
+        nx = d_wall_nx[d_idx]
+        ny = d_wall_ny[d_idx]
+        mag = (nx * nx + ny * ny) ** 0.5
+        if mag > 1e-12:
+            nx = nx / mag
+            ny = ny / mag
+            sn = d_shift_x[d_idx] * nx + d_shift_y[d_idx] * ny
+            if sn < 0.0:
+                d_shift_x[d_idx] -= sn * nx
+                d_shift_y[d_idx] -= sn * ny
+
+
 class SurfactantEquation(Equation):
     def __init__(
         self,
@@ -683,6 +710,8 @@ class ForcaContornoPilar(Equation):
     # com h_w = 0.5 dx (alcance 1 dx) em vez do h da simulacao: com 2h = 3.6 dx a forca empurraria
     # todo o fluido a ate 3.6 dx do pilar (v induzida 0.2 a 1 dx) e abriria um anel de vazio, que
     # no agar nao cicatriza (licao #40). Calibracao em docs/PLANO_RUGOSIDADE.md secao 4.
+    # pass-l-aprovado: no modo "anel" (CRITERIOS_RUGOSIDADE.md §19) as fontes sao um anel sobre
+    # a curva com espacamento dx/beta, h_w = 0.4 dx e K ja dividido por beta pelo chamador (4.1).
     def __init__(self, dest, sources, K=0.005, hw=0.0269):
         self.K = K
         self.hw = hw
